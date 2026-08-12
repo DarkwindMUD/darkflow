@@ -14,7 +14,14 @@
     id: "terminal",
     kind: "terminal",
     title: "Terminal",
-    state: {},
+    // Step 4 replaces this placeholder buffer with the real output owner. It
+    // exists so the island has scrollable content to retain across layout work.
+    state: {
+      buffer: Array.from(
+        { length: 60 },
+        (_, index) => `terminal placeholder line ${index + 1}`,
+      ).join("\n"),
+    },
   };
   const placeholder: WorkspacePanelSpec = {
     id: "panel-placeholder",

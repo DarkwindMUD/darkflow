@@ -75,6 +75,32 @@ async function touchDrag(
   }
 }
 
+async function terminalState(
+  page: Page,
+): Promise<{ buffer: string; identity: string; scrollTop: number }> {
+  return page.locator("[data-terminal-identity]").evaluate((element) => ({
+    buffer: element.textContent ?? "",
+    identity: (element as HTMLElement).dataset.terminalIdentity ?? "",
+    scrollTop: element.scrollTop,
+  }));
+}
+
+async function mouseDrag(page: Page, source: Locator, target: Locator): Promise<void> {
+  const start = await center(source);
+  const end = await center(target);
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (let step = 1; step <= 6; step += 1) {
+    const progress = step / 6;
+    await page.mouse.move(
+      start.x + (end.x - start.x) * progress,
+      start.y + (end.y - start.y) * progress,
+    );
+    await page.waitForTimeout(25);
+  }
+  await page.mouse.up();
+}
+
 async function savedLayout(page: Page): Promise<unknown> {
   return page.evaluate(() => {
     const runtime = (
@@ -91,13 +117,31 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
 
   const terminal = page.locator("[data-terminal-identity]");
   const terminalIdentity = await terminal.getAttribute("data-terminal-identity");
+  await terminal.evaluate((element) => {
+    element.scrollTop = 120;
+  });
   await terminal.focus();
   await page.getByRole("button", { name: "Focus terminal" }).click();
   await expect(terminal).toBeFocused();
 
+  // One island keeps its identity, text, focus, and scroll across real layout work.
+  const seeded = await terminalState(page);
+  expect(seeded.buffer).toContain("terminal placeholder line 60");
+  expect(seeded.scrollTop).toBeGreaterThan(0);
+
+  await mouseDrag(
+    page,
+    panelDragHandle(page, "panel-placeholder"),
+    panelDragHandle(page, "terminal"),
+  );
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
+  expect(await terminalState(page)).toEqual(seeded);
+
   await page.getByRole("button", { name: "Close panel", exact: true }).click();
   await expect(page.getByRole("button", { name: "Open panel", exact: true })).toBeVisible();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  expect(await terminalState(page)).toEqual(seeded);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(terminalIdentity);
 
   const saved = await page.evaluate(() => {

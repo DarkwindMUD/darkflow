@@ -48,7 +48,7 @@
     "typecheck": "ttsc --noEmit --project tsconfig.json && ttsc --noEmit --project tsconfig.node.json",
     "check": "svelte-check --tsgo --tsconfig ./tsconfig.json --fail-on-warnings",
     "test:browser": "playwright test",
-    "test:browser:production": "playwright test --config playwright.production.config.ts --project=chromium",
+    "test:browser:production": "playwright test --config playwright.production.config.ts --project=chromium --project=mobile-chromium",
     "test:transports": "npm run build && playwright test --config playwright.production.config.ts --project=transports",
     "lint": "eslint \"client/app/**/*.{ts,svelte}\" \"client/model/**/*.ts\" \"client/storage/**/*.ts\" \"client/configuration/**/*.ts\" \"client/runtime/**/*.ts\" \"client/transport/**/*.ts\" \"client/gmcp/**/*.ts\" \"client/workspace/**/*.{js,ts,svelte}\" \"client/phase0/**/*.{js,ts,svelte}\" \"e2e/**/*.ts\" \"*.config.{mjs,ts}\"",
     "format": "prettier --write \"client/app/**/*.{ts,svelte}\" \"client/model/**/*.ts\" \"client/storage/**/*.ts\" \"client/configuration/**/*.ts\" \"client/runtime/**/*.ts\" \"client/transport/**/*.ts\" \"client/gmcp/**/*.ts\" \"client/workspace/**/*.{js,ts,svelte}\" \"client/phase0/**/*.{js,ts,svelte}\" \"e2e/**/*.ts\" \"*.config.{mjs,ts}\" \"tsconfig*.json\"",

@@ -40,7 +40,6 @@ interface DockviewPanelLike {
   group: unknown;
 }
 
-const disposedWorkspaceError = new Error("Workspace has been disposed.");
 let rootSequence = 0;
 
 export interface WorkspacePanelInspection {
@@ -256,7 +255,7 @@ export function createWorkspace(
 
   const assertUsable = () => {
     if (disposed) {
-      throw disposedWorkspaceError;
+      throw new Error("Workspace has been disposed.");
     }
   };
 
@@ -493,6 +492,10 @@ export function createWorkspace(
       if (panel) {
         preserveOwnedFocus(() => panel.api.setActive());
       }
+    },
+
+    hasPanel(id) {
+      return !disposed && api.getPanel(id) !== undefined;
     },
 
     async removePanel(id) {

@@ -17,6 +17,7 @@
   },
   "include": [
     "client/app/**/*.ts",
+    "client/app/**/*.svelte",
     "client/model/**/*.ts",
     "client/storage/**/*.ts",
     "client/configuration/**/*.ts",

@@ -73,7 +73,9 @@ async function waitForValidatorChange(origin, previous) {
 
 test(
   "dev server preserves route ordering, cookies, and shared HMR upgrades",
-  { timeout: 120_000 },
+  // Boots a real Vite dev server; @ttsc/unplugin rehashes the tree per transform,
+  // so this runs far slower inside the full `npm test` battery than in isolation.
+  { timeout: 300_000 },
   async (t) => {
     const originalDesktop = process.env.DARKFLOW_DESKTOP;
     const originalToken = process.env.DARKFLOW_DESKTOP_TOKEN;

@@ -43,6 +43,7 @@ export type WorkspaceRendererRegistry = Readonly<Record<string, WorkspaceRendere
 export interface Workspace {
   addOrUpdatePanel(spec: WorkspacePanelSpec): void;
   activatePanel(id: string): void;
+  hasPanel(id: string): boolean;
   removePanel(id: string): Promise<void>;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;

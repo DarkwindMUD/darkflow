@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { CharacterProfileId } from "../model/ids";
   import { createWorkspace } from "./dockview-workspace";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
@@ -28,6 +28,9 @@
   let workspace: Workspace | undefined;
   let status = $state("Loading workspace...");
   let placeholderOpen = $state(true);
+  let sheetOpen = $state(false);
+  let sheetCloseButton: HTMLButtonElement | undefined;
+  let sheetTrigger: HTMLButtonElement | undefined;
 
   function openPlaceholder(): void {
     workspace?.addOrUpdatePanel(placeholder);
@@ -38,6 +41,27 @@
   function focusTerminal(): void {
     workspace?.activatePanel(terminal.id);
     focusTerminalIsland(terminal.id);
+  }
+
+  function openSheet(): void {
+    sheetOpen = true;
+    void tick().then(() => sheetCloseButton?.focus());
+  }
+
+  function closeSheet(returnFocus = true): void {
+    if (!sheetOpen) return;
+    sheetOpen = false;
+    if (returnFocus) queueMicrotask(() => sheetTrigger?.focus());
+  }
+
+  /** Sheet panel selection reveals the workspace behind it rather than covering it. */
+  function selectPanel(activate: () => void): void {
+    closeSheet(false);
+    activate();
+  }
+
+  function handleSheetBackdrop(event: MouseEvent): void {
+    if (event.target === event.currentTarget) closeSheet();
   }
 
   function closePlaceholder(): void {
@@ -57,36 +81,45 @@
     currentWorkspace.addOrUpdatePanel(placeholder);
 
     const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
-    const containsTerminal =
-      loaded.success &&
-      loaded.snapshot !== null &&
-      JSON.stringify(loaded.snapshot.layout).includes(`"${terminal.id}"`);
+    const snapshot = loaded.success ? loaded.snapshot : null;
+    const loadMessage = !loaded.success
+      ? loaded.message
+      : loaded.snapshot === null
+        ? loaded.message
+        : "";
     const restored =
-      containsTerminal && currentWorkspace.restore(loaded.snapshot, [terminal, placeholder]);
-    if (!loaded.success) {
-      status = loaded.message;
-    } else if (restored) {
+      snapshot !== null && currentWorkspace.restore(snapshot, [terminal, placeholder]);
+    if (!restored) {
+      currentWorkspace.addOrUpdatePanel(terminal);
+      currentWorkspace.addOrUpdatePanel(placeholder);
+      status =
+        snapshot === null
+          ? loadMessage
+          : "Saved workspace could not be restored; using the default layout.";
+    } else if (currentWorkspace.hasPanel(terminal.id)) {
       status = "Workspace restored";
-      placeholderOpen = JSON.stringify(loaded.snapshot.layout).includes(placeholder.id);
-    } else if (loaded.snapshot !== null) {
-      status = "Saved workspace could not be restored; using the default layout.";
     } else {
-      status = loaded.message;
+      // A restored layout without the terminal island is repaired in place; the
+      // rest of the user's saved arrangement stays usable.
+      currentWorkspace.addOrUpdatePanel(terminal);
+      status = "Restored workspace was missing the terminal; it has been re-added.";
     }
-    currentWorkspace.addOrUpdatePanel(terminal);
-    if (!restored) currentWorkspace.addOrUpdatePanel(placeholder);
+    placeholderOpen = currentWorkspace.hasPanel(placeholder.id);
 
     let pending: WorkspaceSnapshot | undefined;
     let timer: number | undefined;
     const flush = () => {
+      if (timer !== undefined) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      }
       if (!pending) return;
       const result = saveCharacterWorkspace(localStorage, characterProfileId, pending);
       pending = undefined;
-      timer = undefined;
       status = result.success ? "Workspace saved" : result.message;
     };
-    const scheduleSave = (snapshot: WorkspaceSnapshot) => {
-      pending = snapshot;
+    const scheduleSave = (next: WorkspaceSnapshot) => {
+      pending = next;
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(flush, 75);
     };
@@ -99,13 +132,18 @@
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
       unsubscribe();
-      if (timer !== undefined) window.clearTimeout(timer);
       flush();
       workspace = undefined;
       void currentWorkspace.dispose();
     };
   });
 </script>
+
+<svelte:window
+  onkeydown={(event) => {
+    if (sheetOpen && event.key === "Escape") closeSheet();
+  }}
+/>
 
 <section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
   <div class="workspace-controls" aria-label="Panels">
@@ -117,13 +155,57 @@
       <button type="button" onclick={openPlaceholder}>Open panel</button>
     {/if}
   </div>
+  <button
+    bind:this={sheetTrigger}
+    class="mobile-panels-trigger"
+    type="button"
+    aria-controls="phase2-workspace-host"
+    aria-expanded={sheetOpen}
+    aria-haspopup="dialog"
+    onclick={openSheet}>Panels</button
+  >
   <p class="workspace-status" data-testid="workspace-status">{status}</p>
-  <div bind:this={host} class="workspace-host" data-testid="workspace-host"></div>
+  <div
+    bind:this={host}
+    id="phase2-workspace-host"
+    class="workspace-host"
+    data-testid="workspace-host"
+  ></div>
 </section>
+
+<div
+  class:open={sheetOpen}
+  class="mobile-sheet-overlay"
+  role="presentation"
+  inert={!sheetOpen}
+  onclick={handleSheetBackdrop}
+>
+  <div class="mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-sheet-title">
+    <div class="mobile-sheet-header">
+      <h2 id="mobile-sheet-title">Panels</h2>
+      <button bind:this={sheetCloseButton} type="button" onclick={() => closeSheet()}
+        >Close panels</button
+      >
+    </div>
+    <div class="mobile-panel-tabs" aria-label="Open panels">
+      <button type="button" onclick={() => selectPanel(focusTerminal)}>Terminal</button>
+      <button type="button" onclick={() => selectPanel(openPlaceholder)}>Panel placeholder</button>
+    </div>
+    <div class="mobile-sheet-controls">
+      <button type="button" onclick={focusTerminal}>Focus terminal</button>
+      {#if placeholderOpen}
+        <button type="button" onclick={closePlaceholder}>Close panel</button>
+      {:else}
+        <button type="button" onclick={openPlaceholder}>Open panel</button>
+      {/if}
+    </div>
+  </div>
+</div>
 
 <style>
   .workspace-shell {
     display: grid;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     gap: 0.75rem;
     height: min(60vh, 48rem);
     min-height: 25rem;
@@ -142,9 +224,104 @@
   }
 
   .workspace-host {
+    height: 100%;
     min-height: 0;
     overflow: hidden;
     border: 1px solid var(--border-color, #30363d);
     border-radius: 0.5rem;
+  }
+
+  .mobile-panels-trigger,
+  .mobile-sheet-overlay {
+    display: none;
+  }
+
+  @media (max-width: 700px) {
+    .workspace-controls {
+      display: none;
+    }
+
+    .mobile-panels-trigger {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+    }
+
+    .mobile-sheet-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: end;
+      background: rgb(0 0 0 / 55%);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 160ms ease;
+      visibility: hidden;
+    }
+
+    .mobile-sheet-overlay.open {
+      opacity: 1;
+      pointer-events: auto;
+      visibility: visible;
+    }
+
+    .mobile-sheet {
+      display: grid;
+      width: 100%;
+      max-height: 78dvh;
+      padding-bottom: env(safe-area-inset-bottom);
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      border-top: 1px solid var(--border-color, #30363d);
+      background: var(--df-bg, #0d1117);
+      box-shadow: 0 -12px 30px rgb(0 0 0 / 45%);
+      transform: translateY(100%);
+      transition: transform 160ms ease;
+    }
+
+    .mobile-sheet-overlay.open .mobile-sheet {
+      transform: translateY(0);
+    }
+
+    .mobile-sheet-header,
+    .mobile-panel-tabs,
+    .mobile-sheet-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.75rem 1rem;
+    }
+
+    .mobile-sheet-header {
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color, #30363d);
+    }
+
+    .mobile-sheet-header h2 {
+      margin: 0;
+      font-size: 1rem;
+    }
+
+    .mobile-panel-tabs {
+      overflow-x: auto;
+      border-bottom: 1px solid var(--border-color, #30363d);
+    }
+
+    .mobile-panel-tabs button {
+      flex: 0 0 auto;
+    }
+  }
+
+  :is(button):focus-visible {
+    outline: 2px solid var(--df-accent-blue, #58a6ff);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .mobile-sheet-overlay,
+    .mobile-sheet {
+      transition: none;
+    }
   }
 </style>

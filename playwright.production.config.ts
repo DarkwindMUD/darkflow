@@ -18,6 +18,16 @@ export default defineConfig({
       use: devices["Desktop Chrome"],
     },
     {
+      name: "mobile-chromium",
+      testMatch: /phase2-workspace\.spec\.ts/,
+      use: {
+        ...devices["Desktop Chrome"],
+        viewport: { width: 390, height: 844 },
+        hasTouch: true,
+        isMobile: true,
+      },
+    },
+    {
       name: "transports",
       testMatch: /transports\.spec\.ts/,
       use: {

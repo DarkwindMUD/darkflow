@@ -26,13 +26,24 @@ character-profile graph, one real workspace host, and one browser fixture._
 
 Step 2 is locally `COMPLETE` on branch `story/multi-connections-phase2`; its
 preview owns one public session while `/` remains the legacy production root
-(`multi-connection-ui-phase-2-step-2-implementation-plan.md:22-34`). Step 3 is
-ready to implement but remains `PLANNED` until all four Green PRs and the
-completion gate pass.
+(`multi-connection-ui-phase-2-step-2-implementation-plan.md:22-34`).
 
-This plan changes documentation only. It does not authorize production cutover,
-mark a `P2-3-*` row green, or claim that the currently skipped Phase 0 touch test
-ran. Step 12 remains the only production cutover and packaged-Electron gate
+Step 3 is `COMPLETE` locally on 2026-08-12. All four Green PRs and the
+completion gate passed for implementation revision
+`ce22a89154cef7d854d3e3fa4afc3a82c5c364a6`; the four `P2-3-*` rows carry their
+replacement evidence in
+`multi-connection-ui-phase-2-step-1-parity-matrix.md`. `/` remains the
+production owner and Step 12 remains the only cutover gate.
+
+Two implementation notes for Steps 4 and 6. The mobile sheet is a selector over
+the same workspace host, which stays in the shell flow at every width; do not
+move the host inside the sheet. The terminal panel carries a placeholder buffer
+purely so layout evidence can assert retained text and scroll; Step 4 replaces
+it with the real output owner.
+
+Completion does not authorize production cutover and does not claim that the
+skipped Phase 0 touch test ran; `e2e/workspace-touch.spec.ts` remains `NOT_RUN`.
+Step 12 remains the only production cutover and packaged-Electron gate
 (`multi-connection-ui-phase-2-step-1-parity-matrix.md:43-50`).
 
 ## Goal
@@ -113,8 +124,12 @@ contract:
 
 ```ts
 activatePanel(id: string): void;
+hasPanel(id: string): boolean;
 subscribeLayout(listener: (snapshot: WorkspaceSnapshot) => void): () => void;
 ```
+
+`hasPanel` lets the host verify what a restore actually materialized instead of
+inspecting serialized layout bytes, without exposing a Dockview type.
 
 The adapter owns its host `ResizeObserver`, calls Dockview layout with the current
 host bounds, enables Dockview's installed keyboard navigation, and releases both
@@ -497,24 +512,24 @@ the frozen workspace host.
 
 ## Success criteria
 
-- [ ] MH1-MH11 are satisfied by Green PRs 1-4 and confirmed by the completion
+- [x] MH1-MH11 are satisfied by Green PRs 1-4 and confirmed by the completion
       gate.
-- [ ] `/phase2/` owns one real-session Dockview workspace and `/` still owns the
+- [x] `/phase2/` owns one real-session Dockview workspace and `/` still owns the
       legacy client.
-- [ ] One terminal DOM island retains identity through layout and mobile-sheet
+- [x] One terminal DOM island retains identity through layout and mobile-sheet
       operations; Step 4 behavior remains explicitly open.
-- [ ] The active character's valid version-2 layout restores after reload while
+- [x] The active character's valid version-2 layout restores after reload while
       the retained legacy fallback, original legacy key, other profiles, and
       graph fields remain unchanged.
-- [ ] Malformed/incompatible/missing-panel/storage-failure scenarios recover to a
+- [x] Malformed/incompatible/missing-panel/storage-failure scenarios recover to a
       usable terminal layout without destructive writes.
-- [ ] Desktop Chromium and dedicated mobile Chromium pass the real-session
+- [x] Desktop Chromium and dedicated mobile Chromium pass the real-session
       workspace fixture in development and built web.
-- [ ] Repeated disposal leaves no workspace-owned root, host, terminal, observer,
+- [x] Repeated disposal leaves no workspace-owned root, host, terminal, observer,
       listener, save timer, sheet, or duplicate callback.
-- [ ] Unit, type, Svelte, lint, format, build, development-browser,
+- [x] Unit, type, Svelte, lint, format, build, development-browser,
       production-browser, and diff/plan-format checks exit cleanly.
-- [ ] Only `P2-3-*` rows receive evidence; packaged Electron and later ports stay
+- [x] Only `P2-3-*` rows receive evidence; packaged Electron and later ports stay
       open.
 
 ## Rollback

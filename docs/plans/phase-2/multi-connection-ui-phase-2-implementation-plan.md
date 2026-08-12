@@ -239,9 +239,12 @@ root-level legacy lifecycle owner.
 Detailed implementation plan:
 [`multi-connection-ui-phase-2-step-3-implementation-plan.md`](multi-connection-ui-phase-2-step-3-implementation-plan.md).
 
-**Status:** `PLANNED` — implementation has not started; the detailed plan keeps
-the legacy root and layout bytes as rollback inputs and requires real-session
-desktop, built-web, and mobile evidence before completion.
+**Status:** `COMPLETE` locally on 2026-08-12 for implementation revision
+`ce22a89154cef7d854d3e3fa4afc3a82c5c364a6`; see the four `P2-3-*` rows and their
+[Step 3 replacement evidence](multi-connection-ui-phase-2-step-1-parity-matrix.md).
+The legacy root, `darkwind-panel-state` bytes, and every migrated character
+workspace remain available for rollback. This is not the Step 12 immutable
+release candidate or packaged-Electron evidence.
 
 **Depends on:** Step 2.
 

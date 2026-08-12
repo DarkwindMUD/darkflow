@@ -95,6 +95,34 @@ All rows in this section have **Phase 2 owner: Step 3**.
 | P2-3-terminal-layout-identity | Terminal DOM/output state survives layout changes instead of mounting a second terminal; owners: `public/js/panel-manager.js`, `public/js/output.js`.                      | `MISSING`; `/phase0/` `e2e/workspace-lifecycle.spec.ts` is design-only; candidate `NOT_RUN`.                                         | Built web `MISSING` (Step 3); Electron `MISSING` (Step 12); mobile `MISSING` (Step 3); keyboard/focus/theme `MISSING` (Step 3); reconnect `MISSING` (Step 4); disposal `MISSING` (Step 3).                                           | A real-session test moves, floats, resizes, saves, and restores terminal while asserting one terminal identity and retained text. | Restore legacy panel placement and `public/js/output.js` host.               |
 | P2-3-mobile-sheet-touch       | Narrow viewports provide the panel sheet and touch gestures without treating a skipped test as evidence; owner: new workspace port replacing `public/js/panel-manager.js`. | `MISSING`; `e2e/workspace-touch.spec.ts` is skipped and `/phase0/` only; candidate `NOT_RUN`.                                        | Built web `MISSING` (Step 3); Electron `NOT_APPLICABLE` (desktop release boundary); mobile `MISSING` (Step 3); keyboard/focus/theme `MISSING` (Step 3); reconnect `NOT_APPLICABLE` (workspace gesture); disposal `MISSING` (Step 3). | Real-session Playwright touch and keyboard scenarios prove sheet navigation, focus, reduced motion, and cleanup.                  | Restore the legacy responsive panel layout and `public/js/panel-manager.js`. |
 
+#### Step 3 replacement evidence — `COMPLETE` (local worktree, 2026-08-12)
+
+This evidence covers the Phase 2 preview only. The default `/` owner remains
+legacy; the legacy `darkwind-panel-state` bytes and every migrated character
+workspace are retained under `payload.legacy`. Packaged Electron and the
+immutable Phase 2 release candidate remain Step 12 gates. The implementation
+revision is `ce22a89154cef7d854d3e3fa4afc3a82c5c364a6` (Green PR 4); this is not
+a Phase 2 release candidate.
+
+| Row                             | Replacement evidence                                                                                                                                                                                                                                                                                      | Facet result                                                                                                                |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `P2-3-panel-layout`             | `npm run test:browser -- --project=chromium` — PASS (17); `npm run test:browser:production` — PASS (9). `e2e/phase2-workspace.spec.ts` covers open, close, reopen, activation focus, and a pointer dock-drag on the real session host, plus repeated boot/dispose with zero `[data-workspace-owned]` DOM. | Built web, mobile 390-by-844, keyboard/focus/theme, and disposal `PASS`; Electron `MISSING` (Step 12).                      |
+| `P2-3-layout-recovery`          | `node --test test/workspace-persistence.test.mjs test/session-storage.test.mjs` — PASS; browser fixture covers version-2 round-trip, reload restore, malformed layout, empty layout, and a thrown storage write surfaced in the shell without destroying the live workspace.                              | Built web, mobile, keyboard/focus, and disposal `PASS`; Electron `MISSING` (Step 12).                                       |
+| `P2-3-terminal-layout-identity` | The real-session fixture asserts one island identity, buffer text, focus, and native scroll position survive a pointer dock-drag and a panel close, and that restore yields exactly one island. Buffer content is a Step 3 placeholder; real output remains Step 4.                                       | Built web, mobile, keyboard/focus, and disposal `PASS`; reconnect `MISSING` (Step 4); Electron `MISSING` (Step 12).         |
+| `P2-3-mobile-sheet-touch`       | `npm run test:browser -- e2e/phase2-workspace.spec.ts --project=mobile-chromium` — PASS (1); same scenario `PASS` against the built artifact. Covers touch long-press drag, sheet open/select/close, Escape, backdrop, focus return, reduced motion, and disposal at 390-by-844.                          | Built web, mobile/touch, keyboard/focus, reduced motion, and disposal `PASS`; Electron `NOT_APPLICABLE` (desktop boundary). |
+
+The workspace host stays in the shell flow at every width; the mobile sheet is a
+selector over that same host, so the terminal island is never wrapped in the
+modal and is never remounted by a sheet cycle.
+
+`e2e/workspace-touch.spec.ts` remains skipped and is `NOT_RUN`. It is not cited
+as evidence for any row above.
+
+Shared Step 3 gate: `npm test` (571 pass, 0 fail), `npm run typecheck`,
+`npm run check`, `npm run lint`, `npm run format:check`, `npm run build`,
+`npm run test:transports` (9), and `git diff --check` all passed for this
+revision.
+
 ### Phase 2 Step 4 — terminal, input, and automation
 
 All rows in this section have **Phase 2 owner: Step 4**.
@@ -233,8 +261,9 @@ owner.
 ## Gap summary by owner
 
 - Step 2: browser parity for overlay, chrome/theme/focus, and mobile controls.
-- Step 3: every real-session workspace/layout/mobile assertion; `/phase0/`
-  evidence remains design-only.
+- Step 3: closed by the Step 3 replacement evidence above; only packaged
+  Electron (Step 12) and terminal reconnect behavior (Step 4) remain open on
+  its rows.
 - Step 4: browser terminal/input/completion/automation parity beyond current
   bridge and unit evidence.
 - Step 5: settings/editor UI interactions and provenance presentation.

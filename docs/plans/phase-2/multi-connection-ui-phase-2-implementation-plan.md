@@ -261,6 +261,9 @@ versioned fallback.
 
 ### Step 4 — Port terminal, input, completion, and automation
 
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-4-implementation-plan.md`](multi-connection-ui-phase-2-step-4-implementation-plan.md).
+
 **Depends on:** Step 3.
 
 **Outcome:** Move the terminal command loop behind the workspace host while

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { CharacterProfileId } from "../model/ids";
+  import type { Session } from "../runtime/session.ts";
   import { createWorkspace } from "./dockview-workspace";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
@@ -8,20 +9,16 @@
   import { focusTerminalIsland } from "./terminal-island";
   import type { Workspace, WorkspacePanelSpec, WorkspaceSnapshot } from "./workspace";
 
-  let { characterProfileId }: { characterProfileId: CharacterProfileId } = $props();
+  let {
+    characterProfileId,
+    session,
+  }: { characterProfileId: CharacterProfileId; session: Session } = $props();
 
   const terminal: WorkspacePanelSpec = {
     id: "terminal",
     kind: "terminal",
     title: "Terminal",
-    // Step 4 replaces this placeholder buffer with the real output owner. It
-    // exists so the island has scrollable content to retain across layout work.
-    state: {
-      buffer: Array.from(
-        { length: 60 },
-        (_, index) => `terminal placeholder line ${index + 1}`,
-      ).join("\n"),
-    },
+    state: {},
   };
   const placeholder: WorkspacePanelSpec = {
     id: "panel-placeholder",
@@ -81,7 +78,7 @@
   onMount(() => {
     const currentWorkspace = createWorkspace(host, {
       placeholder: { component: PlaceholderPanel },
-      terminal: { component: TerminalPanel, preserveDomWhenHidden: true },
+      terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
     });
     workspace = currentWorkspace;
     currentWorkspace.addOrUpdatePanel(terminal);
@@ -212,7 +209,7 @@
 <style>
   .workspace-shell {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr);
+    grid-template-rows: auto auto minmax(0, 1fr);
     gap: 0.75rem;
     height: min(60vh, 48rem);
     min-height: 25rem;

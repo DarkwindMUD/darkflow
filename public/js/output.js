@@ -20,6 +20,10 @@ import {
 } from './constants.js';
 import { createControllerLifecycle } from './session-compat/controllers.js';
 
+// Phase 2 mounts this DOM-targeted instance directly. The legacy wrapper stays
+// in place until its broader manager-coupled hooks move in later slices.
+export { createTerminalOutputCore } from './terminal-output-core.mjs';
+
 const BOTTOM_THRESHOLD_PX = 5;
 const DEFAULT_LINE_HEIGHT_PX = 23;
 const DEFAULT_CHARACTER_WIDTH_PX = 10;

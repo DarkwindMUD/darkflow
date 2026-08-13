@@ -15,6 +15,7 @@ export interface TransportEndpoint {
   readonly protocol: TransportName;
   readonly reply: string;
   activeSocketCount(): number;
+  dropConnections(): void;
   sendText(text: string): void;
 }
 
@@ -144,6 +145,9 @@ async function startWebSocketFixture(
     endpoint: {
       activeSocketCount: () => sockets.size,
       commands,
+      dropConnections() {
+        for (const client of webSocketServer.clients) client.terminate();
+      },
       port,
       prompt,
       protocol,
@@ -248,6 +252,9 @@ async function startTelnetFixture(
     endpoint: {
       activeSocketCount: () => sockets.size,
       commands,
+      dropConnections() {
+        for (const socket of sockets) socket.destroy();
+      },
       port,
       prompt,
       protocol,

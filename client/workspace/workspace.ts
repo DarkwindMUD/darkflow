@@ -1,5 +1,6 @@
 import type { Component } from "svelte";
 import type { Readable } from "svelte/store";
+import type { Session } from "../runtime/session.ts";
 
 export type PanelState = Record<string, unknown>;
 
@@ -31,11 +32,13 @@ export interface WorkspaceSnapshot {
 export interface WorkspaceRendererProps {
   panelId: string;
   state: Readable<PanelState>;
+  session?: Session;
 }
 
 export interface WorkspaceRendererDefinition {
   component: Component<WorkspaceRendererProps>;
   preserveDomWhenHidden?: boolean;
+  session?: Session;
 }
 
 export type WorkspaceRendererRegistry = Readonly<Record<string, WorkspaceRendererDefinition>>;

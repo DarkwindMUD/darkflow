@@ -114,7 +114,11 @@ class SvelteDockviewRenderer implements IContentRenderer {
 
     this.#root = mount(this.definition.component, {
       target: this.element,
-      props: { panelId: this.panelId, state: this.state },
+      props: {
+        panelId: this.panelId,
+        state: this.state,
+        ...(this.definition.session ? { session: this.definition.session } : {}),
+      },
     });
     this.element.dataset.workspaceRootId = `${this.panelId}-${++rootSequence}`;
     this.#mounted = true;

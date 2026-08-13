@@ -253,7 +253,7 @@
   </form>
 
   <p data-testid="connection-status" role="status" aria-live="polite">{connectionStatus}</p>
-  <WorkspaceHost characterProfileId={session.characterProfileId} />
+  <WorkspaceHost characterProfileId={session.characterProfileId} {session} />
 </main>
 
 {#if updateDisplay}

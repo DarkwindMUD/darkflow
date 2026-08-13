@@ -8,9 +8,9 @@ export interface TerminalIslandSnapshot {
 
 export interface TerminalIsland {
   readonly element: HTMLElement;
-  append(text: string): void;
+  append?(text: string): void;
   focus(): void;
-  replace(text: string): void;
+  replace?(text: string): void;
   snapshot(): TerminalIslandSnapshot;
   dispose(): void;
 }
@@ -26,59 +26,22 @@ export interface TerminalIslandObservation {
 let terminalSequence = 0;
 const terminalIslands = new Map<string, TerminalIsland>();
 
-/**
- * A deliberately small imperative boundary used to prove that Dockview keeps
- * terminal DOM identity, focus, buffer, and native scroll state intact.
- */
-export function createTerminalIsland(host: HTMLElement, panelId: string): TerminalIsland {
+/** Read-only workspace observation for the terminal implementation mounted by the panel. */
+export function registerTerminalIsland(element: HTMLElement, panelId: string): TerminalIsland {
   const identity = `terminal-${++terminalSequence}`;
-  const viewport = document.createElement("div");
-  const output = document.createElement("pre");
-  const diagnostics = findLifecycleDiagnostics(host);
+  const diagnostics = findLifecycleDiagnostics(element);
   const releaseTerminal = diagnostics?.trackTerminalIsland(panelId);
-  let buffer = "";
   let disposed = false;
 
-  viewport.className = "phase0-terminal-island";
-  viewport.dataset.panelId = panelId;
-  viewport.dataset.terminalIdentity = identity;
-  viewport.dataset.testid = "terminal-viewport";
-  viewport.dataset.workspaceOwned = "true";
-  viewport.tabIndex = 0;
-  viewport.style.cssText = "height: 100%; min-height: 0; overflow: auto; white-space: pre-wrap;";
-  output.dataset.workspaceOwned = "true";
-  output.style.margin = "0";
-  viewport.append(output);
-  host.append(viewport);
-
-  const render = () => {
-    output.textContent = buffer;
-  };
-
-  const append = (text: string) => {
-    if (disposed || text.length === 0) {
-      return;
-    }
-
-    buffer += text;
-    render();
-  };
-
-  const replace = (text: string) => {
-    if (disposed || buffer === text) {
-      return;
-    }
-
-    buffer = text;
-    render();
-  };
+  element.dataset.panelId = panelId;
+  element.dataset.terminalIdentity = identity;
+  element.dataset.testid = "terminal-viewport";
+  element.dataset.workspaceOwned = "true";
 
   const island: TerminalIsland = {
-    element: viewport,
-    append,
-    focus: () => viewport.focus({ preventScroll: true }),
-    replace,
-    snapshot: () => ({ buffer, identity, scrollTop: viewport.scrollTop }),
+    element,
+    focus: () => element.focus({ preventScroll: true }),
+    snapshot: () => ({ buffer: element.textContent ?? "", identity, scrollTop: element.scrollTop }),
     dispose: () => {
       if (disposed) {
         return;
@@ -89,7 +52,6 @@ export function createTerminalIsland(host: HTMLElement, panelId: string): Termin
       if (terminalIslands.get(panelId) === island) {
         terminalIslands.delete(panelId);
       }
-      viewport.remove();
     },
   };
 
@@ -97,8 +59,42 @@ export function createTerminalIsland(host: HTMLElement, panelId: string): Termin
   return island;
 }
 
+/** The Phase 0 harness keeps its deliberately synthetic island for its own tests. */
+export function createTerminalIsland(host: HTMLElement, panelId: string): TerminalIsland {
+  const viewport = document.createElement("pre");
+  let buffer = "";
+  viewport.style.cssText =
+    "height: 100%; min-height: 0; margin: 0; overflow: auto; white-space: pre-wrap;";
+  viewport.tabIndex = 0;
+  host.append(viewport);
+  const island = registerTerminalIsland(viewport, panelId);
+  const synthetic: TerminalIsland = {
+    ...island,
+    append(text) {
+      buffer += text;
+      viewport.textContent = buffer;
+    },
+    replace(text) {
+      buffer = text;
+      viewport.textContent = buffer;
+    },
+    snapshot: () => ({
+      buffer,
+      identity: island.snapshot().identity,
+      scrollTop: viewport.scrollTop,
+    }),
+    dispose: () => {
+      island.dispose();
+      if (terminalIslands.get(panelId) === synthetic) terminalIslands.delete(panelId);
+      viewport.remove();
+    },
+  };
+  terminalIslands.set(panelId, synthetic);
+  return synthetic;
+}
+
 export function appendTerminalIsland(panelId: string, text: string): void {
-  terminalIslands.get(panelId)?.append(text);
+  terminalIslands.get(panelId)?.append?.(text);
 }
 
 export function focusTerminalIsland(panelId: string): void {

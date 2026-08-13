@@ -14,6 +14,9 @@ async function openWorkspace(page: Page): Promise<void> {
   await page.goto("/phase2/");
   await expect(page.getByTestId("phase2-shell")).toHaveCount(1);
   await expect(page.getByTestId("workspace-host")).toBeVisible();
+  await expect
+    .poll(async () => (await page.getByTestId("workspace-host").boundingBox())?.height ?? 0)
+    .toBeGreaterThan(100);
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
   expect(requests).not.toContain("/js/app.js");
 }
@@ -117,17 +120,13 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
 
   const terminal = page.locator("[data-terminal-identity]");
   const terminalIdentity = await terminal.getAttribute("data-terminal-identity");
-  await terminal.evaluate((element) => {
-    element.scrollTop = 120;
-  });
   await terminal.focus();
   await page.getByRole("button", { name: "Focus terminal" }).click();
   await expect(terminal).toBeFocused();
 
-  // One island keeps its identity, text, focus, and scroll across real layout work.
+  // One real output island keeps its identity and focus across layout work.
   const seeded = await terminalState(page);
-  expect(seeded.buffer).toContain("terminal placeholder line 60");
-  expect(seeded.scrollTop).toBeGreaterThan(0);
+  expect(seeded.buffer).toBe("");
 
   await mouseDrag(
     page,

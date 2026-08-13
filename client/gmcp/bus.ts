@@ -2,7 +2,12 @@ import type { SessionId } from "../model/ids.ts";
 import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
 import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame.ts";
 import type { CoreHello } from "./contracts/core.ts";
-import { lookupGmcpValidator } from "./contracts/validators.ts";
+import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
+import {
+  lookupGmcpValidator,
+  validateCompletionRequest,
+  validateCompletionResult,
+} from "./contracts/validators.ts";
 
 const GMCP_MEDIA_REFRESH_PACKAGE = "Darkwind.Client.RefreshMedia";
 const GMCP_SUBSCRIPTIONS_PACKAGE = "Darkwind.Client.Subscriptions";
@@ -69,6 +74,9 @@ export type GmcpWildcardHandler = (packageName: string, data: unknown) => void;
 /** Package handler receives payload then package name. */
 export type GmcpPackageHandler = (data: unknown, packageName: string) => void;
 
+/** Typed callback for validated server completion results. */
+export type CompletionResultHandler = (result: CompletionResult) => void;
+
 /** Session-scoped GMCP bus with validation, supports tracking, and send helpers. */
 export interface SessionGmcpBus {
   readonly sessionId: SessionId;
@@ -82,6 +90,9 @@ export interface SessionGmcpBus {
   requestMediaRefresh(): boolean;
   requestChannelPlayers(): boolean;
   enableChannel(channel: string): boolean;
+  requestCompletion(request: CompletionRequest): boolean;
+  onCompletionResult(handler: CompletionResultHandler): void;
+  offCompletionResult(handler: CompletionResultHandler): void;
   restartHandshake(payload?: Partial<GmcpSubscriptionPayload>): boolean;
 }
 
@@ -165,6 +176,7 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
   #diagnostics: SessionDiagnostics;
   #enabled = false;
   #handlers: Record<string, Array<GmcpWildcardHandler | GmcpPackageHandler>> = {};
+  #completionHandlers = new Map<CompletionResultHandler, GmcpPackageHandler>();
   #subscriptions: GmcpSubscriptionPayload = normalizeSubscriptionPayload();
   #serverSupports: Record<string, string | number> = {};
   #lastClientInfo: CoreHello = {
@@ -328,6 +340,32 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
       return false;
     }
     return this.send("Comm.Channel.Enable", name);
+  }
+
+  requestCompletion(request: CompletionRequest): boolean {
+    return validateCompletionRequest(request).success
+      ? this.send("Darkwind.Completion.Request", request)
+      : false;
+  }
+
+  onCompletionResult(handler: CompletionResultHandler): void {
+    const listener: GmcpPackageHandler = (data) => {
+      const result = validateCompletionResult(data);
+      if (result.success) {
+        handler(result.data);
+      }
+    };
+    this.#completionHandlers.set(handler, listener);
+    this.on("Darkwind.Completion.Result", listener);
+  }
+
+  offCompletionResult(handler: CompletionResultHandler): void {
+    const listener = this.#completionHandlers.get(handler);
+    if (!listener) {
+      return;
+    }
+    this.#completionHandlers.delete(handler);
+    this.off("Darkwind.Completion.Result", listener);
   }
 
   restartHandshake(payload: Partial<GmcpSubscriptionPayload> = {}): boolean {

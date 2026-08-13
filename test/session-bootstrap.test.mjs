@@ -256,6 +256,21 @@ function createBootHarness(modules, options = {}) {
   };
 }
 
+test("deferred text sink delivers queued text in order to its first subscriber", async (t) => {
+  const modules = await loadBootstrapModules(t);
+  const sink = modules.createDeferredTextOutputSink();
+  const received = [];
+
+  sink.deliver("first");
+  sink.deliver("second");
+  const unsubscribe = sink.subscribe((text) => received.push(text));
+  sink.deliver("third");
+  unsubscribe();
+  sink.deliver("fourth");
+
+  assert.deepEqual(received, ["first", "second", "third"]);
+});
+
 test("MH1 CMH2 same-slot double bootstrap creates one session and one client load", async (t) => {
   const modules = await loadBootstrapModules(t);
   const fixture = loadFixture("single-scope");

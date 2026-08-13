@@ -1,5 +1,6 @@
 import { resolveEffectiveConfiguration } from "../configuration/resolve.ts";
 import { subscribe } from "../configuration/service.ts";
+import type { Unsubscribe } from "./events.ts";
 import { createSessionGmcpBus, type SessionGmcpBus } from "../gmcp/bus.ts";
 import type { CoreHello } from "../gmcp/contracts/core.ts";
 import type { CharacterProfileId, ServerProfileId, UuidFactory } from "../model/ids.ts";
@@ -45,6 +46,7 @@ export interface SessionFactoryDeps {
   onlineTarget: { addEventListener(type: string, listener: () => void): void };
   now?: () => number;
   onText: (text: string) => void;
+  subscribeText?: (listener: (text: string) => void) => Unsubscribe;
 }
 
 /** Result of attempting to create a session from validated application state. */
@@ -137,6 +139,14 @@ export function createSessionFromState(
     connectionEndpoint.protocol = endpoint.protocol;
   };
 
+  const textListeners = new Set<(text: string) => void>();
+  const subscribeText =
+    deps.subscribeText ??
+    ((listener: (text: string) => void): Unsubscribe => {
+      textListeners.add(listener);
+      return () => textListeners.delete(listener);
+    });
+
   const transport = createSessionTransport(
     sessionId,
     scope,
@@ -146,7 +156,14 @@ export function createSessionFromState(
       getEndpoint: () => ({ ...connectionEndpoint }),
       getAutoReconnect: deps.getAutoReconnect,
       isLoggedIntoCharacter: () => compositionRefs.runtimeState!.isLoggedIntoCharacter(),
-      onText: deps.onText,
+      onText: (text) => {
+        deps.onText(text);
+        if (deps.subscribeText === undefined) {
+          for (const listener of [...textListeners]) {
+            listener(text);
+          }
+        }
+      },
       onGmcpFrame: (packageName, data) => {
         gmcp.dispatch(packageName, data);
       },
@@ -165,8 +182,15 @@ export function createSessionFromState(
 
   const automationRuntime = createAutomationRuntimeState(scope);
 
+  const configurationListeners = new Set<
+    (snapshot: ReturnType<typeof runtimeState.getEffectiveConfiguration>) => void
+  >();
+
   const unsubscribeConfiguration = subscribe(characterProfileId, (snapshot) => {
     runtimeState.setEffectiveConfiguration(snapshot);
+    for (const listener of [...configurationListeners]) {
+      listener(snapshot);
+    }
   });
 
   const session = createSession({
@@ -182,6 +206,12 @@ export function createSessionFromState(
     unsubscribeConfiguration,
     getConnectionEndpoint: () => ({ ...connectionEndpoint }),
     setConnectionEndpoint,
+    automationRuntime,
+    subscribeText,
+    subscribeConfiguration(listener) {
+      configurationListeners.add(listener);
+      return () => configurationListeners.delete(listener);
+    },
   });
 
   return {

@@ -24,6 +24,7 @@ import type {
 } from "./comm.ts";
 import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./room.ts";
 import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client.ts";
+import type { CompletionRequest, CompletionResult } from "./completion.ts";
 import type {
   DarkwindIdeOpen,
   DarkwindIdeOpenChunk,
@@ -82,6 +83,8 @@ export const validateMapData2BrowseArea = typia.createValidate<MapData2BrowseAre
 export const validateMapData2Reset = typia.createValidate<MapData2Reset>();
 export const validateDarkwindClientNaws = typia.createValidate<DarkwindClientNaws>();
 export const validateDarkwindSessionRecovered = typia.createValidate<DarkwindSessionRecovered>();
+export const validateCompletionRequest = typia.createValidate<CompletionRequest>();
+export const validateCompletionResult = typia.createValidate<CompletionResult>();
 
 /** Typia validator invoked by canonical inbound package name. */
 export type GmcpPayloadValidator = (input: unknown) => typia.IValidation<unknown>;
@@ -129,6 +132,7 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.MapData2.BrowseArea")]: validateMapData2BrowseArea,
   [canonicalPackageName("Darkwind.MapData2.Reset")]: validateMapData2Reset,
   [canonicalPackageName("Darkwind.Session.Recovered")]: validateDarkwindSessionRecovered,
+  [canonicalPackageName("Darkwind.Completion.Result")]: validateCompletionResult,
 };
 
 /** Returns the structural validator for a canonical package name, if modeled. */
@@ -169,8 +173,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Snoop.Command",
   "Darkwind.Snoop.Stop",
   "Darkwind.Snoop.Closed",
-  "Darkwind.Completion.Request",
-  "Darkwind.Completion.Result",
   "Darkwind.Quests.List",
   "Darkwind.Quests.Active",
   "Darkwind.Quests.Update",

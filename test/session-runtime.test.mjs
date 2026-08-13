@@ -96,6 +96,7 @@ async function loadSessionRuntimeModules(t) {
     subscribe: serviceModule.subscribe,
     resetConfigurationSubscriptionsForTests: serviceModule.resetConfigurationSubscriptionsForTests,
     publishConfigurationSet: serviceModule.publishConfigurationSet,
+    replaceLocalDefinitions: serviceModule.replaceLocalDefinitions,
     freezeSnapshot: snapshotModule.freezeSnapshot,
     repositoryCommit: repositoryModule.commit,
     SESSION_CORE_STORAGE_KEY: schemaModule.SESSION_CORE_STORAGE_KEY,
@@ -304,6 +305,7 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
   return {
     session,
     registry,
+    automation: result.handles.automationRuntime,
     advance(ms) {
       nowMs += ms;
       t.mock.timers.tick(ms);
@@ -515,6 +517,82 @@ test("public connection snapshots own endpoint, lifecycle, subscriptions, and di
   assert.equal(disposeCalls, 1);
   harnessA.session.retryConnection();
   assert.equal(snapshotsA.length, beforeUnsubscribe);
+});
+
+test("public terminal owns text, commands, completion, configuration, and automation", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
+  FakeWebSocket.reset();
+
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  const other = createSessionHarness(modules, t, graph, graph.characterBId);
+  const receivedA = [];
+  const receivedB = [];
+  const completions = [];
+  const configurations = [];
+  const unsubscribeA = harness.session.terminal.subscribeText((text) => receivedA.push(text));
+  harness.session.terminal.subscribeText((text) => receivedB.push(text));
+  harness.session.terminal.subscribeCompletion((result) => completions.push(result));
+  harness.session.terminal.subscribeConfiguration((snapshot) => configurations.push(snapshot));
+
+  assert.deepEqual(Object.keys(harness.session.terminal).sort(), [
+    "automation",
+    "requestCompletion",
+    "sendCommand",
+    "subscribeCompletion",
+    "subscribeConfiguration",
+    "subscribeText",
+  ]);
+  assert.equal("transport" in harness.session, false);
+  assert.equal(harness.session.terminal.automation, harness.automation);
+  assert.notEqual(harness.session.terminal.automation, other.session.terminal.automation);
+  assert.equal(configurations.length, 1);
+  assert.equal(configurations[0], harness.session.getEffectiveConfiguration());
+
+  const storage = createMemoryStorage();
+  assert.equal(modules.repositoryCommit(storage, graph.state).success, true);
+  assert.equal(
+    modules.replaceLocalDefinitions(storage, graph.characterAId, "aliases", []).success,
+    true,
+  );
+  assert.equal(configurations.length, 2);
+
+  harness.session.connect();
+  const socket = harness.latestSocket();
+  socket?.open();
+  socket?.emitMessage("first");
+  unsubscribeA();
+  socket?.emitMessage("second");
+  assert.deepEqual(receivedA, ["first"]);
+  assert.deepEqual(receivedB, ["first", "second"]);
+
+  socket?.clearSent();
+  assert.equal(harness.session.terminal.sendCommand("look"), true);
+  assert.deepEqual(socket?.sentPayloads(), ["look"]);
+  assert.equal(harness.session.terminal.requestCompletion({ line: "look sw", cursor: 7 }), true);
+  assert.deepEqual(decodeSentGmcpPackages(socket?.sentPayloads().slice(1) ?? [], modules.decodeGmcpWireFrame), [
+    { packageName: "Darkwind.Completion.Request", data: { line: "look sw", cursor: 7 } },
+  ]);
+  assert.equal(harness.session.terminal.requestCompletion({ line: 1, cursor: -1 }), false);
+
+  const encoder = new TextEncoder();
+  socket?.emitMessage(
+    encoder.encode(
+      'Darkwind.Completion.Result {"line":"look sword ","cursor":11,"matches":["sword"],"ambiguous":false}',
+    ),
+  );
+  socket?.emitMessage(encoder.encode('Darkwind.Completion.Result {"line":1}'));
+  assert.deepEqual(completions, [
+    { line: "look sword ", cursor: 11, matches: ["sword"], ambiguous: false },
+  ]);
+
+  harness.session.dispose();
+  socket?.emitMessage("late");
+  modules.replaceLocalDefinitions(storage, graph.characterAId, "aliases", []);
+  assert.deepEqual(receivedB, ["first", "second"]);
+  assert.equal(configurations.length, 2);
+  assert.equal(harness.session.terminal.sendCommand("late"), false);
 });
 
 test("connect sends handshake packages with login then reconnect reason", async (t) => {

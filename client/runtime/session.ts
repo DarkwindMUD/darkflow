@@ -1,6 +1,7 @@
 import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
 import type { Unsubscribe as ConfigurationUnsubscribe } from "../configuration/service.ts";
 import type { CoreHello } from "../gmcp/contracts/core.ts";
+import type { CompletionRequest, CompletionResult } from "../gmcp/contracts/completion.ts";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
 import type { CharacterProfileId, ServerProfileId, SessionId } from "../model/ids.ts";
 import type { SessionDescriptor, SessionRegistry } from "../model/session-contract.ts";
@@ -16,6 +17,7 @@ import type { SessionDiagnostics } from "./diagnostics.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { Unsubscribe } from "./events.ts";
 import type { ResourceScope } from "./resource-scope.ts";
+import type { AutomationRuntimeState } from "./automation-runtime.ts";
 import type { SessionRuntimeState } from "./runtime-state.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
@@ -31,12 +33,23 @@ export interface SessionConnectionSnapshot {
   reconnect: TransportReconnectStatusPayload | null;
 }
 
+/** Terminal capabilities needed by a mounted session UI. */
+export interface SessionTerminal {
+  readonly automation: AutomationRuntimeState;
+  sendCommand(text: string): boolean;
+  subscribeText(listener: (text: string) => void): Unsubscribe;
+  requestCompletion(request: CompletionRequest): boolean;
+  subscribeCompletion(listener: (result: CompletionResult) => void): Unsubscribe;
+  subscribeConfiguration(listener: (snapshot: EffectiveConfigurationSnapshot) => void): Unsubscribe;
+}
+
 /** Composed live session owning transport, GMCP, configuration, and runtime state. */
 export interface Session {
   readonly sessionId: SessionId;
   readonly serverProfileId: ServerProfileId;
   readonly characterProfileId: CharacterProfileId;
   readonly disposed: boolean;
+  readonly terminal: SessionTerminal;
   connect(): void;
   disconnect(): void;
   dispose(): void;
@@ -64,6 +77,11 @@ export interface SessionParts {
   unsubscribeConfiguration: ConfigurationUnsubscribe;
   getConnectionEndpoint: () => TransportEndpoint;
   setConnectionEndpoint: (endpoint: TransportEndpoint) => void;
+  automationRuntime: AutomationRuntimeState;
+  subscribeText: (listener: (text: string) => void) => Unsubscribe;
+  subscribeConfiguration: (
+    listener: (snapshot: EffectiveConfigurationSnapshot) => void,
+  ) => ConfigurationUnsubscribe;
 }
 
 /** Wires transport and GMCP event subscriptions into one session lifecycle. */
@@ -80,10 +98,24 @@ export function createSession(parts: SessionParts): Session {
     unsubscribeConfiguration,
     getConnectionEndpoint,
     setConnectionEndpoint,
+    automationRuntime,
+    subscribeText,
+    subscribeConfiguration,
   } = parts;
 
   let disposed = false;
   let reconnect: TransportReconnectStatusPayload | null = null;
+  const completionListeners = new Set<(result: CompletionResult) => void>();
+
+  const completionHandler = (result: CompletionResult): void => {
+    for (const listener of [...completionListeners]) {
+      listener(result);
+    }
+  };
+  gmcp.onCompletionResult(completionHandler);
+  scope.own("listener", () => {
+    gmcp.offCompletionResult(completionHandler);
+  });
 
   function getConnectionSnapshot(): SessionConnectionSnapshot {
     return {
@@ -149,6 +181,36 @@ export function createSession(parts: SessionParts): Session {
     }),
   );
 
+  const terminal: SessionTerminal = {
+    automation: automationRuntime,
+    sendCommand(text) {
+      return transport.send(text, { kind: "command", size: text.length, preview: text });
+    },
+    subscribeText(listener) {
+      if (disposed) {
+        return () => {};
+      }
+      return scope.own("subscription", subscribeText(listener));
+    },
+    requestCompletion(request) {
+      return !disposed && gmcp.requestCompletion(request);
+    },
+    subscribeCompletion(listener) {
+      if (disposed) {
+        return () => {};
+      }
+      completionListeners.add(listener);
+      return scope.own("subscription", () => completionListeners.delete(listener));
+    },
+    subscribeConfiguration(listener) {
+      if (disposed) {
+        return () => {};
+      }
+      listener(runtimeState.getEffectiveConfiguration());
+      return scope.own("subscription", subscribeConfiguration(listener));
+    },
+  };
+
   return {
     get sessionId() {
       return descriptor.sessionId;
@@ -165,6 +227,8 @@ export function createSession(parts: SessionParts): Session {
     get disposed() {
       return disposed;
     },
+
+    terminal,
 
     connect() {
       transport.connect();

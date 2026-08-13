@@ -165,14 +165,18 @@ export function publishBootstrapPhase(
 export function createDeferredTextOutputSink() {
   let appendOutput: ((text: string) => void) | null = null;
   const pending: string[] = [];
+  const listeners = new Set<(text: string) => void>();
 
   return {
     deliver(text: string): void {
       if (appendOutput) {
         appendOutput(text);
-        return;
+      } else {
+        pending.push(text);
       }
-      pending.push(text);
+      for (const listener of [...listeners]) {
+        listener(text);
+      }
     },
     bind(nextAppendOutput: (text: string) => void): void {
       appendOutput = nextAppendOutput;
@@ -180,6 +184,14 @@ export function createDeferredTextOutputSink() {
         nextAppendOutput(text);
       }
       pending.length = 0;
+    },
+    subscribe(listener: (text: string) => void): () => void {
+      for (const text of pending) {
+        listener(text);
+      }
+      pending.length = 0;
+      listeners.add(listener);
+      return () => listeners.delete(listener);
     },
   };
 }
@@ -303,6 +315,7 @@ export async function runBootTransaction(
           textOutputSink.deliver(text);
           deps.onText(text);
         },
+        subscribeText: (listener) => textOutputSink.subscribe(listener),
       },
     );
 

@@ -35,6 +35,7 @@ function createCommandInput(value) {
       this.selectionEnd = end;
     },
     addEventListener() {},
+    removeEventListener() {},
   };
 }
 
@@ -67,6 +68,7 @@ const { dom } = await import('../public/js/state.js');
 const { aliasManager } = await import('../public/js/alias-manager.js');
 const { settingsManager } = await import('../public/js/settings-manager.js');
 const { requestCompletion, resetCompletionState } = await import('../public/js/completion.js');
+const { createCompletionController } = await import('../public/js/completion-core.mjs');
 
 const SCOPE_KEY = 'ws://test:4242';
 
@@ -150,4 +152,51 @@ test('disabled alias Tab completion falls through without changing input', () =>
 
   assert.equal(dom.commandInput.value, 'hea');
   assert.equal(dom.commandInput.selectionStart, 'hea'.length);
+});
+
+test('completion ignores stale and malformed server results', () => {
+  const listeners = new Map();
+  const input = {
+    value: 'look sw',
+    selectionStart: 7,
+    setSelectionRange(start, end) {
+      this.selectionStart = start;
+      this.selectionEnd = end;
+    },
+    addEventListener(type, listener) {
+      listeners.set(type, listener);
+    },
+    removeEventListener(type) {
+      listeners.delete(type);
+    },
+  };
+  const requests = [];
+  let resultListener;
+  const completion = createCompletionController({
+    input,
+    getHistory: () => [],
+    getAliases: () => [],
+    request: (request) => requests.push(request),
+    subscribe: (listener) => {
+      resultListener = listener;
+      return () => {};
+    },
+    appendSystemMessage() {},
+  });
+
+  completion.request();
+  assert.deepEqual(requests, [{ line: 'look sw', cursor: 7 }]);
+  input.value = 'look sword';
+  listeners.get('input')();
+  resultListener({ line: 'look sword ', cursor: 11, matches: [], ambiguous: false });
+  assert.equal(input.value, 'look sword');
+
+  input.value = 'look sw';
+  input.selectionStart = 7;
+  completion.request();
+  resultListener({ line: 1, cursor: 0, matches: [], ambiguous: false });
+  assert.equal(input.value, 'look sw');
+  resultListener({ line: 'look sword ', cursor: 11, matches: ['sword'], ambiguous: false });
+  assert.equal(input.value, 'look sword ');
+  completion.dispose();
 });

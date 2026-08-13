@@ -2,6 +2,8 @@
   import { onMount } from "svelte";
   import type { Readable } from "svelte/store";
   import type { Session } from "../runtime/session.ts";
+  import { createTerminalAutomation, type TerminalOutputFragment } from "../terminal/automation.ts";
+  import { createTerminalInputController } from "../terminal/input-controller.ts";
   // @ts-expect-error The reusable imperative terminal core is legacy JavaScript.
   import { createTerminalOutputCore } from "../../public/js/terminal-output-core.mjs";
   import {
@@ -18,6 +20,11 @@
   }: { panelId: string; state: Readable<PanelState>; session?: Session } = $props();
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
+  let commandInput = $state<HTMLInputElement>();
+  let sendButton = $state<HTMLButtonElement>();
+  let batchDialog = $state<HTMLDialogElement>();
+  let batchInput = $state<HTMLTextAreaElement>();
+  let batchForm = $state<HTMLFormElement>();
   let island: TerminalIsland | undefined;
 
   onMount(() => {
@@ -39,8 +46,10 @@
         }
       });
     }
-    if (!output) return;
+    if (!output || !commandInput || !sendButton || !batchDialog || !batchInput || !batchForm)
+      return;
     island = registerTerminalIsland(output, panelId);
+    let automation: ReturnType<typeof createTerminalAutomation> | undefined;
     const terminal = createTerminalOutputCore({
       shell: output.parentElement!,
       output,
@@ -50,11 +59,33 @@
       announcer: output.parentElement!.querySelector<HTMLElement>(
         "[data-testid=terminal-announcer]",
       )!,
+      processLine: (text: string, fragments: TerminalOutputFragment[]) =>
+        automation?.processLine(text, fragments) ?? { fragments, gag: false },
     });
-    const unsubscribe = session.terminal.subscribeText(terminal.appendOutput);
+    automation = createTerminalAutomation({
+      session,
+      appendOutput: terminal.appendOutput,
+      appendSystemMessage: terminal.appendSystemMessage,
+    });
+    const unsubscribe = session.terminal.subscribeText(automation.receiveText);
+    const input = createTerminalInputController({
+      session,
+      input: commandInput,
+      sendButton,
+      output,
+      batchDialog,
+      batchInput,
+      batchForm,
+      appendEcho: (text) => terminal.appendOutput(`> ${text}\n`, "echo-line"),
+      appendSystemMessage: terminal.appendSystemMessage,
+      executeCommand: automation.sendCommand,
+      getMappedCommand: automation.getMappedCommand,
+    });
 
     return () => {
+      input.dispose();
       unsubscribe();
+      automation?.dispose();
       terminal.dispose();
       island?.dispose();
       island = undefined;
@@ -81,6 +112,30 @@
         aria-label="Terminal output"
         tabindex="-1"
       ></div>
+      <div class="terminal-input-bar">
+        <input
+          bind:this={commandInput}
+          aria-label="Command input"
+          autocomplete="off"
+          autocapitalize="off"
+          autocorrect="off"
+          placeholder="Enter command..."
+          spellcheck="false"
+        />
+        <button bind:this={sendButton} type="button">Send</button>
+      </div>
+      <dialog bind:this={batchDialog} aria-label="Multiline command input">
+        <form bind:this={batchForm} method="dialog">
+          <label>
+            Command batch
+            <textarea bind:this={batchInput} autocomplete="off" spellcheck="false"></textarea>
+          </label>
+          <div class="terminal-batch-actions">
+            <button type="button" onclick={() => batchDialog?.close()}>Cancel</button>
+            <button type="submit">Send batch</button>
+          </div>
+        </form>
+      </dialog>
       <div
         data-testid="terminal-announcer"
         class="sr-only"
@@ -125,5 +180,24 @@
     flex: 0 0 auto;
     padding: 0.5rem;
     background: var(--df-panel, #161b22);
+  }
+
+  .terminal-input-bar,
+  .terminal-batch-actions {
+    display: flex;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+
+  .terminal-input-bar input,
+  dialog textarea {
+    flex: 1;
+    min-width: 0;
+  }
+
+  dialog textarea {
+    display: block;
+    min-height: 8rem;
+    width: 100%;
   }
 </style>

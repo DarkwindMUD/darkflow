@@ -13,9 +13,12 @@ export function createTerminalOutputCore({
   liveButton,
   clearButton,
   announcer,
+  processLine,
 }) {
   const lines = [];
   let activeLine = null;
+  let activeText = '';
+  let activeFragments = [];
   let animationFrame = 0;
   let announceTimer = 0;
   let disposed = false;
@@ -70,6 +73,29 @@ export function createTerminalOutputCore({
       line.append(rendered);
     }
   };
+  const completeLine = () => {
+    const line = activeLine;
+    const text = activeText.replace(/\r/g, '');
+    const fragments = activeFragments.map((fragment) => ({
+      ...fragment,
+      text: fragment.text.replace(/\r/g, ''),
+    }));
+    activeLine = null;
+    activeText = '';
+    activeFragments = [];
+    if (!line || typeof processLine !== 'function') return;
+    const result = processLine(text, fragments);
+    if (result.gag) {
+      const pendingIndex = lines.indexOf(line);
+      if (pendingIndex >= 0) lines.splice(pendingIndex, 1);
+      line.remove();
+      return;
+    }
+    line.replaceChildren();
+    for (const fragment of result.fragments) {
+      appendFragment(line, fragment.text, fragment.style, fragment.href);
+    }
+  };
   const appendOutput = (text, cssClass = '') => {
     if (disposed || !text) return;
     for (const fragment of parseAnsi(text)) {
@@ -77,7 +103,9 @@ export function createTerminalOutputCore({
       for (const [index, piece] of pieces.entries()) {
         activeLine ??= createLine(cssClass);
         appendFragment(activeLine, piece, fragment.style, fragment.href);
-        if (index < pieces.length - 1) activeLine = null;
+        activeText += piece;
+        if (piece) activeFragments.push({ ...fragment, text: piece });
+        if (index < pieces.length - 1) completeLine();
       }
     }
     announce(text.replace(/\x1b\[[^m]*m/g, ''));
@@ -86,6 +114,8 @@ export function createTerminalOutputCore({
   const clear = () => {
     lines.length = 0;
     activeLine = null;
+    activeText = '';
+    activeFragments = [];
     output.replaceChildren();
     announcer.textContent = '';
     announceText = '';

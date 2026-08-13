@@ -2,6 +2,7 @@ import { dom } from './state.js';
 import { getSoundCatalog, isKnownSound } from './sound-manager.js';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
 import { executeTriggerMatches } from './automation-executor.js';
+import { evaluateTriggerDefinitions } from './definition-runtime-core.mjs';
 import {
   getActiveCharacterProfileId,
   getEffectiveDefinitions,
@@ -31,10 +32,6 @@ function normalizeWaitSeconds(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return 1;
   return Math.max(0, Math.min(MAX_WAIT_SECONDS, number));
-}
-
-function normalizeTriggerMatchText(value) {
-  return String(value || '').replace(/^>\s?/, '');
 }
 
 function normalizeVolume(value) {
@@ -594,29 +591,12 @@ export const triggerManager = {
   },
 
   evaluateLine(text, scopeKey = this.getActiveScopeKey(), scopeOverride = null) {
-    const compiledTriggers = this.getCompiledTriggers(scopeKey, scopeOverride);
-    if (!compiledTriggers.length) {
-      return { matches: [], gag: false };
-    }
-
-    const line = normalizeTriggerMatchText(text);
-    const matches = [];
-    let gag = false;
-
-    for (const trigger of compiledTriggers) {
-      trigger.regex.lastIndex = 0;
-      const match = trigger.regex.exec(line);
-      if (!match) continue;
-
-      matches.push({
-        trigger,
-        fullMatch: String(match[0] ?? line),
-        captures: match.slice(1).map((value) => String(value ?? '')),
-      });
-      if (trigger.gag) gag = true;
-    }
-
-    return { matches, gag };
+    const triggers = scopeOverride
+      ? normalizeScope(scopeOverride).triggers
+      : (isConfigurationCompatActive()
+        ? getEffectiveTriggerDefinitions()
+        : this._ensureScope(scopeKey).triggers);
+    return evaluateTriggerDefinitions(text, triggers);
   },
 
   executeMatches(matches, scopeKey, options = {}) {

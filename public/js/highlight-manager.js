@@ -1,6 +1,10 @@
 import { dom } from './state.js';
 import { FG_NAMES, BRIGHT_FG_NAMES, COLOR_256 } from './constants.js';
 import {
+  applyHighlightDefinitionsToLine,
+  compileHighlightDefinitions,
+} from './definition-runtime-core.mjs';
+import {
   getActiveCharacterProfileId,
   getEffectiveDefinitions,
   isConfigurationCompatActive,
@@ -204,124 +208,6 @@ function compileRule(rule) {
       error: error instanceof Error ? error.message : 'Invalid regex.',
     };
   }
-}
-
-function cloneStyle(style) {
-  return {
-    bold: Boolean(style && style.bold),
-    italic: Boolean(style && style.italic),
-    fraktur: Boolean(style && style.fraktur),
-    underline: Boolean(style && style.underline),
-    doubleUnderline: Boolean(style && style.doubleUnderline),
-    strikethrough: Boolean(style && style.strikethrough),
-    overline: Boolean(style && style.overline),
-    hidden: Boolean(style && style.hidden),
-    inverse: Boolean(style && style.inverse),
-    blink: Boolean(style && style.blink),
-    fg: style && style.fg ? { ...style.fg } : null,
-    bg: style && style.bg ? { ...style.bg } : null,
-  };
-}
-
-function buildAnsiColor(name) {
-  const color = parseColorToken(name);
-  if (!color) return null;
-  if (color.type === 'standard' || color.type === 'bright' || color.type === '256') {
-    return color;
-  }
-  return { type: 'rgb', r: color.r, g: color.g, b: color.b };
-}
-
-function mergeHighlightStyle(baseStyle, highlightStyle) {
-  const merged = cloneStyle(baseStyle || {});
-  merged.bold = Boolean(highlightStyle.bold);
-  merged.fg = buildAnsiColor(highlightStyle.fg);
-  merged.bg = buildAnsiColor(highlightStyle.bg);
-  return merged;
-}
-
-function stylesEqual(a, b) {
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-
-function applyRulesToLine(line, compiledRules) {
-  if (!line || !line.text || !Array.isArray(line.fragments) || !compiledRules.length) {
-    return line;
-  }
-
-  const owners = new Array(line.text.length).fill(-1);
-  let hasMatches = false;
-
-  compiledRules.forEach((entry, entryIndex) => {
-    if (!entry.regex) return;
-
-    entry.regex.lastIndex = 0;
-    let match = entry.regex.exec(line.text);
-
-    while (match) {
-      const matchedText = String(match[0] || '');
-      if (!matchedText.length) {
-        entry.regex.lastIndex += 1;
-        match = entry.regex.exec(line.text);
-        continue;
-      }
-
-      const start = match.index;
-      const end = start + matchedText.length;
-      let applied = false;
-      for (let index = start; index < end; index++) {
-        if (owners[index] !== -1) continue;
-        owners[index] = entryIndex;
-        applied = true;
-      }
-      hasMatches = hasMatches || applied;
-      match = entry.regex.exec(line.text);
-    }
-  });
-
-  if (!hasMatches) return line;
-
-  const nextFragments = [];
-  let textIndex = 0;
-
-  for (const fragment of line.fragments) {
-    const text = String(fragment.text || '');
-    if (!text.length) continue;
-
-    let segmentText = '';
-    let segmentStyle = null;
-    let segmentHref = null;
-
-    for (const ch of text) {
-      const ownerIndex = owners[textIndex];
-      const nextStyle = ownerIndex === -1
-        ? cloneStyle(fragment.style || {})
-        : mergeHighlightStyle(fragment.style || {}, compiledRules[ownerIndex].style);
-      const nextHref = fragment.href || null;
-
-      if (segmentText && stylesEqual(segmentStyle, nextStyle) && segmentHref === nextHref) {
-        segmentText += ch;
-      } else {
-        if (segmentText) {
-          nextFragments.push({ text: segmentText, style: segmentStyle, href: segmentHref });
-        }
-        segmentText = ch;
-        segmentStyle = nextStyle;
-        segmentHref = nextHref;
-      }
-
-      textIndex++;
-    }
-
-    if (segmentText) {
-      nextFragments.push({ text: segmentText, style: segmentStyle, href: segmentHref });
-    }
-  }
-
-  return {
-    ...line,
-    fragments: nextFragments,
-  };
 }
 
 function parseTintinStyle(styleText) {
@@ -672,21 +558,12 @@ export const highlightManager = {
   applyHighlightsToLines(lines, scopeKey = this.getActiveScopeKey()) {
     const compiledRules = this.getCompiledRules(scopeKey);
     if (!compiledRules.length || !Array.isArray(lines) || !lines.length) return lines;
-    return lines.map((line) => applyRulesToLine(line, compiledRules));
+    return lines.map((line) => applyHighlightDefinitionsToLine(line, compiledRules));
   },
 
   applyHighlightsToText(text, rules) {
     const compiledRules = Array.isArray(rules)
-      ? rules
-        .map((rule) => {
-          const compiled = compileRule(rule);
-          return {
-            ...rule,
-            regex: compiled.regex,
-            error: compiled.error,
-          };
-        })
-        .filter((rule) => rule.enabled !== false && rule.regex)
+      ? compileHighlightDefinitions(rules)
       : this.getCompiledRules(this.getActiveScopeKey());
 
     const line = {
@@ -697,7 +574,7 @@ export const highlightManager = {
       fragments: [{ text: String(text || ''), style: {} }],
     };
 
-    return applyRulesToLine(line, compiledRules).fragments;
+    return applyHighlightDefinitionsToLine(line, compiledRules).fragments;
   },
 
   normalizeColorToken,

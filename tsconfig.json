@@ -22,6 +22,7 @@
     "client/storage/**/*.ts",
     "client/configuration/**/*.ts",
     "client/runtime/**/*.ts",
+    "client/terminal/**/*.ts",
     "client/transport/**/*.ts",
     "client/gmcp/**/*.ts",
     "client/workspace/**/*.ts",

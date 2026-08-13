@@ -138,6 +138,14 @@ export function createSession(parts: SessionParts): Session {
     gmcp.off("Char.Vitals", vitalsHandler);
   });
 
+  const automationGmcpHandler = (packageName: string, data: unknown): void => {
+    automationRuntime.setGmcpVariable(packageName, data);
+  };
+  gmcp.on("*", automationGmcpHandler);
+  scope.own("listener", () => {
+    gmcp.off("*", automationGmcpHandler);
+  });
+
   function sendConnectHandshake(reason: "login" | "reconnect"): void {
     gmcp.sendHandshake(getClientInfo());
     gmcp.sendSubscriptions({ reason, full: true });
@@ -154,6 +162,7 @@ export function createSession(parts: SessionParts): Session {
       const payload = event.payload as TransportReconnectStatusPayload;
       reconnect = { ...payload };
       if (payload.status !== "connected") {
+        automationRuntime.resetGmcpVariables();
         return;
       }
 

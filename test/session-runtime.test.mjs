@@ -586,6 +586,14 @@ test("public terminal owns text, commands, completion, configuration, and automa
   assert.deepEqual(completions, [
     { line: "look sword ", cursor: 11, matches: ["sword"], ambiguous: false },
   ]);
+  socket?.emitMessage(encoder.encode('Fixture.Ping {"ok":true}'));
+  assert.equal(harness.session.terminal.automation.getVariable("gmcp_fixture_ping_ok"), undefined);
+  assert.equal(
+    harness.session.terminal.automation.getGmcpVariables().gmcp_fixture_ping_ok,
+    "true",
+  );
+  socket?.close(1006, "lost");
+  assert.deepEqual(harness.session.terminal.automation.getGmcpVariables(), {});
 
   harness.session.dispose();
   socket?.emitMessage("late");

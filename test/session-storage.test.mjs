@@ -103,6 +103,7 @@ test("Phase 1 session storage executes through Vite SSR", async (t) => {
   const configValidator = await ssr.runner.import("/storage/config-validator.ts");
   const repository = await ssr.runner.import("/storage/repository.ts");
   const migration = await ssr.runner.import("/storage/legacy-migration.ts");
+  const history = await ssr.runner.import("/terminal/history.ts");
   const ids = await ssr.runner.import("/model/ids.ts");
 
   const uuidFactory = ids.createSequentialUuidFactory("10000000-0000-4000-8000-");
@@ -216,6 +217,33 @@ test("Phase 1 session storage executes through Vite SSR", async (t) => {
     assert.deepEqual(other.workspace.payload, {});
     assert.equal(other.audio.notification.enabled, true);
 
+    assertLegacyKeysUnchanged(before, storage.snapshot(), legacyKeyList);
+  });
+
+  await t.test("command history updates only the selected character graph field", async () => {
+    const fixture = loadFixture("multi-scope");
+    const storage = createMemoryStorage();
+    populateLegacyStorage(storage, legacyKeys, fixture);
+    const before = storage.snapshot();
+    const result = migration.migrateLegacyData(
+      storage,
+      fixture.config,
+      new URLSearchParams(fixture.urlSearchParams),
+      uuidFactory,
+    );
+    assert.equal(result.success, true);
+
+    const state = repository.readState(storage).data;
+    const active = findActiveCharacter(state, "wss://active.example.com:4242");
+    const other = findActiveCharacter(state, "ws://other.example.com:5000");
+    assert.ok(active);
+    assert.ok(other);
+    assert.equal(history.saveCommandHistory(storage, active.id, ["look", "score"]), true);
+    assert.deepEqual(history.loadCommandHistory(storage, active.id), ["look", "score"]);
+
+    const updated = repository.readState(storage).data;
+    assert.deepEqual(updated.characterProfiles[active.id].commandHistory, ["look", "score"]);
+    assert.deepEqual(updated.characterProfiles[other.id].commandHistory, []);
     assertLegacyKeysUnchanged(before, storage.snapshot(), legacyKeyList);
   });
 

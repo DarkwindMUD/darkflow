@@ -1,9 +1,7 @@
 import { dom } from './state.js';
-import {
-  evaluateArithmeticExpression,
-  isArithmeticExpressionCandidate,
-} from './alias-expression-core.mjs';
 import { getAutomationScriptDiagnostics } from './automation-script-core.mjs';
+import { tokenizeInput } from './completion-core.mjs';
+import { matchAliasDefinitions, resolveDefinitionTemplate } from './definition-runtime-core.mjs';
 import { getGmcpVariables } from './gmcp-variables.js';
 import {
   getActiveCharacterProfileId,
@@ -56,67 +54,6 @@ function compileRegex(source, ignoreCase) {
       error: error instanceof Error ? error.message : 'Invalid regex.',
     };
   }
-}
-
-function tokenizeInput(line) {
-  const tokens = [];
-  const text = String(line || '');
-  const length = text.length;
-  let index = 0;
-
-  while (index < length) {
-    while (index < length && /\s/.test(text[index])) index++;
-    if (index >= length) break;
-
-    const start = index;
-    let value = '';
-    let quote = null;
-
-    while (index < length) {
-      const ch = text[index];
-      if (quote) {
-        if (ch === '\\' && index + 1 < length) {
-          value += text[index + 1];
-          index += 2;
-          continue;
-        }
-        if (ch === quote) {
-          quote = null;
-          index++;
-          continue;
-        }
-        value += ch;
-        index++;
-        continue;
-      }
-
-      if (ch === '"' || ch === '\'') {
-        quote = ch;
-        index++;
-        continue;
-      }
-
-      if (/\s/.test(ch)) break;
-
-      if (ch === '\\' && index + 1 < length) {
-        value += text[index + 1];
-        index += 2;
-        continue;
-      }
-
-      value += ch;
-      index++;
-    }
-
-    tokens.push({
-      value,
-      start,
-      end: index,
-      lower: value.toLowerCase(),
-    });
-  }
-
-  return tokens;
 }
 
 function emitAliasDataChanged(detail) {
@@ -247,40 +184,6 @@ function normalizeData(data) {
     }
   }
   return { scopes };
-}
-
-function compareAliasPriority(a, b) {
-  if (Boolean(a.isRegex) !== Boolean(b.isRegex)) {
-    return a.isRegex ? 1 : -1;
-  }
-  if (a.isRegex && b.isRegex) return 0;
-  const aTokens = tokenizeInput(a.trigger).length;
-  const bTokens = tokenizeInput(b.trigger).length;
-  if (aTokens !== bTokens) return bTokens - aTokens;
-  return b.trigger.length - a.trigger.length;
-}
-
-function resolveTemplateToken(token, context, missingVariables) {
-  const value = String(token || '');
-
-  if (/^\$[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    const variableName = value.slice(1);
-    if (!Object.prototype.hasOwnProperty.call(context.variables, variableName)) {
-      missingVariables.add(variableName);
-      return '';
-    }
-    return String(context.variables[variableName] ?? '');
-  }
-
-  if (/^%[0-9]$/.test(value)) {
-    if (value === '%0') return context.remainder || '';
-
-    const index = Number(value.slice(1)) - 1;
-    if (index < 0 || index >= context.args.length) return '';
-    return context.args[index];
-  }
-
-  return value;
 }
 
 function collectVariableNamesFromText(text) {
@@ -647,53 +550,7 @@ export const aliasManager = {
   },
 
   matchAliasInAliases(rawLine, aliases) {
-    const line = String(rawLine || '');
-    const inputTokens = tokenizeInput(line);
-    if (!inputTokens.length) return null;
-
-    const candidates = (Array.isArray(aliases) ? aliases : [])
-      .filter((alias) => alias.enabled !== false)
-      .slice()
-      .sort(compareAliasPriority);
-
-    for (const alias of candidates) {
-      if (alias.isRegex) {
-        const compiled = compileRegex(alias.trigger, alias.ignoreCase !== false);
-        if (!compiled.regex) continue;
-        const match = compiled.regex.exec(line);
-        if (!match) continue;
-
-        return {
-          alias,
-          args: match.slice(1).map((value) => String(value ?? '')),
-          remainder: String(match[0] ?? ''),
-        };
-      }
-
-      const triggerTokens = tokenizeInput(alias.trigger);
-      if (!triggerTokens.length || triggerTokens.length > inputTokens.length) continue;
-
-      let matches = true;
-      for (let index = 0; index < triggerTokens.length; index++) {
-        if (triggerTokens[index].lower !== inputTokens[index].lower) {
-          matches = false;
-          break;
-        }
-      }
-      if (!matches) continue;
-
-      const remainderToken = inputTokens[triggerTokens.length];
-      const remainder = remainderToken ? line.slice(remainderToken.start).trimStart() : '';
-      const args = inputTokens.slice(triggerTokens.length).map((token) => token.value);
-
-      return {
-        alias,
-        args,
-        remainder,
-      };
-    }
-
-    return null;
+    return matchAliasDefinitions(rawLine, aliases);
   },
 
   matchAlias(rawLine, scopeKey = this.getActiveScopeKey()) {
@@ -704,38 +561,7 @@ export const aliasManager = {
   },
 
   resolveTemplate(template, context) {
-    const missingVariables = new Set();
-    const errors = [];
-    const normalizedContext = {
-      args: Array.isArray(context && context.args) ? context.args : [],
-      remainder: context && typeof context.remainder === 'string' ? context.remainder : '',
-      variables: context && context.variables && typeof context.variables === 'object' ? context.variables : {},
-    };
-    const text = String(template || '')
-      .replace(/\$\{lower:([^}]+)\}/g, (match, token) => (
-        resolveTemplateToken(String(token || '').trim(), normalizedContext, missingVariables).toLowerCase()
-      ))
-      .replace(/\{([^{}]+)\}/g, (match, expression) => {
-        const trimmedExpression = String(expression || '').trim();
-        if (!isArithmeticExpressionCandidate(trimmedExpression)) return match;
-
-        const result = evaluateArithmeticExpression(trimmedExpression, normalizedContext, missingVariables);
-        if (result.errors.length) {
-          errors.push(...result.errors);
-          return '';
-        }
-
-        return result.text;
-      })
-      .replace(/\$([A-Za-z_][A-Za-z0-9_]*)|%([0-9])/g, (match, variableName, argIndex) => (
-        resolveTemplateToken(variableName ? '$' + variableName : '%' + argIndex, normalizedContext, missingVariables)
-      ));
-
-    return {
-      text,
-      missingVariables: Array.from(missingVariables),
-      errors,
-    };
+    return resolveDefinitionTemplate(template, context);
   },
 
   getAliasDiagnostics(scope, aliasId) {

@@ -21,6 +21,161 @@ async function connect(page: Page): Promise<void> {
   await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
 }
 
+async function installAutomationDefinitions(page: Page): Promise<void> {
+  await page.goto("/phase2/");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .toBe(true);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases = [
+      {
+        id: "alias-look",
+        enabled: true,
+        trigger: "l",
+        description: "Look",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+      {
+        id: "alias-function",
+        enabled: true,
+        trigger: "fn",
+        description: "Function",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "" },
+        ],
+      },
+      {
+        id: "alias-variable",
+        enabled: true,
+        trigger: "vars",
+        description: "Variables",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "say $gmcp_fixture_ping_ok" }],
+      },
+      {
+        id: "alias-pending-wait",
+        enabled: true,
+        trigger: "pendingwait",
+        description: "Pending wait",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          { type: "send_command", template: "wait-started" },
+          { type: "wait", seconds: 0.25 },
+          { type: "send_command", template: "late-wait" },
+        ],
+      },
+      {
+        id: "alias-pending-timer",
+        enabled: true,
+        trigger: "pendingtimer",
+        description: "Pending timer",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          {
+            type: "set_timer_enabled",
+            mode: "enable",
+            target: "",
+            targetId: "timer-pending",
+          },
+          {
+            type: "control_timer",
+            mode: "start",
+            target: "",
+            targetId: "timer-pending",
+          },
+        ],
+      },
+    ];
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-danger",
+        enabled: true,
+        pattern: "danger",
+        description: "Danger",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: true,
+        steps: [{ type: "show_message", template: "trigger fired" }],
+      },
+    ];
+    character.localDefinitions.highlights = [
+      {
+        id: "highlight-glow",
+        enabled: true,
+        patternSource: "glow",
+        description: "Glow",
+        group: "",
+        ignoreCase: false,
+        style: { fg: "red", bg: "black", bold: true },
+      },
+    ];
+    character.localDefinitions.functions = [
+      {
+        id: "function-greet",
+        enabled: true,
+        name: "greet",
+        description: "Greet",
+        group: "",
+        script: "send wave",
+      },
+    ];
+    character.localDefinitions.keyMappings = [
+      {
+        id: "key-score",
+        enabled: true,
+        code: "F2",
+        label: "F2",
+        legacyKey: "",
+        command: "score",
+      },
+    ];
+    character.localDefinitions.timers = [
+      {
+        id: "timer-auto",
+        enabled: true,
+        name: "auto",
+        description: "Auto",
+        group: "",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: true,
+        steps: [{ type: "send_command", template: "tick" }],
+      },
+      {
+        id: "timer-pending",
+        enabled: false,
+        name: "pending",
+        description: "Pending",
+        group: "",
+        durationMs: 250,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "late-timer" }],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+}
+
 async function center(locator: Locator): Promise<{ x: number; y: number }> {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
@@ -169,5 +324,116 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   });
   await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
   endpoint.sendText("late output after disposal\n");
+  await expect(page.locator("[data-terminal-identity]")).toHaveCount(0);
+});
+
+test("Phase 2 terminal input sends once and recalls character history", async ({
+  page,
+}, testInfo) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+
+  const input = page.getByLabel("Command input", { exact: true });
+  if (testInfo.project.name === "mobile-chromium") {
+    await input.tap();
+    await expect(input).toBeFocused();
+  }
+  await input.fill("look");
+  if (testInfo.project.name === "mobile-chromium") {
+    await page.getByRole("button", { name: "Send", exact: true }).tap();
+  } else {
+    await input.press("Enter");
+  }
+  await expect.poll(() => endpoint.commands.filter((command) => command === "look").length).toBe(1);
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText("> look");
+
+  await input.press("ArrowUp");
+  await expect(input).toHaveValue("look");
+
+  await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("x");
+  await expect(input).toBeFocused();
+  await input.evaluate((element) => element.blur());
+  await page.keyboard.press("Escape");
+  await expect(input).toHaveValue("");
+});
+
+test("Phase 2 executes effective definitions and session variables", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+
+  const input = page.getByLabel("Command input", { exact: true });
+  for (const command of ["l", "fn", "vars"]) {
+    await input.fill(command);
+    await input.press("Enter");
+  }
+  await input.press("F2");
+  expect(endpoint.commands).not.toContain("score");
+  await input.evaluate((element) => element.blur());
+  await page.keyboard.press("F2");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(expect.arrayContaining(["look", "wave", "say true", "score", "tick"]));
+
+  endpoint.sendText("dan");
+  endpoint.sendText("ger\nplain gl");
+  endpoint.sendText("ow\n");
+  const output = page.getByLabel("Terminal output", { exact: true });
+  await expect(output).toContainText("trigger fired");
+  await expect(output).not.toContainText("danger");
+  await expect(output.locator(".ansi-fg-red")).toContainText("glow");
+});
+
+test("Phase 2 disposal cancels pending terminal work and rejects late events", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+
+  const input = page.getByLabel("Command input", { exact: true });
+  for (const command of ["pendingwait", "pendingtimer"]) {
+    await input.fill(command);
+    await input.press("Enter");
+  }
+  await expect.poll(() => endpoint.commands).toContain("wait-started");
+
+  await input.fill("completion-with-no-match");
+  await input.press("Tab");
+  await input.fill("");
+  await input.evaluate((element) => {
+    const transfer = new DataTransfer();
+    transfer.setData("text", "batch-first\nlate-batch");
+    const paste = new Event("paste", { bubbles: true, cancelable: true });
+    Object.defineProperty(paste, "clipboardData", { value: transfer });
+    element.dispatchEvent(paste);
+  });
+  const batch = page.getByRole("dialog", { name: "Multiline command input" });
+  await expect(batch).toBeVisible();
+  await batch.getByRole("button", { name: "Send batch", exact: true }).click();
+  await expect.poll(() => endpoint.commands).toContain("batch-first");
+
+  endpoint.sendText("queued render before disposal\n");
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as { __darkflowPhase1Runtime: { session: { dispose(): void } } }
+    ).__darkflowPhase1Runtime.session;
+    session.dispose();
+    session.dispose();
+  });
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+
+  endpoint.sendText("late output after disposal\n");
+  await page.waitForTimeout(350);
+  expect(endpoint.commands).not.toContain("late-batch");
+  expect(endpoint.commands).not.toContain("late-wait");
+  expect(endpoint.commands).not.toContain("late-timer");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(0);
 });

@@ -50,14 +50,17 @@ export type PublishConfigurationSetResult =
       message: string;
     };
 
-/** Result of replacing one character's local definitions for a single kind. */
-export type ReplaceLocalDefinitionsResult =
+/** Result of updating application configuration without changing profile ownership. */
+export type ConfigurationWriteResult =
   | { success: true }
   | {
       success: false;
       code: "missing-state" | "unknown-character" | "validation-failed" | "storage-failed";
       message: string;
     };
+
+/** Result of replacing one character's local definitions for a single kind. */
+export type ReplaceLocalDefinitionsResult = ConfigurationWriteResult;
 
 const subscribers = new Map<CharacterProfileId, Set<EffectiveConfigurationListener>>();
 
@@ -202,6 +205,33 @@ export function replaceLocalDefinitions<K extends ConfigKind>(
   }
 
   notifyOneSubscriber(nextState, characterProfileId);
+  return { success: true };
+}
+
+/** Updates only the application theme default, then notifies active sessions. */
+export function setThemeKey(storage: StorageLike, themeKey: string): ConfigurationWriteResult {
+  const readResult = readState(storage);
+  if (!readResult.success || readResult.data === undefined) {
+    return {
+      success: false,
+      code: "missing-state",
+      message: "Phase 1 session graph is not present in storage.",
+    };
+  }
+
+  const nextState: ApplicationStateV1 = {
+    ...readResult.data,
+    defaults: {
+      ...readResult.data.defaults,
+      themeKey,
+    },
+  };
+  const commitResult = commit(storage, nextState);
+  if (!commitResult.success) {
+    return commitResult;
+  }
+
+  notifySubscribers(nextState);
   return { success: true };
 }
 

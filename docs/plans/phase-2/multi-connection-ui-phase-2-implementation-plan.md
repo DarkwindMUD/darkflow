@@ -280,6 +280,9 @@ Green PR slices.
 
 ### Step 5 — Port settings and single-profile configuration editing
 
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-5-implementation-plan.md`](multi-connection-ui-phase-2-step-5-implementation-plan.md).
+
 **Depends on:** Step 2; it may proceed independently of Steps 3, 4, and 6 after
 the shell/profile boundary freezes.
 

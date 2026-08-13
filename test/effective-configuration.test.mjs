@@ -500,4 +500,31 @@ test("Effective configuration executes through Vite SSR", async (t) => {
     assert.equal(missingState.success, false);
     assert.equal(missingState.code, "missing-state");
   });
+
+  await t.test("setThemeKey commits only the theme and notifies each character once", () => {
+    service.resetConfigurationSubscriptionsForTests();
+    const graph = buildMinimalGraph(ids);
+    const storage = createMemoryStorage();
+    repository.commit(storage, graph);
+    const before = structuredClone(graph);
+    const notifications = [];
+    service.subscribe(graph.ids.characterAId, (nextSnapshot) => notifications.push(nextSnapshot));
+    service.subscribe(graph.ids.characterBId, (nextSnapshot) => notifications.push(nextSnapshot));
+
+    assert.deepEqual(service.setThemeKey(storage, "high-contrast"), { success: true });
+
+    const persisted = JSON.parse(storage.getItem(schema.SESSION_CORE_STORAGE_KEY));
+    assert.deepEqual(persisted, {
+      ...before,
+      defaults: { ...before.defaults, themeKey: "high-contrast" },
+    });
+    assert.equal(notifications.length, 2);
+
+    assert.equal(service.setThemeKey(storage, "").success, false);
+    assert.equal(
+      JSON.parse(storage.getItem(schema.SESSION_CORE_STORAGE_KEY)).defaults.themeKey,
+      "high-contrast",
+    );
+    assert.equal(notifications.length, 2);
+  });
 });

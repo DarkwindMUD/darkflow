@@ -255,6 +255,8 @@ function createMemoryStorage(initial = {}) {
 
 function createSessionHarness(modules, t, graph, characterProfileId, options = {}) {
   const registry = options.registry ?? modules.createSessionRegistry();
+  const storage = options.storage ?? createMemoryStorage();
+  assert.equal(modules.repositoryCommit(storage, graph.state).success, true);
   let nowMs = options.nowMs ?? 0;
   const onlineListeners = new Map();
 
@@ -263,6 +265,7 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
     graph.serverId,
     characterProfileId,
     {
+      storage,
       uuidFactory: options.uuidFactory ?? createSequentialUuidFactory("10000000-0000-4000-8000-"),
       registry,
       getAutoReconnect: () => options.autoReconnect ?? true,
@@ -601,6 +604,131 @@ test("public terminal owns text, commands, completion, configuration, and automa
   assert.deepEqual(receivedB, ["first", "second"]);
   assert.equal(configurations.length, 2);
   assert.equal(harness.session.terminal.sendCommand("late"), false);
+});
+
+test("public configuration owns active-character reads, writes, subscriptions, and disposal", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  const graph = buildMinimalGraph(modules);
+  const factory = createSequentialUuidFactory("50000000-0000-4000-8000-");
+  const attachedSetId = modules.createConfigSetId(factory);
+  const unrelatedSetId = modules.createConfigSetId(factory);
+  const sharedAlias = {
+    id: "alias-shared",
+    enabled: true,
+    trigger: "score",
+    description: "Shared alias",
+    group: "",
+    isRegex: false,
+    ignoreCase: true,
+    steps: [{ type: "send_command", template: "score" }],
+  };
+  graph.state.configurationSets[attachedSetId] = {
+    id: attachedSetId,
+    kind: "aliases",
+    label: "Attached aliases",
+    revision: 1,
+    definitions: [sharedAlias],
+  };
+  graph.state.configurationSets[unrelatedSetId] = {
+    id: unrelatedSetId,
+    kind: "aliases",
+    label: "Unrelated aliases",
+    revision: 1,
+    definitions: [],
+  };
+  graph.state.characterProfiles[graph.characterAId].configSetRefs.aliases = [attachedSetId];
+
+  const storage = createMemoryStorage();
+  assert.equal(modules.repositoryCommit(storage, graph.state).success, true);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId, { storage });
+  const snapshots = [];
+  harness.session.configuration.subscribe((snapshot) => snapshots.push(snapshot));
+
+  assert.deepEqual(Object.keys(harness.session.configuration).sort(), [
+    "getSnapshot",
+    "publishConfigurationSet",
+    "replaceLocalDefinitions",
+    "setThemeKey",
+    "subscribe",
+  ]);
+  const initial = harness.session.configuration.getSnapshot();
+  assert.equal(initial.characterProfileId, graph.characterAId);
+  assert.equal(initial.themeKey, "darkwind-default");
+  assert.deepEqual(Object.keys(initial.attachedConfigurationSets), [attachedSetId]);
+  assert.equal(initial.effectiveConfiguration.aliases[0].definition.steps[0].template, "score");
+  assert.equal(Object.isFrozen(initial.localDefinitions.aliases), true);
+  assert.equal("automation" in initial, false);
+  assert.throws(() => {
+    initial.attachedConfigurationSets[attachedSetId].definitions[0].description = "mutated";
+  }, TypeError);
+
+  const localAlias = { ...sharedAlias, id: "alias-local", steps: [{ type: "send_command", template: "score local" }] };
+  assert.deepEqual(harness.session.configuration.replaceLocalDefinitions("aliases", [localAlias]), {
+    success: true,
+  });
+  assert.equal(snapshots.length, 2);
+  assert.equal(snapshots.at(-1).effectiveConfiguration.aliases[0].definition.steps[0].template, "score local");
+  assert.deepEqual(
+    JSON.parse(storage.getItem(modules.SESSION_CORE_STORAGE_KEY)).characterProfiles[
+      graph.characterBId
+    ].localDefinitions.aliases,
+    [],
+  );
+
+  assert.deepEqual(harness.session.configuration.setThemeKey("high-contrast"), { success: true });
+  assert.equal(snapshots.length, 3);
+  assert.equal(snapshots.at(-1).themeKey, "high-contrast");
+
+  const stale = harness.session.configuration.publishConfigurationSet({
+    configSetId: attachedSetId,
+    expectedRevision: 99,
+    definitions: [sharedAlias],
+  });
+  assert.equal(stale.code, "stale-revision");
+  assert.equal(snapshots.length, 3);
+  const unrelated = harness.session.configuration.publishConfigurationSet({
+    configSetId: unrelatedSetId,
+    expectedRevision: 1,
+    definitions: [],
+  });
+  assert.equal(unrelated.code, "unknown-config-set");
+  assert.equal(snapshots.length, 3);
+
+  const persistedBeforeMissingState = storage.getItem(modules.SESSION_CORE_STORAGE_KEY);
+  storage.removeItem(modules.SESSION_CORE_STORAGE_KEY);
+  assert.deepEqual(
+    harness.session.configuration.publishConfigurationSet({
+      configSetId: attachedSetId,
+      expectedRevision: 1,
+      definitions: [sharedAlias],
+    }),
+    {
+      success: false,
+      code: "missing-state",
+      message: "Phase 1 session graph is not present in storage.",
+    },
+  );
+  assert.equal(snapshots.length, 3);
+  storage.setItem(modules.SESSION_CORE_STORAGE_KEY, persistedBeforeMissingState);
+
+  assert.deepEqual(
+    harness.session.configuration.publishConfigurationSet({
+      configSetId: attachedSetId,
+      expectedRevision: 1,
+      definitions: [{ ...sharedAlias, description: "Updated" }],
+    }),
+    { success: true },
+  );
+  assert.equal(snapshots.length, 4);
+  assert.equal(snapshots.at(-1).attachedConfigurationSets[attachedSetId].revision, 2);
+
+  harness.session.dispose();
+  modules.publishConfigurationSet(storage, {
+    configSetId: attachedSetId,
+    expectedRevision: 2,
+    definitions: [sharedAlias],
+  });
+  assert.equal(snapshots.length, 4);
 });
 
 test("connect sends handshake packages with login then reconnect reason", async (t) => {

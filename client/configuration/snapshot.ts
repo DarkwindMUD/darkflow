@@ -64,7 +64,7 @@ function deepFreezeLocalDefinitions(definitions: LocalDefinitions): LocalDefinit
   };
 }
 
-function deepFreeze<T>(value: T): T {
+export function deepFreeze<T>(value: T): T {
   if (value === null || typeof value !== "object") {
     return value;
   }

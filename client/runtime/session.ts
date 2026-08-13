@@ -1,4 +1,5 @@
 import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
+import type { SessionConfiguration } from "../configuration/editor.ts";
 import type { Unsubscribe as ConfigurationUnsubscribe } from "../configuration/service.ts";
 import type { CoreHello } from "../gmcp/contracts/core.ts";
 import type { CompletionRequest, CompletionResult } from "../gmcp/contracts/completion.ts";
@@ -50,6 +51,7 @@ export interface Session {
   readonly characterProfileId: CharacterProfileId;
   readonly disposed: boolean;
   readonly terminal: SessionTerminal;
+  readonly configuration: SessionConfiguration;
   connect(): void;
   disconnect(): void;
   dispose(): void;
@@ -78,6 +80,7 @@ export interface SessionParts {
   getConnectionEndpoint: () => TransportEndpoint;
   setConnectionEndpoint: (endpoint: TransportEndpoint) => void;
   automationRuntime: AutomationRuntimeState;
+  configuration: SessionConfiguration;
   subscribeText: (listener: (text: string) => void) => Unsubscribe;
   subscribeConfiguration: (
     listener: (snapshot: EffectiveConfigurationSnapshot) => void,
@@ -99,6 +102,7 @@ export function createSession(parts: SessionParts): Session {
     getConnectionEndpoint,
     setConnectionEndpoint,
     automationRuntime,
+    configuration: configurationCapability,
     subscribeText,
     subscribeConfiguration,
   } = parts;
@@ -220,6 +224,19 @@ export function createSession(parts: SessionParts): Session {
     },
   };
 
+  const configuration: SessionConfiguration = {
+    getSnapshot: configurationCapability.getSnapshot,
+    replaceLocalDefinitions: configurationCapability.replaceLocalDefinitions,
+    publishConfigurationSet: configurationCapability.publishConfigurationSet,
+    setThemeKey: configurationCapability.setThemeKey,
+    subscribe(listener) {
+      if (disposed) {
+        return () => {};
+      }
+      return scope.own("subscription", configurationCapability.subscribe(listener));
+    },
+  };
+
   return {
     get sessionId() {
       return descriptor.sessionId;
@@ -238,6 +255,8 @@ export function createSession(parts: SessionParts): Session {
     },
 
     terminal,
+
+    configuration,
 
     connect() {
       transport.connect();

@@ -299,6 +299,7 @@ export async function runBootTransaction(
       serverProfileId,
       characterProfileId,
       {
+        storage: deps.storage,
         uuidFactory: deps.uuidFactory,
         registry,
         getAutoReconnect: () => state.settings.autoReconnect !== false,

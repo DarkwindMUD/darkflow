@@ -1,4 +1,5 @@
 import { resolveEffectiveConfiguration } from "../configuration/resolve.ts";
+import { createSessionConfiguration } from "../configuration/editor.ts";
 import { subscribe } from "../configuration/service.ts";
 import type { Unsubscribe } from "./events.ts";
 import { createSessionGmcpBus, type SessionGmcpBus } from "../gmcp/bus.ts";
@@ -19,6 +20,7 @@ import { createAutomationRuntimeState, type AutomationRuntimeState } from "./aut
 import { createSession, type Session } from "./session.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
+import type { StorageLike } from "../storage/repository.ts";
 
 /** Wiring handles exposed to Phase 1 compatibility facades; not part of the public Session API. */
 export interface SessionFacadeHandles {
@@ -37,6 +39,7 @@ export interface SessionFacadeHandles {
 
 /** Injected dependencies required to construct a session from application state. */
 export interface SessionFactoryDeps {
+  storage: StorageLike;
   uuidFactory: UuidFactory;
   registry: SessionRegistry;
   getAutoReconnect: () => boolean;
@@ -181,6 +184,7 @@ export function createSessionFromState(
   compositionRefs.runtimeState = runtimeState;
 
   const automationRuntime = createAutomationRuntimeState(scope);
+  const configuration = createSessionConfiguration(deps.storage, characterProfileId);
 
   const configurationListeners = new Set<
     (snapshot: ReturnType<typeof runtimeState.getEffectiveConfiguration>) => void
@@ -207,6 +211,7 @@ export function createSessionFromState(
     getConnectionEndpoint: () => ({ ...connectionEndpoint }),
     setConnectionEndpoint,
     automationRuntime,
+    configuration,
     subscribeText,
     subscribeConfiguration(listener) {
       configurationListeners.add(listener);

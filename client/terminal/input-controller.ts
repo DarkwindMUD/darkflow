@@ -1,6 +1,7 @@
 import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
 import type { Session } from "../runtime/session.ts";
 import { loadCommandHistory, saveCommandHistory } from "./history.ts";
+import { loadClientSettings } from "../app/client-settings.ts";
 
 // @ts-expect-error Shared legacy/Phase 2 completion core is JavaScript.
 import { createCompletionController } from "../../public/js/completion-core.mjs";
@@ -79,6 +80,8 @@ export function createTerminalInputController({
       aliases
         .filter(({ definition }) => definition.enabled)
         .map(({ definition }) => definition.trigger),
+    aliasEnabled: () => loadClientSettings(localStorage).settings.aliasTabCompletionEnabled,
+    historyEnabled: () => loadClientSettings(localStorage).settings.historyTabCompletionEnabled,
     request: (request: { line: string; cursor: number }) =>
       session.terminal.requestCompletion(request),
     subscribe: (
@@ -103,7 +106,12 @@ export function createTerminalInputController({
       pushHistory(text);
     }
     completion.reset();
-    input.value = "";
+    if (loadClientSettings(localStorage).settings.repeatLastCommand && text) {
+      input.value = text;
+      input.select();
+    } else {
+      input.value = "";
+    }
     input.focus();
     return true;
   };

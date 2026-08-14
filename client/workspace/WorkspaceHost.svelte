@@ -75,6 +75,18 @@
     });
   }
 
+  async function resetWorkspace(): Promise<void> {
+    if (!workspace) return;
+    await workspace.removePanel(placeholder.id);
+    await workspace.removePanel(terminal.id);
+    workspace.addOrUpdatePanel(terminal);
+    workspace.addOrUpdatePanel(placeholder);
+    placeholderOpen = true;
+    const result = saveCharacterWorkspace(localStorage, characterProfileId, workspace.save());
+    status = result.success ? "Workspace reset" : result.message;
+    focusTerminal();
+  }
+
   onMount(() => {
     const currentWorkspace = createWorkspace(host, {
       placeholder: { component: PlaceholderPanel },
@@ -131,10 +143,12 @@
     const flushOnLeave = () => flush();
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
+    window.addEventListener("darkflow:reset-workspace", resetWorkspace);
 
     return () => {
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
+      window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       unsubscribe();
       flush();
       workspace = undefined;

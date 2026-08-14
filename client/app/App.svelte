@@ -4,6 +4,7 @@
   import type { Session, SessionConnectionSnapshot } from "../runtime/session.ts";
   import type { TransportEndpoint, TransportName } from "../transport/types.ts";
   import WorkspaceHost from "../workspace/WorkspaceHost.svelte";
+  import SettingsDialog from "./SettingsDialog.svelte";
   // @ts-expect-error Legacy UI module has no declaration file.
   import { gameTitle } from "../../public/js/brand.js";
   // @ts-expect-error Legacy UI module has no declaration file.
@@ -41,6 +42,9 @@
   let retryButton = $state<HTMLButtonElement>();
   let updateStatus = $state<UpdateStatus | null>(null);
   let clientVersion = $state<string | null>(null);
+  let settingsOpen = $state(false);
+  let settingsButton = $state<HTMLButtonElement>();
+  let themeKey = $state(untrack(() => session.configuration.getSnapshot().themeKey));
 
   const reconnectVisible = $derived(
     everConnected &&
@@ -62,9 +66,11 @@
   });
 
   $effect(() => {
-    applyTheme(BUILTIN_THEMES[shell.themeKey] ?? BUILTIN_THEMES[DEFAULT_THEME_KEY]);
+    applyTheme(BUILTIN_THEMES[themeKey] ?? BUILTIN_THEMES[DEFAULT_THEME_KEY]);
     document.title = gameTitle(shell.gameName);
   });
+
+  $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
 
   $effect(() => {
     session.setConnectionEndpoint(endpoint);
@@ -207,6 +213,9 @@
       <h1>{gameTitle(shell.gameName)}</h1>
       <p>Phase 2 integration shell</p>
     </div>
+    <button bind:this={settingsButton} type="button" onclick={() => (settingsOpen = true)}>
+      Settings
+    </button>
   </header>
 
   <form class="connection-form" aria-label="Connection" onsubmit={connect}>
@@ -255,6 +264,15 @@
   <p data-testid="connection-status" role="status" aria-live="polite">{connectionStatus}</p>
   <WorkspaceHost characterProfileId={session.characterProfileId} {session} />
 </main>
+
+<SettingsDialog
+  open={settingsOpen}
+  {session}
+  onclose={() => {
+    settingsOpen = false;
+    queueMicrotask(() => settingsButton?.focus());
+  }}
+/>
 
 {#if updateDisplay}
   <aside class="update-banner" data-testid="update-banner" aria-live="polite">
@@ -312,6 +330,10 @@
   .app-chrome img {
     width: 2.5rem;
     height: 2.5rem;
+  }
+
+  .app-chrome > button {
+    margin-left: auto;
   }
 
   h1,

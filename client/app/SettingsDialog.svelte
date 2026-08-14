@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { Session } from "../runtime/session.ts";
+  import DefinitionEditor from "./DefinitionEditor.svelte";
   import {
     DEFAULT_PHASE2_CLIENT_SETTINGS,
     loadClientSettings,
@@ -141,6 +142,12 @@
       >
       <p>Variables last for this session only.</p>
     </fieldset>
+
+    {#if open}
+      <DefinitionEditor {session} kind="keyMappings" />
+      <DefinitionEditor {session} kind="highlights" />
+      <DefinitionEditor {session} kind="functions" />
+    {/if}
 
     <button type="button" onclick={resetWorkspace}>Reset workspace</button>
     <p class:error={invalidStoredSettings} role="status" aria-live="polite">{status}</p>

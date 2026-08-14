@@ -147,6 +147,9 @@
       <DefinitionEditor {session} kind="keyMappings" />
       <DefinitionEditor {session} kind="highlights" />
       <DefinitionEditor {session} kind="functions" />
+      <DefinitionEditor {session} kind="aliases" />
+      <DefinitionEditor {session} kind="triggers" />
+      <DefinitionEditor {session} kind="timers" />
     {/if}
 
     <button type="button" onclick={resetWorkspace}>Reset workspace</button>

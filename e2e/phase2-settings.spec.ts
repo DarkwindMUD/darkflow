@@ -156,6 +156,143 @@ async function installDirectDefinitions(page: Page): Promise<void> {
   await page.reload();
 }
 
+async function installAutomationDefinitions(page: Page): Promise<void> {
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      configSetRefs: Record<string, string[]>;
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases.push(
+      {
+        id: "alias-local",
+        enabled: true,
+        trigger: "quick",
+        description: "Quick command",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+      {
+        id: "alias-all-steps",
+        enabled: false,
+        trigger: "allsteps",
+        description: "All step shapes",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [
+          { type: "send_command", template: "look" },
+          { type: "set_variable", name: "target", template: "orc" },
+          { type: "show_message", template: "hello" },
+          { type: "script", script: "send score" },
+          { type: "wait", seconds: 0.01 },
+          { type: "set_alias_enabled", mode: "toggle", target: "quick", targetId: "alias-local" },
+          {
+            type: "set_trigger_enabled",
+            mode: "enable",
+            target: "danger",
+            targetId: "trigger-local",
+          },
+          { type: "set_timer_enabled", mode: "disable", target: "pulse", targetId: "timer-local" },
+          { type: "control_timer", mode: "run", target: "pulse", targetId: "timer-local" },
+          { type: "play_sound", category: "notification", sound: "bell", volume: 0.5 },
+          { type: "run_alias", template: "quick" },
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "" },
+        ],
+      },
+    );
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-local",
+        enabled: true,
+        pattern: "danger",
+        description: "Danger",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: true,
+        steps: [{ type: "send_command", template: "flee" }],
+      },
+    ];
+    character.localDefinitions.timers = [
+      {
+        id: "timer-local",
+        enabled: true,
+        name: "pulse",
+        description: "Pulse",
+        group: "",
+        durationMs: 60000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "pulse-before" }],
+      },
+    ];
+
+    for (const [kind, label, definition] of [
+      [
+        "aliases",
+        "Shared aliases",
+        {
+          id: "alias-shared",
+          enabled: true,
+          trigger: "sharedalias",
+          description: "Shared alias",
+          group: "",
+          isRegex: false,
+          ignoreCase: true,
+          steps: [{ type: "send_command", template: "shared-alias-before" }],
+        },
+      ],
+      [
+        "triggers",
+        "Shared triggers",
+        {
+          id: "trigger-shared",
+          enabled: true,
+          pattern: "shared danger",
+          description: "Shared trigger",
+          group: "",
+          isRegex: false,
+          ignoreCase: false,
+          gag: false,
+          steps: [{ type: "send_command", template: "shared-trigger-before" }],
+        },
+      ],
+      [
+        "timers",
+        "Shared timers",
+        {
+          id: "timer-shared",
+          enabled: true,
+          name: "shared pulse",
+          description: "Shared timer",
+          group: "",
+          durationMs: 60000,
+          recurring: false,
+          autoStart: false,
+          steps: [{ type: "send_command", template: "shared-timer-before" }],
+        },
+      ],
+    ] as const) {
+      const setId = crypto.randomUUID();
+      character.configSetRefs[kind] = [setId];
+      graph.configurationSets[setId] = {
+        id: setId,
+        label,
+        kind,
+        revision: 1,
+        definitions: [definition],
+      };
+    }
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+}
+
 function settingsDialog(page: Page) {
   return page.getByRole("dialog", { name: "Settings" });
 }
@@ -347,7 +484,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save key mappings" }).click();
   await keys.getByRole("button", { name: "Edit F4" }).click();
   editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Enabled").uncheck();
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save key mappings" }).click();
   await keys.getByRole("button", { name: "Delete F4" }).click();
 
@@ -362,7 +499,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save highlights" }).click();
   await highlights.getByRole("button", { name: "Edit spark" }).click();
   editor = highlights.getByRole("region", { name: "Edit highlights" });
-  await editor.getByLabel("Enabled").uncheck();
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save highlights" }).click();
   await highlights.getByRole("button", { name: "Delete spark" }).click();
 
@@ -378,7 +515,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save functions" }).click();
   await functions.getByRole("button", { name: "Edit temporary" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
-  await editor.getByLabel("Enabled").uncheck();
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save functions" }).click();
   await functions.getByRole("button", { name: "Delete temporary" }).click();
 
@@ -535,7 +672,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     const group = settingsDialog(page).getByRole("group", { name: groupName });
     await group.getByRole("button", { name: `Edit ${label}` }).click();
     const activeEditor = group.getByRole("region", { name: `Edit ${groupName.toLowerCase()}` });
-    await activeEditor.getByLabel("Enabled").uncheck();
+    await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
     await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
     await group.getByRole("button", { name: `Delete ${label}` }).click();
   }
@@ -546,4 +683,223 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     );
   });
   expect(emptied).toEqual([0, 0, 0]);
+});
+
+test("Phase 2 edits automation definitions and updates live consumers", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+
+  const aliases = dialog.getByRole("group", { name: "Aliases" });
+  await expect(aliases.getByText("Shared: Shared aliases (revision 1)")).toBeVisible();
+  await aliases.getByRole("button", { name: "Edit allsteps" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  expect(
+    await editor
+      .getByLabel("Step type")
+      .evaluateAll((selects) => selects.map((select) => (select as HTMLSelectElement).value)),
+  ).toEqual([
+    "send_command",
+    "set_variable",
+    "show_message",
+    "script",
+    "wait",
+    "set_alias_enabled",
+    "set_trigger_enabled",
+    "set_timer_enabled",
+    "control_timer",
+    "play_sound",
+    "run_alias",
+    "call_function",
+  ]);
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  await aliases.getByRole("button", { name: "Edit quick" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Template").fill("inventory");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "Add aliases" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Trigger").fill("temporary alias");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "Edit temporary alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await aliases.getByRole("button", { name: "Delete temporary alias" }).click();
+
+  const triggers = dialog.getByRole("group", { name: "Triggers" });
+  await triggers.getByRole("button", { name: "Edit danger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Template").fill("retreat");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "Add triggers" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Pattern").fill("temporary trigger");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "Edit temporary trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await triggers.getByRole("button", { name: "Delete temporary trigger" }).click();
+
+  const timers = dialog.getByRole("group", { name: "Timers" });
+  await timers.getByRole("button", { name: "Edit pulse" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Duration (milliseconds)").fill("50");
+  await editor.getByLabel("Start automatically").check();
+  await editor.getByLabel("Template").fill("timer-after");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "Add timers" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Name").fill("temporary timer");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Template").fill("temporary");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "Edit temporary timer" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  await timers.getByRole("button", { name: "Delete temporary timer" }).click();
+
+  const persisted = await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1")!);
+  expect(persisted).not.toContain("timerHandles");
+  expect(persisted).not.toContain("automationVariables");
+
+  await dialog.getByRole("button", { name: "Close settings" }).click();
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("quick");
+  await input.press("Enter");
+  endpoint.sendText("danger\n");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(expect.arrayContaining(["inventory", "retreat", "timer-after"]));
+  await expect(page.getByLabel("Terminal output")).not.toContainText("danger");
+
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedAliases = settingsDialog(page).getByRole("group", { name: "Aliases" });
+  await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
+  await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 publishes shared automation definitions with stale protection", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const aliases = dialog.getByRole("group", { name: "Aliases" });
+  await aliases.getByRole("button", { name: "Edit sharedalias" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Template").fill("draft-shared-alias");
+
+  const externalResult = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const set = Object.values(graph.configurationSets).find(
+      (candidate) => (candidate as { kind: string }).kind === "aliases",
+    ) as { id: string; revision: number; definitions: Array<Record<string, unknown>> };
+    return (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              publishConfigurationSet(input: {
+                configSetId: string;
+                expectedRevision: number;
+                definitions: Array<Record<string, unknown>>;
+              }): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.configuration.publishConfigurationSet({
+      configSetId: set.id,
+      expectedRevision: set.revision,
+      definitions: set.definitions.map((definition) => ({
+        ...definition,
+        steps: [{ type: "send_command", template: "external-shared-alias" }],
+      })),
+    });
+  });
+  expect(externalResult.success).toBe(true);
+  await expect(
+    editor.getByText("This shared definition changed while you were editing it."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+  await expect(
+    aliases.getByText("Configuration set revision no longer matches the expected value."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Reload shared definition" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Template")).toHaveValue("external-shared-alias");
+  await editor.getByLabel("Template").fill("shared-alias-after");
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  const triggers = dialog.getByRole("group", { name: "Triggers" });
+  await triggers.getByRole("button", { name: "Edit shared danger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Template").fill("shared-trigger-after");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  const timers = dialog.getByRole("group", { name: "Timers" });
+  await timers.getByRole("button", { name: "Edit shared pulse" }).click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await editor.getByLabel("Duration (milliseconds)").fill("50");
+  await editor.getByLabel("Start automatically").check();
+  await editor.getByLabel("Template").fill("shared-timer-after");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+
+  const shared = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (Object.values(graph.configurationSets) as Array<{ kind: string }>).filter(({ kind }) =>
+      ["aliases", "triggers", "timers"].includes(kind),
+    );
+  });
+  expect(shared).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ kind: "aliases", revision: 3 }),
+      expect.objectContaining({ kind: "triggers", revision: 2 }),
+      expect.objectContaining({ kind: "timers", revision: 2 }),
+    ]),
+  );
+
+  await dialog.getByRole("button", { name: "Close settings" }).click();
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("sharedalias");
+  await input.press("Enter");
+  endpoint.sendText("shared danger\n");
+  await expect
+    .poll(() => endpoint.commands)
+    .toEqual(
+      expect.arrayContaining(["shared-alias-after", "shared-trigger-after", "shared-timer-after"]),
+    );
+
+  await page.reload();
+  await connect(page);
+  const reconnectedInput = page.getByLabel("Command input", { exact: true });
+  await reconnectedInput.fill("sharedalias");
+  await reconnectedInput.press("Enter");
+  await expect.poll(() => endpoint.commands).toContain("shared-alias-after");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  for (const [groupName, label] of [
+    ["Aliases", "sharedalias"],
+    ["Triggers", "shared danger"],
+    ["Timers", "shared pulse"],
+  ] as const) {
+    const group = settingsDialog(page).getByRole("group", { name: groupName });
+    await group.getByRole("button", { name: `Edit ${label}` }).click();
+    const activeEditor = group.getByRole("region", {
+      name: `Edit ${groupName.toLowerCase()}`,
+    });
+    await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
+    await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
+    await group.getByRole("button", { name: `Delete ${label}` }).click();
+  }
 });

@@ -3,16 +3,27 @@
   import { identityKeyForDefinition } from "../configuration/identity.ts";
   import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
   import type {
+    AliasDefinition,
+    AutomationStep,
+    ConfigKind,
     ConfigSourceMetadata,
     FunctionDefinition,
     HighlightDefinition,
     KeyMappingDefinition,
+    TimerDefinition,
+    TriggerDefinition,
   } from "../model/configuration.ts";
   import type { ConfigSetId } from "../model/ids.ts";
   import type { Session } from "../runtime/session.ts";
+  import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
 
-  type DirectKind = "keyMappings" | "highlights" | "functions";
-  type DirectDefinition = KeyMappingDefinition | HighlightDefinition | FunctionDefinition;
+  type Definition =
+    | AliasDefinition
+    | TriggerDefinition
+    | HighlightDefinition
+    | FunctionDefinition
+    | KeyMappingDefinition
+    | TimerDefinition;
   type Draft = {
     id: string;
     enabled: boolean;
@@ -29,11 +40,19 @@
     bold: boolean;
     name: string;
     script: string;
+    trigger: string;
+    pattern: string;
+    isRegex: boolean;
+    gag: boolean;
+    durationMs: number;
+    recurring: boolean;
+    autoStart: boolean;
+    steps: AutomationStep[];
   };
   type EditSource =
     { kind: "local" } | { kind: "shared-set"; configSetId: ConfigSetId; revision: number };
 
-  let { session, kind }: { session: Session; kind: DirectKind } = $props();
+  let { session, kind }: { session: Session; kind: ConfigKind } = $props();
   let snapshot = $state<CharacterConfigurationSnapshot>(
     untrack(() => session.configuration.getSnapshot()),
   );
@@ -44,7 +63,7 @@
   let editor = $state<HTMLElement>();
 
   const title = $derived(
-    kind === "keyMappings" ? "Key mappings" : kind === "highlights" ? "Highlights" : "Functions",
+    kind === "keyMappings" ? "Key mappings" : `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`,
   );
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
 
@@ -75,12 +94,20 @@
       bold: false,
       name: "",
       script: "",
+      trigger: "",
+      pattern: "",
+      isRegex: false,
+      gag: false,
+      durationMs: 1000,
+      recurring: false,
+      autoStart: false,
+      steps: [],
     };
   }
 
-  function draftFor(definition: DirectDefinition): Draft {
+  function draftFor(definition: Definition): Draft {
     const next = blankDraft();
-    Object.assign(next, definition);
+    Object.assign(next, structuredClone(definition));
     if ("style" in definition) {
       next.fg = definition.style.fg;
       next.bg = definition.style.bg;
@@ -89,7 +116,7 @@
     return next;
   }
 
-  function toDefinition(value: Draft): DirectDefinition {
+  function toDefinition(value: Draft): Definition {
     if (kind === "keyMappings") {
       return {
         id: value.id,
@@ -111,6 +138,44 @@
         style: { fg: value.fg.trim(), bg: value.bg.trim(), bold: value.bold },
       };
     }
+    if (kind === "aliases") {
+      return {
+        id: value.id,
+        enabled: value.enabled,
+        trigger: value.trigger.trim(),
+        description: value.description.trim(),
+        group: value.group.trim(),
+        isRegex: value.isRegex,
+        ignoreCase: value.ignoreCase,
+        steps: value.steps.map((step) => ({ ...step })),
+      };
+    }
+    if (kind === "triggers") {
+      return {
+        id: value.id,
+        enabled: value.enabled,
+        pattern: value.pattern.trim(),
+        description: value.description.trim(),
+        group: value.group.trim(),
+        isRegex: value.isRegex,
+        ignoreCase: value.ignoreCase,
+        gag: value.gag,
+        steps: value.steps.map((step) => ({ ...step })),
+      };
+    }
+    if (kind === "timers") {
+      return {
+        id: value.id,
+        enabled: value.enabled,
+        name: value.name.trim(),
+        description: value.description.trim(),
+        group: value.group.trim(),
+        durationMs: value.durationMs,
+        recurring: value.recurring,
+        autoStart: value.autoStart,
+        steps: value.steps.map((step) => ({ ...step })),
+      };
+    }
     return {
       id: value.id,
       enabled: value.enabled,
@@ -121,9 +186,11 @@
     };
   }
 
-  function labelFor(definition: DirectDefinition): string {
+  function labelFor(definition: Definition): string {
     if ("code" in definition) return definition.label || definition.code;
     if ("patternSource" in definition) return definition.patternSource;
+    if ("trigger" in definition) return definition.trigger;
+    if ("pattern" in definition) return definition.pattern;
     return definition.name;
   }
 
@@ -134,7 +201,7 @@
     return `Shared: ${set?.label ?? metadata.configSetId} (revision ${metadata.revision})`;
   }
 
-  function edit(definition: DirectDefinition, metadata: ConfigSourceMetadata): void {
+  function edit(definition: Definition, metadata: ConfigSourceMetadata): void {
     draft = draftFor(definition);
     source =
       metadata.kind === "shared-set"
@@ -161,16 +228,16 @@
     stale = false;
   }
 
-  function targetDefinitions(editSource: EditSource): DirectDefinition[] {
+  function targetDefinitions(editSource: EditSource): Definition[] {
     if (editSource.kind === "local") {
-      return structuredClone(snapshot.localDefinitions[kind]) as DirectDefinition[];
+      return structuredClone(snapshot.localDefinitions[kind]);
     }
     return structuredClone(
       snapshot.attachedConfigurationSets[editSource.configSetId]?.definitions ?? [],
-    ) as DirectDefinition[];
+    );
   }
 
-  function write(definitions: DirectDefinition[], editSource: EditSource) {
+  function write(definitions: Definition[], editSource: EditSource) {
     if (editSource.kind === "local") {
       return session.configuration.replaceLocalDefinitions(kind, definitions as never);
     }
@@ -214,7 +281,7 @@
     cancel();
   }
 
-  function remove(definition: DirectDefinition, metadata: ConfigSourceMetadata): void {
+  function remove(definition: Definition, metadata: ConfigSourceMetadata): void {
     if (metadata.kind === "builtin") return;
     const editSource: EditSource =
       metadata.kind === "local"
@@ -284,11 +351,38 @@
         <label>Foreground <input bind:value={draft.fg} required /></label>
         <label>Background <input bind:value={draft.bg} required /></label>
         <label><input type="checkbox" bind:checked={draft.bold} /> Bold</label>
-      {:else}
+      {:else if kind === "functions"}
         <label>Name <input bind:value={draft.name} required /></label>
         <label>Description <input bind:value={draft.description} /></label>
         <label>Group <input bind:value={draft.group} /></label>
         <label>Script <textarea bind:value={draft.script} required></textarea></label>
+      {:else}
+        {#if kind === "aliases"}
+          <label>Trigger <input bind:value={draft.trigger} required /></label>
+        {:else if kind === "triggers"}
+          <label>Pattern <input bind:value={draft.pattern} required /></label>
+          <label><input type="checkbox" bind:checked={draft.gag} /> Gag matching output</label>
+        {:else}
+          <label>Name <input bind:value={draft.name} required /></label>
+          <label
+            >Duration (milliseconds) <input
+              type="number"
+              min="0"
+              bind:value={draft.durationMs}
+              required
+            /></label
+          >
+          <label><input type="checkbox" bind:checked={draft.recurring} /> Recurring</label>
+          <label><input type="checkbox" bind:checked={draft.autoStart} /> Start automatically</label
+          >
+        {/if}
+        <label>Description <input bind:value={draft.description} /></label>
+        <label>Group <input bind:value={draft.group} /></label>
+        {#if kind !== "timers"}
+          <label><input type="checkbox" bind:checked={draft.isRegex} /> Regular expression</label>
+          <label><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label>
+        {/if}
+        <AutomationStepsEditor bind:steps={draft.steps} />
       {/if}
       {#if stale}
         <p class="error">This shared definition changed while you were editing it.</p>

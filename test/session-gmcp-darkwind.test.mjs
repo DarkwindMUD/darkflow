@@ -143,6 +143,31 @@ test("Char.Status accepts MUD lifestyle strings without coercion", async (t) => 
   assert.equal(diagnostics.snapshot().suppressedEvents, 0);
 });
 
+test("Step 6 information package validators accept representative server payloads", async (t) => {
+  const { lookupGmcpValidator } = await loadDarkwindModules(t);
+  const fixtures = {
+    Group: { groupname: "Expedition", members: [{ name: "Nacho", info: { hp: 10, maxhp: 20 } }] },
+    "Darkwind.Char.Avatar": { url: "/assets/avatar.png", name: "Nacho" },
+    "Darkwind.Divine": { patron: "mitra", pressure_scale: { mitra: 100 } },
+    "Darkwind.Sky": { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } },
+    "Darkwind.GuildVitals": { items: [{ id: "heat", label: "Heat", cur: 1, max: 10 }] },
+    "Darkwind.XPMon": { active: 1, xp: 25 },
+  };
+
+  for (const [packageName, payload] of Object.entries(fixtures)) {
+    const validator = lookupGmcpValidator(packageName);
+    assert.ok(validator, `expected validator for ${packageName}`);
+    assert.equal(validator(payload).success, true, `${packageName} rejected valid payload`);
+  }
+
+  assert.equal(lookupGmcpValidator("Group")({ members: [{ name: 1 }] }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Char.Avatar")({ url: 1 }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Divine")({ pressure_scale: { mitra: "high" } }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Sky")({ game_now: "late" }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.GuildVitals")({ items: [{ id: 1 }] }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.XPMon")({ active: "yes" }).success, false);
+});
+
 test("server-native room and MapData2 wire values validate without coercion", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId, lookupGmcpValidator } =
     await loadDarkwindModules(t);

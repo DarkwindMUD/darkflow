@@ -315,11 +315,11 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
         ...(payload.features ?? {}),
       },
     });
+    this.#subscriptions = subscriptions;
     const sent = this.send(GMCP_SUBSCRIPTIONS_PACKAGE, subscriptions);
     if (!sent) {
       return false;
     }
-    this.#subscriptions = subscriptions;
     if (payload.features && payload.features.announcementsList) {
       this.#subscriptions.features.announcementsList = false;
     }

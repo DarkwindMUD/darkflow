@@ -738,6 +738,7 @@ test("connect sends handshake packages with login then reconnect reason", async 
 
   const graph = buildMinimalGraph(modules);
   const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  harness.session.information.setVisiblePanels(["avatar"]);
 
   harness.session.connect();
   const socket = harness.latestSocket();
@@ -749,6 +750,7 @@ test("connect sends handshake packages with login then reconnect reason", async 
     ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"],
   );
   assert.equal(packages[2]?.data?.reason, "login");
+  assert.equal(packages[2]?.data?.panels?.avatar, true);
 
   socket.clearSent();
   socket.close(1006, "lost");

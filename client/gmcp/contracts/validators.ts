@@ -26,6 +26,14 @@ import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./r
 import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client.ts";
 import type { CompletionRequest, CompletionResult } from "./completion.ts";
 import type {
+  DarkwindAvatar,
+  DarkwindDivine,
+  DarkwindGuildVitals,
+  DarkwindSky,
+  DarkwindXpMon,
+  Group,
+} from "./information.ts";
+import type {
   DarkwindIdeOpen,
   DarkwindIdeOpenChunk,
   DarkwindIdeOpenFinish,
@@ -85,6 +93,12 @@ export const validateDarkwindClientNaws = typia.createValidate<DarkwindClientNaw
 export const validateDarkwindSessionRecovered = typia.createValidate<DarkwindSessionRecovered>();
 export const validateCompletionRequest = typia.createValidate<CompletionRequest>();
 export const validateCompletionResult = typia.createValidate<CompletionResult>();
+export const validateGroup = typia.createValidate<Group>();
+export const validateDarkwindAvatar = typia.createValidate<DarkwindAvatar>();
+export const validateDarkwindDivine = typia.createValidate<DarkwindDivine>();
+export const validateDarkwindSky = typia.createValidate<DarkwindSky>();
+export const validateDarkwindGuildVitals = typia.createValidate<DarkwindGuildVitals>();
+export const validateDarkwindXpMon = typia.createValidate<DarkwindXpMon>();
 
 /** Typia validator invoked by canonical inbound package name. */
 export type GmcpPayloadValidator = (input: unknown) => typia.IValidation<unknown>;
@@ -133,6 +147,12 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.MapData2.Reset")]: validateMapData2Reset,
   [canonicalPackageName("Darkwind.Session.Recovered")]: validateDarkwindSessionRecovered,
   [canonicalPackageName("Darkwind.Completion.Result")]: validateCompletionResult,
+  [canonicalPackageName("Group")]: validateGroup,
+  [canonicalPackageName("Darkwind.Char.Avatar")]: validateDarkwindAvatar,
+  [canonicalPackageName("Darkwind.Divine")]: validateDarkwindDivine,
+  [canonicalPackageName("Darkwind.Sky")]: validateDarkwindSky,
+  [canonicalPackageName("Darkwind.GuildVitals")]: validateDarkwindGuildVitals,
+  [canonicalPackageName("Darkwind.XPMon")]: validateDarkwindXpMon,
 };
 
 /** Returns the structural validator for a canonical package name, if modeled. */
@@ -148,8 +168,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Core.Hello",
   "Core.Ping",
   "Game",
-  "Group",
-  "Darkwind.Char.Avatar",
   "Darkwind.Combat.State",
   "Darkwind.Combat.Events",
   "Darkwind.Combat.Event",
@@ -162,10 +180,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Visual.Event",
   "Darkwind.Visual.Preview",
   "Darkwind.Room.Image",
-  "Darkwind.Divine",
-  "Darkwind.Sky",
-  "Darkwind.GuildVitals",
-  "Darkwind.XPMon",
   "Darkwind.Snoop.Open",
   "Darkwind.Snoop.Append",
   "Darkwind.Snoop.Status",

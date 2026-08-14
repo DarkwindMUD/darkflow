@@ -18,6 +18,7 @@ import { createResourceScope } from "./resource-scope.ts";
 import { createSessionRuntimeState } from "./runtime-state.ts";
 import { createAutomationRuntimeState, type AutomationRuntimeState } from "./automation-runtime.ts";
 import { createSession, type Session } from "./session.ts";
+import { createSessionInformation } from "./information.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -185,6 +186,7 @@ export function createSessionFromState(
 
   const automationRuntime = createAutomationRuntimeState(scope);
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
+  const information = createSessionInformation(gmcp, scope, eventBus);
 
   const configurationListeners = new Set<
     (snapshot: ReturnType<typeof runtimeState.getEffectiveConfiguration>) => void
@@ -217,6 +219,7 @@ export function createSessionFromState(
       configurationListeners.add(listener);
       return () => configurationListeners.delete(listener);
     },
+    information,
   });
 
   return {

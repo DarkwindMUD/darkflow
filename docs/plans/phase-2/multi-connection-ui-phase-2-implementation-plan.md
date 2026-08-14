@@ -298,6 +298,9 @@ application/server/character/set/runtime/world owner is still unclear.
 
 ### Step 6 — Extract the panel boundary through core information panels
 
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-6-implementation-plan.md`](multi-connection-ui-phase-2-step-6-implementation-plan.md).
+
 **Depends on:** Steps 2-3 and the frozen Phase 1 GMCP policy.
 
 **Outcome:** Port the core character/status, group, inventory, quest, achievement,

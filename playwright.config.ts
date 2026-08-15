@@ -21,7 +21,8 @@ export default defineConfig({
     },
     {
       name: "mobile-chromium",
-      testMatch: /phase2-(workspace|terminal|settings|information-panels|interactions)\.spec\.ts/,
+      testMatch:
+        /phase2-(workspace|terminal|settings|information-panels|interactions|world)\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 390, height: 844 },

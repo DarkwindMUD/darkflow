@@ -4,11 +4,15 @@
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
   import type { Session } from "../runtime/session.ts";
+  import type { WorldPanelId } from "../runtime/world.ts";
   import { createWorkspace } from "./dockview-workspace";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
+  import MapPanel from "./MapPanel.svelte";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
+  import RoomImagePanel from "./RoomImagePanel.svelte";
+  import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
   import ServerWindowPanel from "./ServerWindowPanel.svelte";
@@ -66,12 +70,43 @@
       state: {},
       placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
     }));
+  const worldPanels: readonly (WorkspacePanelSpec & { id: WorldPanelId })[] = [
+    {
+      id: "map",
+      kind: "map",
+      title: "Map",
+      state: { mapZoom: 1 },
+      placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+    },
+    {
+      id: "roomImage",
+      kind: "roomImage",
+      title: "Room Image",
+      state: {},
+      placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+    },
+    {
+      id: "roomPlaylist",
+      kind: "roomPlaylist",
+      title: "Jukebox",
+      state: {},
+      placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+    },
+  ];
+  const areaMap: WorkspacePanelSpec & { id: WorldPanelId } = {
+    id: "areaMap",
+    kind: "areaMap",
+    title: "Area Map",
+    state: { mapZoom: 1 },
+    placement: { kind: "floating", bounds: { left: 40, top: 40, width: 520, height: 420 } },
+  };
 
   let host: HTMLElement;
   let workspace: Workspace | undefined;
   let status = $state("Loading workspace...");
   let placeholderOpen = $state(true);
   let openInformationPanelIds = $state<string[]>([]);
+  let openWorldPanelIds = $state<string[]>([]);
   let sheetOpen = $state(false);
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
@@ -86,6 +121,11 @@
     const visible = informationPanels.filter((panel) => workspace?.hasPanel(panel.id));
     openInformationPanelIds = visible.map((panel) => panel.id);
     session.information.setVisiblePanels(visible.map((panel) => panel.id));
+    const visibleWorldPanels = [...worldPanels, areaMap].filter((panel) =>
+      workspace?.hasPanel(panel.id),
+    );
+    openWorldPanelIds = visibleWorldPanels.map((panel) => panel.id);
+    session.world.setVisiblePanels(visibleWorldPanels.map((panel) => panel.id));
   }
 
   function informationPanelOpen(panel: WorkspacePanelSpec): boolean {
@@ -93,6 +133,21 @@
   }
 
   async function toggleInformationPanel(panel: WorkspacePanelSpec): Promise<void> {
+    if (!workspace) return;
+    if (workspace.hasPanel(panel.id)) {
+      await workspace.removePanel(panel.id);
+    } else {
+      workspace.addOrUpdatePanel(panel);
+      workspace.activatePanel(panel.id);
+    }
+    syncVisiblePanels();
+  }
+
+  function worldPanelOpen(panel: WorkspacePanelSpec): boolean {
+    return openWorldPanelIds.includes(panel.id);
+  }
+
+  async function toggleWorldPanel(panel: WorkspacePanelSpec): Promise<void> {
     if (!workspace) return;
     if (workspace.hasPanel(panel.id)) {
       await workspace.removePanel(panel.id);
@@ -191,6 +246,10 @@
       terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
       "server-window": { component: ServerWindowPanel, session },
       fishing: { component: FishingPanel, session },
+      map: { component: MapPanel, session },
+      areaMap: { component: MapPanel, session },
+      roomImage: { component: RoomImagePanel, session },
+      roomPlaylist: { component: RoomPlaylistPanel, preserveDomWhenHidden: true, session },
       ...Object.fromEntries(
         informationPanels.map((panel) => [
           panel.kind,
@@ -217,7 +276,12 @@
         : "";
     const restored =
       snapshot !== null &&
-      currentWorkspace.restore(snapshot, [terminal, placeholder, ...informationPanels]);
+      currentWorkspace.restore(snapshot, [
+        terminal,
+        placeholder,
+        ...informationPanels,
+        ...worldPanels,
+      ]);
     if (!restored) {
       currentWorkspace.addOrUpdatePanel(terminal);
       currentWorkspace.addOrUpdatePanel(placeholder);
@@ -242,9 +306,14 @@
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
     const serverPanelIds = new Map<string, string>();
     let fishingPanelOpen = false;
+    let areaMapPanelOpen = false;
     let interactionSnapshot = session.interactions.getSnapshot();
+    let worldSnapshot = session.world.getSnapshot();
+    let seenBrowseOpenVersion = 0;
+    let seenPlaylistOpenVersion = 0;
     let dismissedFishingEnd: typeof interactionSnapshot.fishing.end = null;
-    const hasTransientPanels = () => serverPanelIds.size > 0 || fishingPanelOpen;
+    const hasTransientPanels = () =>
+      serverPanelIds.size > 0 || fishingPanelOpen || areaMapPanelOpen;
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -269,6 +338,7 @@
       cancelPendingSave();
       const transientPanelIds = [...serverPanelIds.values()];
       const hadFishingPanel = fishingPanelOpen;
+      const hadAreaMapPanel = areaMapPanelOpen;
       for (const windowId of serverPanelIds.keys()) session.interactions.closeWindow(windowId);
       if (interactionSnapshot.fishing.open) {
         session.interactions.cancelFishing(interactionSnapshot.fishing.open.session);
@@ -276,12 +346,15 @@
       await Promise.all([
         ...transientPanelIds.map((panelId) => currentWorkspace.removePanel(panelId)),
         ...(hadFishingPanel ? [currentWorkspace.removePanel("fishing")] : []),
+        ...(hadAreaMapPanel ? [currentWorkspace.removePanel(areaMap.id)] : []),
       ]);
       serverPanelIds.clear();
       fishingPanelOpen = false;
+      areaMapPanelOpen = false;
       await currentWorkspace.removePanel(placeholder.id);
       await currentWorkspace.removePanel(terminal.id);
       await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
+      await Promise.all(worldPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       currentWorkspace.addOrUpdatePanel(terminal);
       currentWorkspace.addOrUpdatePanel(placeholder);
       placeholderOpen = true;
@@ -347,6 +420,34 @@
 
       if (hasTransientPanels()) cancelPendingSave();
     };
+    const syncWorldPanels = (next: typeof worldSnapshot) => {
+      worldSnapshot = next;
+      let visibilityChanged = false;
+      if (next.browseOpenVersion > seenBrowseOpenVersion) {
+        seenBrowseOpenVersion = next.browseOpenVersion;
+        const exists = currentWorkspace.hasPanel(areaMap.id);
+        visibilityChanged = !exists;
+        areaMapPanelOpen = true;
+        if (!exists) currentWorkspace.addOrUpdatePanel(areaMap);
+        currentWorkspace.activatePanel(areaMap.id);
+      } else if (areaMapPanelOpen && !next.browseSource.isActive()) {
+        areaMapPanelOpen = false;
+        visibilityChanged = true;
+        void currentWorkspace.removePanel(areaMap.id);
+      }
+      if (next.playlistOpenVersion > seenPlaylistOpenVersion) {
+        seenPlaylistOpenVersion = next.playlistOpenVersion;
+        const playlistPanel = worldPanels.find((panel) => panel.id === "roomPlaylist");
+        if (playlistPanel) {
+          const exists = currentWorkspace.hasPanel(playlistPanel.id);
+          visibilityChanged ||= !exists;
+          if (!exists) currentWorkspace.addOrUpdatePanel(playlistPanel);
+          currentWorkspace.activatePanel(playlistPanel.id);
+        }
+      }
+      if (hasTransientPanels()) cancelPendingSave();
+      if (visibilityChanged) syncVisiblePanels();
+    };
     const unsubscribe = currentWorkspace.subscribeLayout((next) => {
       for (const [windowId, panelId] of serverPanelIds) {
         if (!currentWorkspace.hasPanel(panelId) && interactionSnapshot.windows[windowId]) {
@@ -359,23 +460,43 @@
           dismissedFishingEnd = interactionSnapshot.fishing.end;
         }
       }
+      if (areaMapPanelOpen && !currentWorkspace.hasPanel(areaMap.id)) {
+        areaMapPanelOpen = false;
+      }
       if (hasTransientPanels()) cancelPendingSave();
       else scheduleSave(next);
       syncVisiblePanels();
     });
     const unsubscribeInteractions = session.interactions.subscribe(syncInteractionPanels);
+    const unsubscribeWorld = session.world.subscribe(syncWorldPanels);
+    const saveMapPanelState = (event: Event) => {
+      const detail = (event as CustomEvent<{ mapZoom?: unknown; panelId?: unknown }>).detail;
+      const panel = [...worldPanels, areaMap].find(({ id }) => id === detail?.panelId);
+      if (!panel) return;
+      currentWorkspace.addOrUpdatePanel({
+        id: panel.id,
+        kind: panel.kind,
+        title: panel.title,
+        state: { ...panel.state, mapZoom: detail.mapZoom },
+      });
+      if (panel.id === "map") scheduleSave(currentWorkspace.save());
+    };
     const flushOnLeave = () => flush();
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
     window.addEventListener("darkflow:reset-workspace", resetWorkspace);
+    host.addEventListener("darkflow:map-panel-state", saveMapPanelState);
 
     return () => {
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
+      host.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
+      unsubscribeWorld();
       unsubscribeInteractions();
       unsubscribe();
       session.information.setVisiblePanels([]);
+      session.world.setVisiblePanels([]);
       flush();
       workspace = undefined;
       void currentWorkspace.dispose();
@@ -405,6 +526,15 @@
         onclick={() => toggleInformationPanel(panel)}
       >
         {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+      </button>
+    {/each}
+    {#each worldPanels as panel (panel.id)}
+      <button
+        type="button"
+        aria-pressed={worldPanelOpen(panel)}
+        onclick={() => toggleWorldPanel(panel)}
+      >
+        {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
       </button>
     {/each}
   </div>
@@ -450,6 +580,15 @@
           onclick={() => selectPanel(() => void toggleInformationPanel(panel))}
         >
           {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+        </button>
+      {/each}
+      {#each worldPanels as panel (panel.id)}
+        <button
+          type="button"
+          aria-pressed={worldPanelOpen(panel)}
+          onclick={() => selectPanel(() => void toggleWorldPanel(panel))}
+        >
+          {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
         </button>
       {/each}
     </div>

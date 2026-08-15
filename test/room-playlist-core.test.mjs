@@ -42,6 +42,12 @@ test('normalizes disabled and malformed playlist state safely', () => {
   assert.equal(state.enabled, true);
   assert.deepEqual(state.queue, []);
   assert.equal(state.playback.current, null);
+  const denied = normalizePlaylistState({
+    enabled: 1,
+    permissions: { add: 0, moderate: 0 },
+  });
+  assert.equal(denied.permissions.add, false);
+  assert.equal(denied.permissions.moderate, false);
 });
 
 test('computes the shared playhead from server start time', () => {

@@ -3,6 +3,7 @@ import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
 import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame.ts";
 import type { CoreHello } from "./contracts/core.ts";
 import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
+import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2.ts";
 import type {
   DarkwindAnnouncementsMarkRead,
   DarkwindFishingCast,
@@ -18,10 +19,15 @@ import type {
   DarkwindWindowClosed,
   DarkwindWindowSubmit,
 } from "./contracts/darkwind-window.ts";
+import type { DarkwindRoomPlaylistAction, DarkwindRoomPlaylistReport } from "./contracts/world.ts";
 import {
+  validateDarkwindRoomPlaylistAction,
+  validateDarkwindRoomPlaylistReport,
   lookupGmcpValidator,
   validateCompletionRequest,
   validateCompletionResult,
+  validateMapData2Browse,
+  validateMapData2Sync,
 } from "./contracts/validators.ts";
 
 const GMCP_MEDIA_REFRESH_PACKAGE = "Darkwind.Client.RefreshMedia";
@@ -103,6 +109,10 @@ export interface SessionGmcpBus {
   sendHandshake(clientInfo: CoreHello): boolean;
   sendSubscriptions(payload?: Partial<GmcpSubscriptionPayload>): boolean;
   requestMediaRefresh(): boolean;
+  sendMapData2Sync(payload: MapData2Sync): boolean;
+  sendMapData2Browse(payload: MapData2Browse): boolean;
+  sendRoomPlaylistAction(payload: DarkwindRoomPlaylistAction): boolean;
+  sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean;
   requestChannelPlayers(): boolean;
   enableChannel(channel: string): boolean;
   requestCompletion(request: CompletionRequest): boolean;
@@ -339,7 +349,10 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
     const subscriptions = normalizeSubscriptionPayload({
       ...this.#subscriptions,
       ...payload,
-      panels: payload.panels ?? this.#subscriptions.panels,
+      panels: {
+        ...this.#subscriptions.panels,
+        ...(payload.panels ?? {}),
+      },
       features: {
         ...this.#subscriptions.features,
         ...(payload.features ?? {}),
@@ -358,6 +371,30 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
 
   requestMediaRefresh(): boolean {
     return this.send(GMCP_MEDIA_REFRESH_PACKAGE);
+  }
+
+  sendMapData2Sync(payload: MapData2Sync): boolean {
+    return validateMapData2Sync(payload).success
+      ? this.send("Darkwind.MapData2.Sync", payload)
+      : false;
+  }
+
+  sendMapData2Browse(payload: MapData2Browse): boolean {
+    return validateMapData2Browse(payload).success
+      ? this.send("Darkwind.MapData2.Browse", payload)
+      : false;
+  }
+
+  sendRoomPlaylistAction(payload: DarkwindRoomPlaylistAction): boolean {
+    return validateDarkwindRoomPlaylistAction(payload).success
+      ? this.send("Darkwind.Room.Playlist.Action", payload)
+      : false;
+  }
+
+  sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean {
+    return validateDarkwindRoomPlaylistReport(payload).success
+      ? this.send("Darkwind.Room.Playlist.Report", payload)
+      : false;
   }
 
   requestChannelPlayers(): boolean {
@@ -467,7 +504,10 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
     const subscriptions = normalizeSubscriptionPayload({
       ...this.#subscriptions,
       ...payload,
-      panels: payload.panels ?? this.#subscriptions.panels,
+      panels: {
+        ...this.#subscriptions.panels,
+        ...(payload.panels ?? {}),
+      },
       features: {
         ...this.#subscriptions.features,
         ...(payload.features ?? {}),

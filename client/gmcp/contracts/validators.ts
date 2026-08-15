@@ -51,10 +51,12 @@ import type {
 } from "./darkwind-ide.ts";
 import type {
   MapData2Area,
+  MapData2Browse,
   MapData2BrowseArea,
   MapData2Current,
   MapData2Error,
   MapData2Reset,
+  MapData2Sync,
   MapData2Update,
 } from "./darkwind-map-data-v2.ts";
 import type {
@@ -82,6 +84,13 @@ import type {
   DarkwindSnoopOpen,
   DarkwindSnoopStatus,
 } from "./interactions.ts";
+import type {
+  DarkwindRoomImage,
+  DarkwindRoomPlaylistAction,
+  DarkwindRoomPlaylistOpen,
+  DarkwindRoomPlaylistReport,
+  DarkwindRoomPlaylistState,
+} from "./world.ts";
 
 export const validateCoreSupports = typia.createValidate<CoreSupportsPayload>();
 export const validateCharVitals = typia.createValidate<CharVitals>();
@@ -118,6 +127,15 @@ export const validateMapData2Update = typia.createValidate<MapData2Update>();
 export const validateMapData2Error = typia.createValidate<MapData2Error>();
 export const validateMapData2BrowseArea = typia.createValidate<MapData2BrowseArea>();
 export const validateMapData2Reset = typia.createValidate<MapData2Reset>();
+export const validateMapData2Sync = typia.createValidate<MapData2Sync>();
+export const validateMapData2Browse = typia.createValidate<MapData2Browse>();
+export const validateDarkwindRoomImage = typia.createValidate<DarkwindRoomImage>();
+export const validateDarkwindRoomPlaylistState = typia.createValidate<DarkwindRoomPlaylistState>();
+export const validateDarkwindRoomPlaylistOpen = typia.createValidate<DarkwindRoomPlaylistOpen>();
+export const validateDarkwindRoomPlaylistAction =
+  typia.createValidate<DarkwindRoomPlaylistAction>();
+export const validateDarkwindRoomPlaylistReport =
+  typia.createValidate<DarkwindRoomPlaylistReport>();
 export const validateDarkwindClientNaws = typia.createValidate<DarkwindClientNaws>();
 export const validateDarkwindSessionRecovered = typia.createValidate<DarkwindSessionRecovered>();
 export const validateCompletionRequest = typia.createValidate<CompletionRequest>();
@@ -206,6 +224,9 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.MapData2.Error")]: validateMapData2Error,
   [canonicalPackageName("Darkwind.MapData2.BrowseArea")]: validateMapData2BrowseArea,
   [canonicalPackageName("Darkwind.MapData2.Reset")]: validateMapData2Reset,
+  [canonicalPackageName("Darkwind.Room.Image")]: validateDarkwindRoomImage,
+  [canonicalPackageName("Darkwind.Room.Playlist.State")]: validateDarkwindRoomPlaylistState,
+  [canonicalPackageName("Darkwind.Room.Playlist.Open")]: validateDarkwindRoomPlaylistOpen,
   [canonicalPackageName("Darkwind.Session.Recovered")]: validateDarkwindSessionRecovered,
   [canonicalPackageName("Darkwind.Completion.Result")]: validateCompletionResult,
   [canonicalPackageName("Group")]: validateGroup,
@@ -268,12 +289,7 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Visual.Events",
   "Darkwind.Visual.Event",
   "Darkwind.Visual.Preview",
-  "Darkwind.Room.Image",
   "Darkwind.Sound",
   "Darkwind.Lag.Get",
   "Darkwind.StreetSamurai",
-  "Darkwind.Room.Playlist.State",
-  "Darkwind.Room.Playlist.Open",
-  "Darkwind.Room.Playlist.Action",
-  "Darkwind.Room.Playlist.Report",
 ];

@@ -547,8 +547,18 @@ test("Darkwind.MapData2 accepts v1 and v2 wire shapes", async (t) => {
 
   assert.equal(
     lookupGmcpValidator("Darkwind.MapData2.Error")({
+      protocol: 2,
+      code: "current_unavailable",
+      reason: "refresh_failed",
+      area: "Darkwind",
       restart: true,
+      current: 1,
+      unavailable: 1,
+      mapEpoch: "1783612800-123456",
+      areaGeneration: 3,
       retryAfterMs: 500,
+      syncId: 0,
+      fromCursor: 0,
     }).success,
     true,
   );
@@ -581,6 +591,144 @@ test("Darkwind.MapData2 accepts v1 and v2 wire shapes", async (t) => {
     }).success,
     true,
   );
+});
+
+test("Step 8 world contracts accept live mudlib shapes and reject malformed frames", async (t) => {
+  const {
+    lookupGmcpValidator,
+    unmodeledGmcpPackageNames,
+    validateMapData2Browse,
+    validateMapData2Sync,
+    validateDarkwindRoomPlaylistAction,
+    validateDarkwindRoomPlaylistReport,
+  } = await loadDarkwindModules(t);
+  const roomId = 2599838393621098;
+  const entry = {
+    id: 7,
+    video_id: "dQw4w9WgXcQ",
+    title: "Current song",
+    added_by: "Nacho",
+    duration: 212,
+  };
+  const state = {
+    enabled: 1,
+    room_id: roomId,
+    revision: 12,
+    server_time: 1784700000,
+    name: "Temple Jukebox",
+    playback: {
+      status: "playing",
+      position: 35,
+      start_at: 1784699990,
+      current: 0,
+    },
+    queue: [{ ...entry, can_remove: 0 }],
+    skip_votes: 1,
+    skip_needed: 2,
+    permissions: { add: 1, moderate: 0 },
+  };
+
+  assert.equal(
+    lookupGmcpValidator("Darkwind.Room.Image")({
+      url: "https://media.darkwind.org/rooms/temple.jpg",
+      name: "Temple Yard",
+    }).success,
+    true,
+  );
+  assert.equal(lookupGmcpValidator("Darkwind.Room.Image")({ name: "No URL" }).success, false);
+
+  for (const packageName of [
+    "Darkwind.Room.Playlist.State",
+    "Darkwind.Room.Playlist.Open",
+  ]) {
+    const validator = lookupGmcpValidator(packageName);
+    assert.ok(validator);
+    assert.equal(validator(state).success, true);
+    assert.equal(
+      validator({ enabled: 0, room_id: String(roomId), server_time: 1784700000 }).success,
+      true,
+    );
+    assert.equal(validator({ ...state, enabled: 2 }).success, false);
+    assert.equal(
+      validator({
+        ...state,
+        playback: { ...state.playback, current: null },
+      }).success,
+      false,
+    );
+  }
+
+  assert.equal(
+    validateMapData2Sync({
+      protocol: 2,
+      state: 1,
+      mapEpoch: "1783612800-123456",
+      syncId: "context-1",
+      fromCursor: 0,
+    }).success,
+    true,
+  );
+  assert.equal(validateMapData2Sync({ protocol: 2 }).success, false);
+  assert.equal(
+    validateMapData2Sync({
+      protocol: 2,
+      area: "Darkwind",
+      generation: 3,
+      since: 40,
+      snapshotVersion: 91,
+      cursor: roomId,
+      fromCursor: roomId,
+      syncId: "sync-1",
+    }).success,
+    true,
+  );
+  assert.equal(validateMapData2Sync({ area: "Darkwind", version: 40, offset: 100 }).success, true);
+  assert.equal(validateMapData2Browse({ catalog: "darkwind.overview", offset: 100 }).success, true);
+  assert.equal(validateMapData2Browse({ catalog: "darkwind.overview", offset: "100" }).success, false);
+
+  assert.equal(
+    validateDarkwindRoomPlaylistAction({
+      room_id: roomId,
+      revision: 12,
+      action: "move",
+      from: 2,
+      to: 1,
+    }).success,
+    true,
+  );
+  assert.equal(
+    validateDarkwindRoomPlaylistAction({ room_id: roomId, revision: 12, action: "clear" })
+      .success,
+    false,
+  );
+  assert.equal(
+    validateDarkwindRoomPlaylistReport({
+      room_id: String(roomId),
+      revision: 12,
+      entry_id: entry.id,
+      report: "ended",
+    }).success,
+    true,
+  );
+  assert.equal(
+    validateDarkwindRoomPlaylistReport({
+      room_id: roomId,
+      revision: 12,
+      entry_id: entry.id,
+      report: "ready",
+    }).success,
+    false,
+  );
+
+  for (const packageName of [
+    "Darkwind.Room.Image",
+    "Darkwind.Room.Playlist.State",
+    "Darkwind.Room.Playlist.Open",
+    "Darkwind.Room.Playlist.Action",
+    "Darkwind.Room.Playlist.Report",
+  ]) {
+    assert.equal(unmodeledGmcpPackageNames.includes(packageName), false);
+  }
 });
 
 test("Darkwind.Client.NAWS and Session.Recovered contracts", async (t) => {

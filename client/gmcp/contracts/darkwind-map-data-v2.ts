@@ -36,6 +36,8 @@ export interface MapData2Current extends MapData2RoomRecord {
   areaName?: string;
   liveExits?: Record<string, MapData2RoomId>;
   liveDoors?: Record<string, number>;
+  syncId?: string | 0;
+  fromCursor?: MapData2RoomId;
 }
 
 /** Darkwind.MapData2.Area inbound payload (docs/gmcp-darkwind-mapdata-v2.md:128-131). */
@@ -66,13 +68,25 @@ export interface MapData2Update {
   version?: number;
   offset?: number;
   more?: MapData2WireBoolean;
+  syncId?: string | 0;
+  fromCursor?: MapData2RoomId;
   [key: string]: unknown;
 }
 
 /** Darkwind.MapData2.Error inbound payload (docs/gmcp-darkwind-mapdata-v2.md:122-124). */
 export interface MapData2Error {
+  protocol?: number;
+  code?: string;
+  reason?: string;
+  area?: string;
   restart?: MapData2WireBoolean;
+  current?: MapData2WireBoolean;
+  unavailable?: MapData2WireBoolean;
+  mapEpoch?: string;
+  areaGeneration?: number;
   retryAfterMs?: number;
+  syncId?: string | 0;
+  fromCursor?: MapData2RoomId;
   [key: string]: unknown;
 }
 
@@ -97,21 +111,40 @@ export interface MapData2Reset {
   [key: string]: unknown;
 }
 
-/** Darkwind.MapData2.Sync outbound payload (docs/gmcp-darkwind-mapdata-v2.md:86-95). */
-export interface MapData2Sync {
-  area: string;
+interface MapData2SyncCorrelation {
   mapEpoch?: string;
+  syncId?: string;
+  cursor?: MapData2RoomId;
+  fromCursor?: MapData2RoomId;
+}
+
+/** Context-only Darkwind.MapData2.Sync request used to recover Current. */
+export type MapData2ContextSync = MapData2SyncCorrelation &
+  (
+    | { protocol: 2; current: true | 1; state?: MapData2WireBoolean }
+    | { protocol: 2; state: true | 1; current?: MapData2WireBoolean }
+  );
+
+/** Area Darkwind.MapData2.Sync request for v1 or correlated v2 paging. */
+export interface MapData2AreaSync extends MapData2SyncCorrelation {
+  area: string;
+  protocol?: 2;
+  current?: MapData2WireBoolean;
+  state?: MapData2WireBoolean;
   generation?: number;
   since?: number;
   snapshotVersion?: number;
-  cursor?: string | number;
   version?: number;
   offset?: number;
   [key: string]: unknown;
 }
 
+/** Darkwind.MapData2.Sync outbound payload (docs/gmcp-darkwind-mapdata-v2.md:86-95). */
+export type MapData2Sync = MapData2ContextSync | MapData2AreaSync;
+
 /** Darkwind.MapData2.Browse outbound payload (docs/gmcp-darkwind-mapdata-v2.md:149). */
 export interface MapData2Browse {
   catalog: string;
+  offset?: number;
   [key: string]: unknown;
 }

@@ -2,6 +2,7 @@ import "./dockview-styles.js";
 
 import {
   createDockview,
+  type GroupPanelPartInitParameters,
   type IContentRenderer,
   type ITabRenderer,
   type Parameters as DockviewParameters,
@@ -36,6 +37,7 @@ interface DockviewPanelLike {
     setSize(size: { width?: number; height?: number }): void;
     setTitle(title: string): void;
     setActive(): void;
+    updateParameters(parameters: PanelState): void;
   };
   group: unknown;
 }
@@ -107,11 +109,12 @@ class SvelteDockviewRenderer implements IContentRenderer {
     this.diagnostics.registerHost(this.element);
   }
 
-  init(): void {
+  init(parameters: GroupPanelPartInitParameters): void {
     if (this.#disposed || this.#root) {
       return;
     }
 
+    this.state.set(parameters.params as PanelState);
     this.#root = mount(this.definition.component, {
       target: this.element,
       props: {
@@ -333,6 +336,7 @@ export function createWorkspace(
   const panelOptions = (spec: WorkspacePanelSpec) => ({
     component: spec.kind,
     id: spec.id,
+    params: spec.state,
     ...(spec.size?.height !== undefined ? { initialHeight: spec.size.height } : {}),
     ...(spec.size?.width !== undefined ? { initialWidth: spec.size.width } : {}),
     renderer: rendererMode(spec),
@@ -472,6 +476,7 @@ export function createWorkspace(
         }
 
         panel.api.setTitle(spec.title);
+        panel.api.updateParameters(spec.state);
         if (spec.size) {
           panel.api.setSize(spec.size);
         }

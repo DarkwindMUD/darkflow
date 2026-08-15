@@ -21,6 +21,7 @@ import { createSession, type Session } from "./session.ts";
 import { createSessionInformation } from "./information.ts";
 import { createSessionConnectionHealth } from "./connection-health.ts";
 import { createSessionInteractions } from "./interactions.ts";
+import { createSessionWorld } from "./world.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -191,6 +192,18 @@ export function createSessionFromState(
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
   const information = createSessionInformation(gmcp, scope, eventBus);
   const interactions = createSessionInteractions(gmcp, scope, eventBus, transport);
+  const world = createSessionWorld(
+    gmcp,
+    scope,
+    eventBus,
+    {
+      worldKey: serverProfile.worldKey,
+      host: serverProfile.host,
+      port: serverProfile.port,
+    },
+    (command) =>
+      transport.send(command, { kind: "command", size: command.length, preview: command }),
+  );
   const connectionHealth = createSessionConnectionHealth(
     gmcp,
     transport,
@@ -234,6 +247,7 @@ export function createSessionFromState(
     information,
     connectionHealth,
     interactions,
+    world,
   });
 
   return {

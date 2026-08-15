@@ -23,6 +23,10 @@ function makeBody() {
     addEventListener(type, handler, capture = false) {
       listeners.set(type + (capture ? ':capture' : ''), handler);
     },
+    removeEventListener(type, handler, capture = false) {
+      const key = type + (capture ? ':capture' : '');
+      if (listeners.get(key) === handler) listeners.delete(key);
+    },
     querySelector(selector) {
       return selector === '.map-grid-frame' ? this.frame : null;
     },
@@ -97,4 +101,18 @@ test('a completed drag suppresses its follow-up click', () => {
 
   assert.equal(prevented, true);
   assert.equal(stopped, true);
+});
+
+test('map pan disposer removes listeners and permits a clean rewire', () => {
+  const body = makeBody();
+  const dispose = wireMapPan(body);
+  const firstPointerDown = body.listeners.get('pointerdown');
+
+  dispose();
+  assert.equal(body.listeners.size, 0);
+  assert.equal(body.dataset.mapPanWired, undefined);
+
+  const nextDispose = wireMapPan(body);
+  assert.notEqual(body.listeners.get('pointerdown'), firstPointerDown);
+  nextDispose();
 });

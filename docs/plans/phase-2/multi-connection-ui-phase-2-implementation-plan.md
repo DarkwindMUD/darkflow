@@ -320,6 +320,13 @@ any consumer that appears to require an internal session handle or Dockview type
 
 ### Step 7 — Port server windows and interactive workflows
 
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-7-implementation-plan.md`](multi-connection-ui-phase-2-step-7-implementation-plan.md).
+
+**Status:** `COMPLETE` — automated development/built/mobile evidence and the
+user-confirmed authenticated live gate passed; commit `80dbf73` owns the Step 7
+replacement.
+
 **Depends on:** Step 6.
 
 **Outcome:** Port `Darkwind.Window`, snoop, announcements, Giphy, broadcast,
@@ -334,6 +341,16 @@ should be able to login to a MUD.
 independent vertical slices.
 
 ### Step 8 — Port map, world, room-media, speedwalk, and playlist surfaces
+
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-8-implementation-plan.md`](multi-connection-ui-phase-2-step-8-implementation-plan.md).
+
+Completion evidence:
+[`multi-connection-ui-phase-2-step-8-completion.md`](multi-connection-ui-phase-2-step-8-completion.md).
+
+**Status:** `COMPLETE` — automated development/built/mobile evidence and the
+authenticated live map, room-image, and read-only Jukebox gate passed; commit is
+pending user approval.
 
 **Depends on:** Steps 6 and 7.
 

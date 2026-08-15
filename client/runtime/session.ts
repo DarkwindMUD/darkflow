@@ -23,6 +23,7 @@ import type { SessionRuntimeState } from "./runtime-state.ts";
 import type { SessionInformation } from "./information.ts";
 import type { SessionConnectionHealth } from "./connection-health.ts";
 import type { SessionInteractions } from "./interactions.ts";
+import type { SessionWorld } from "./world.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -57,6 +58,7 @@ export interface Session {
   readonly information: SessionInformation;
   readonly connectionHealth: SessionConnectionHealth;
   readonly interactions: SessionInteractions;
+  readonly world: SessionWorld;
   readonly configuration: SessionConfiguration;
   connect(): void;
   disconnect(): void;
@@ -94,6 +96,7 @@ export interface SessionParts {
   information: SessionInformation;
   connectionHealth: SessionConnectionHealth;
   interactions: SessionInteractions;
+  world: SessionWorld;
 }
 
 /** Wires transport and GMCP event subscriptions into one session lifecycle. */
@@ -117,6 +120,7 @@ export function createSession(parts: SessionParts): Session {
     information,
     connectionHealth,
     interactions,
+    world,
   } = parts;
 
   let disposed = false;
@@ -273,6 +277,8 @@ export function createSession(parts: SessionParts): Session {
     connectionHealth,
 
     interactions,
+
+    world,
 
     configuration,
 

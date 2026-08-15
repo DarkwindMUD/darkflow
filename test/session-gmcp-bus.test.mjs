@@ -340,6 +340,88 @@ test("send helpers route through the injected sink only", async (t) => {
   assert.equal(spyB.calls[0], "Darkwind.Client.RefreshMedia");
 });
 
+test("subscription panel updates merge and survive handshake restart", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const spy = createSendSpy();
+  const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
+
+  bus.sendSubscriptions({ panels: { charStatus: true } });
+  bus.sendSubscriptions({ panels: { map: true, roomImage: false } });
+
+  const update = JSON.parse(spy.calls.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.deepEqual(update.panels, { charStatus: true, map: true, roomImage: false });
+
+  bus.restartHandshake({ reason: "reconnect", panels: { map: false } });
+  const restart = JSON.parse(spy.calls.at(-2).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(restart.reason, "reconnect");
+  assert.equal(restart.full, true);
+  assert.deepEqual(restart.panels, { charStatus: true, map: false, roomImage: false });
+});
+
+test("world send helpers validate and emit exact package directions", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const spy = createSendSpy();
+  const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
+
+  assert.equal(
+    bus.sendMapData2Sync({
+      protocol: 2,
+      current: 1,
+      mapEpoch: "1783612800-123456",
+      syncId: "context-1",
+      fromCursor: 0,
+    }),
+    true,
+  );
+  assert.equal(bus.sendMapData2Browse({ catalog: "darkwind.overview", offset: 100 }), true);
+  assert.equal(
+    bus.sendRoomPlaylistAction({
+      room_id: 2599838393621098,
+      revision: 12,
+      action: "add",
+      url: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    }),
+    true,
+  );
+  assert.equal(
+    bus.sendRoomPlaylistReport({
+      room_id: "2599838393621098",
+      revision: 12,
+      entry_id: 7,
+      report: "ready",
+      title: "Resolved title",
+      duration: 212,
+    }),
+    true,
+  );
+
+  assert.deepEqual(spy.calls, [
+    'Darkwind.MapData2.Sync {"protocol":2,"current":1,"mapEpoch":"1783612800-123456","syncId":"context-1","fromCursor":0}',
+    'Darkwind.MapData2.Browse {"catalog":"darkwind.overview","offset":100}',
+    'Darkwind.Room.Playlist.Action {"room_id":2599838393621098,"revision":12,"action":"add","url":"https://www.youtube.com/watch?v=dQw4w9WgXcQ"}',
+    'Darkwind.Room.Playlist.Report {"room_id":"2599838393621098","revision":12,"entry_id":7,"report":"ready","title":"Resolved title","duration":212}',
+  ]);
+
+  assert.equal(bus.sendMapData2Sync({ protocol: 2 }), false);
+  assert.equal(bus.sendMapData2Browse({ catalog: 1 }), false);
+  assert.equal(
+    bus.sendRoomPlaylistAction({ room_id: 1, revision: 12, action: "add" }),
+    false,
+  );
+  assert.equal(
+    bus.sendRoomPlaylistReport({
+      room_id: 1,
+      revision: 12,
+      entry_id: 7,
+      report: "error",
+    }),
+    false,
+  );
+  assert.equal(spy.calls.length, 4);
+});
+
 test("throwing handlers do not starve remaining handlers on the same frame", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
   const diagnostics = new SessionDiagnostics(sessionId);

@@ -1,5 +1,6 @@
 const DRAG_THRESHOLD_PX = 4;
 const PAN_REBASE_PITCHES = 2;
+const panDisposers = new WeakMap();
 
 export function normalizeMapPan(value) {
   const parsed = Number(value);
@@ -44,7 +45,7 @@ function writePan(bodyEl, x, y) {
 
 export function wireMapPan(bodyEl, options = {}) {
   if (!bodyEl || !bodyEl.addEventListener) return;
-  if (bodyEl.dataset && bodyEl.dataset.mapPanWired) return;
+  if (panDisposers.has(bodyEl)) return panDisposers.get(bodyEl);
   if (bodyEl.dataset) bodyEl.dataset.mapPanWired = '1';
 
   const rerender = typeof options.rerender === 'function' ? options.rerender : () => {};
@@ -63,6 +64,7 @@ export function wireMapPan(bodyEl, options = {}) {
     moved: false,
   };
   let suppressClick = false;
+  let suppressClickTimer = null;
 
   const currentPan = (event) => ({
     x: drag.startPanX + ((event.clientX - drag.startClientX) / drag.pitch),
@@ -102,11 +104,14 @@ export function wireMapPan(bodyEl, options = {}) {
     }
     if (drag.moved && !cancelled) {
       suppressClick = true;
-      setTimeout(() => { suppressClick = false; }, 0);
+      suppressClickTimer = setTimeout(() => {
+        suppressClick = false;
+        suppressClickTimer = null;
+      }, 0);
     }
   };
 
-  bodyEl.addEventListener('pointerdown', (event) => {
+  const onPointerDown = (event) => {
     if (drag.active || event.isPrimary === false || event.button !== 0) return;
     if (!isPannableTarget(event.target)) return;
     const frame = readFrame(bodyEl);
@@ -127,9 +132,9 @@ export function wireMapPan(bodyEl, options = {}) {
     bodyEl.classList.add('map-panning');
     if (bodyEl.setPointerCapture) bodyEl.setPointerCapture(event.pointerId);
     event.preventDefault();
-  });
+  };
 
-  bodyEl.addEventListener('pointermove', (event) => {
+  const onPointerMove = (event) => {
     if (!drag.active || event.pointerId !== drag.pointerId) return;
     drag.lastClientX = event.clientX;
     drag.lastClientY = event.clientY;
@@ -148,22 +153,56 @@ export function wireMapPan(bodyEl, options = {}) {
       rebase(event, currentPan(event));
     }
     event.preventDefault();
-  });
+  };
 
-  bodyEl.addEventListener('pointerup', (event) => finish(event));
-  bodyEl.addEventListener('pointercancel', (event) => finish(event, true));
-  bodyEl.addEventListener('lostpointercapture', (event) => {
+  const onPointerUp = (event) => finish(event);
+  const onPointerCancel = (event) => finish(event, true);
+  const onLostPointerCapture = (event) => {
     if (!drag.active || event.pointerId !== drag.pointerId) return;
     finish({
       pointerId: event.pointerId,
       clientX: drag.lastClientX,
       clientY: drag.lastClientY,
     }, true);
-  });
-  bodyEl.addEventListener('click', (event) => {
+  };
+  const onClick = (event) => {
     if (!suppressClick) return;
     suppressClick = false;
     event.preventDefault();
     event.stopImmediatePropagation();
-  }, true);
+  };
+
+  const listeners = [
+    ['pointerdown', onPointerDown, false],
+    ['pointermove', onPointerMove, false],
+    ['pointerup', onPointerUp, false],
+    ['pointercancel', onPointerCancel, false],
+    ['lostpointercapture', onLostPointerCapture, false],
+    ['click', onClick, true],
+  ];
+  for (const [type, handler, capture] of listeners) {
+    bodyEl.addEventListener(type, handler, capture);
+  }
+
+  let disposed = false;
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    for (const [type, handler, capture] of listeners) {
+      if (bodyEl.removeEventListener) bodyEl.removeEventListener(type, handler, capture);
+    }
+    if (suppressClickTimer) clearTimeout(suppressClickTimer);
+    suppressClickTimer = null;
+    suppressClick = false;
+    if (drag.active && bodyEl.hasPointerCapture
+      && bodyEl.hasPointerCapture(drag.pointerId)) {
+      bodyEl.releasePointerCapture(drag.pointerId);
+    }
+    drag.active = false;
+    bodyEl.classList.remove('map-panning');
+    if (bodyEl.dataset) delete bodyEl.dataset.mapPanWired;
+    if (panDisposers.get(bodyEl) === dispose) panDisposers.delete(bodyEl);
+  };
+  panDisposers.set(bodyEl, dispose);
+  return dispose;
 }

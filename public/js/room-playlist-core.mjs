@@ -50,7 +50,7 @@ export function normalizePlaylistState(input) {
     skip_votes: Math.max(0, Number(state.skip_votes) || 0),
     skip_needed: Math.max(1, Number(state.skip_needed) || 1),
     permissions: {
-      add: state.permissions ? state.permissions.add !== false : true,
+      add: state.permissions ? !!state.permissions.add : true,
       moderate: !!(state.permissions && state.permissions.moderate),
     },
   };

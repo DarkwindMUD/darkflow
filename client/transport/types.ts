@@ -64,6 +64,8 @@ export interface TransportHealthSnapshot {
   stalledAt: number | null;
   forcedReconnects: number;
   recentCommandCount: number;
+  bytesSent: number;
+  bytesReceived: number;
   events: ReadonlyArray<{ ts: string; type: string; detail: unknown }>;
 }
 

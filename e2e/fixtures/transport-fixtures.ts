@@ -135,9 +135,32 @@ async function startWebSocketFixture(
   webSocketServer.on("connection", (socket) => {
     socket.send(prompt);
     socket.send(gmcpPayload, { binary: true });
+    socket.send(Buffer.from('Core.Supports.Set ["Darkwind.Lag 1"]', "utf8"), { binary: true });
     socket.on("message", (data, isBinary) => {
       if (isBinary) {
-        gmcpMessages.push(asBuffer(data).toString("utf8"));
+        const message = asBuffer(data).toString("utf8");
+        gmcpMessages.push(message);
+        if (message === "Core.Ping") socket.send(Buffer.from("Core.Ping"), { binary: true });
+        if (message === "Darkwind.Lag.Get") {
+          socket.send(
+            Buffer.from(
+              `Darkwind.Lag.Status ${JSON.stringify({
+                uptime_s: 100,
+                window_s: 60,
+                hb_interval_ms: 2_000,
+                hb_drift_avg_ms: 4,
+                hb_drift_max_ms: 35,
+                hb_missed: 0,
+                cmds_per_sec_x100: 145,
+                lines_per_sec_x100: 820,
+                hb_processed_pct: 100,
+                obj_processed_pct: 100,
+              })}`,
+              "utf8",
+            ),
+            { binary: true },
+          );
+        }
         return;
       }
       const command = asBuffer(data).toString("utf8");

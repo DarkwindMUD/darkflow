@@ -5,6 +5,7 @@
   import type { Session } from "../runtime/session.ts";
   import { createWorkspace } from "./dockview-workspace";
   import InformationPanel from "./InformationPanel.svelte";
+  import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
@@ -50,6 +51,7 @@
     ["quests", "Quests"],
     ["achievements", "Achievements"],
     ["cyberware", "Cyberware"],
+    ["connection-health", "Connection health"],
   ];
   const informationPanels: readonly (WorkspacePanelSpec & { id: InformationPanelId })[] =
     informationPanelLabels.map(([id, title]) => ({
@@ -148,7 +150,13 @@
       placeholder: { component: PlaceholderPanel },
       terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
       ...Object.fromEntries(
-        informationPanels.map((panel) => [panel.kind, { component: InformationPanel, session }]),
+        informationPanels.map((panel) => [
+          panel.kind,
+          {
+            component: panel.id === "connection-health" ? ConnectionHealthPanel : InformationPanel,
+            session,
+          },
+        ]),
       ),
     };
     const currentWorkspace = createWorkspace(host, {

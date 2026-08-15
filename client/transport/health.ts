@@ -32,6 +32,8 @@ export interface TransportHealth {
   forcedReconnects: number;
   recentCommandTimes: number[];
   events: HealthEvent[];
+  bytesSent: number;
+  bytesReceived: number;
   pushEvent(type: string, detail: unknown): void;
   trimCommandBurst(now: number): void;
   recordBufferedAmount(socket: WebSocketLike | null): number;
@@ -40,8 +42,8 @@ export interface TransportHealth {
     metadata: { size?: number; preview?: string } | undefined,
     socket: WebSocketLike | null,
   ): void;
-  recordInboundText(now: number): void;
-  recordInboundGmcp(now: number): void;
+  recordInboundText(now: number, size?: number): void;
+  recordInboundGmcp(now: number, size?: number): void;
   evaluateStall(
     socket: WebSocketLike | null,
     now: number,
@@ -76,6 +78,8 @@ export function createTransportHealth(now: () => number = Date.now): TransportHe
     forcedReconnects: 0,
     recentCommandTimes: [],
     events: [],
+    bytesSent: 0,
+    bytesReceived: 0,
 
     pushEvent(type, detail) {
       health.events.push({
@@ -106,6 +110,7 @@ export function createTransportHealth(now: () => number = Date.now): TransportHe
       const detail = metadata ?? {};
 
       health.lastOutboundAt = at;
+      health.bytesSent += detail.size ?? 0;
       health.recordBufferedAmount(socket);
 
       if (kind === "command") {
@@ -121,13 +126,15 @@ export function createTransportHealth(now: () => number = Date.now): TransportHe
       });
     },
 
-    recordInboundText(at) {
+    recordInboundText(at, size = 0) {
+      health.bytesReceived += size;
       health.lastInboundAt = at;
       health.lastInboundTextAt = at;
       health.stalledAt = null;
     },
 
-    recordInboundGmcp(at) {
+    recordInboundGmcp(at, size = 0) {
+      health.bytesReceived += size;
       health.lastInboundAt = at;
       health.lastInboundGmcpAt = at;
       health.stalledAt = null;
@@ -195,6 +202,8 @@ export function createTransportHealth(now: () => number = Date.now): TransportHe
         stalledAt: health.stalledAt,
         forcedReconnects: health.forcedReconnects,
         recentCommandCount: health.recentCommandTimes.length,
+        bytesSent: health.bytesSent,
+        bytesReceived: health.bytesReceived,
         events: health.events.slice(-50),
       };
     },

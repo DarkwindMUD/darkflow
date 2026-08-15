@@ -784,8 +784,13 @@ test("handshake guard resends handshake packages", async (t) => {
   harness.advance(modules.HANDSHAKE_RESEND_DELAY_MS);
 
   const packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  const handshakePackages = packages.filter((item) =>
+    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"].includes(
+      item.packageName,
+    ),
+  );
   assert.deepEqual(
-    packages.map((item) => item.packageName),
+    handshakePackages.map((item) => item.packageName),
     ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"],
   );
 });
@@ -805,7 +810,12 @@ test("lost-transmission recovery restarts handshake after delay and cancels on d
 
   socket.emitMessage("*** Text lost in transmission ***");
   harness.advance(modules.LOST_TRANSMISSION_RECOVERY_DELAY_MS - 1);
-  assert.equal(socket.sentPayloads().length, 0);
+  assert.equal(
+    decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame).some(
+      (item) => item.packageName === "Core.Hello",
+    ),
+    false,
+  );
 
   harness.advance(1);
   const packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);

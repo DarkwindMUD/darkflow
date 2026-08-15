@@ -4,12 +4,14 @@ export interface Phase2ClientSettings {
   repeatLastCommand: boolean;
   aliasTabCompletionEnabled: boolean;
   historyTabCompletionEnabled: boolean;
+  lagMonitorEnabled: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   repeatLastCommand: true,
   aliasTabCompletionEnabled: true,
   historyTabCompletionEnabled: false,
+  lagMonitorEnabled: true,
 };
 
 export type ClientSettingsResult =
@@ -31,6 +33,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     repeatLastCommand: settings.repeatLastCommand !== false,
     aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
     historyTabCompletionEnabled: settings.historyTabCompletionEnabled === true,
+    lagMonitorEnabled: settings.lagMonitorEnabled !== false,
   };
 }
 

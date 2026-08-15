@@ -123,6 +123,13 @@
     </fieldset>
 
     <fieldset>
+      <legend>Connection diagnostics</legend>
+      <label
+        ><input type="checkbox" bind:checked={settings.lagMonitorEnabled} /> Measure connection health</label
+      >
+    </fieldset>
+
+    <fieldset>
       <legend>Variables</legend>
       {#each variables as variable, index (index)}
         <div class="variable-row">

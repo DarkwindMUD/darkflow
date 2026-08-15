@@ -21,6 +21,7 @@ import type { ResourceScope } from "./resource-scope.ts";
 import type { AutomationRuntimeState } from "./automation-runtime.ts";
 import type { SessionRuntimeState } from "./runtime-state.ts";
 import type { SessionInformation } from "./information.ts";
+import type { SessionConnectionHealth } from "./connection-health.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -53,6 +54,7 @@ export interface Session {
   readonly disposed: boolean;
   readonly terminal: SessionTerminal;
   readonly information: SessionInformation;
+  readonly connectionHealth: SessionConnectionHealth;
   readonly configuration: SessionConfiguration;
   connect(): void;
   disconnect(): void;
@@ -88,6 +90,7 @@ export interface SessionParts {
     listener: (snapshot: EffectiveConfigurationSnapshot) => void,
   ) => ConfigurationUnsubscribe;
   information: SessionInformation;
+  connectionHealth: SessionConnectionHealth;
 }
 
 /** Wires transport and GMCP event subscriptions into one session lifecycle. */
@@ -109,6 +112,7 @@ export function createSession(parts: SessionParts): Session {
     subscribeText,
     subscribeConfiguration,
     information,
+    connectionHealth,
   } = parts;
 
   let disposed = false;
@@ -261,6 +265,8 @@ export function createSession(parts: SessionParts): Session {
     terminal,
 
     information,
+
+    connectionHealth,
 
     configuration,
 

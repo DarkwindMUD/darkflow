@@ -364,14 +364,6 @@ export function createSessionInformation(
     }),
   );
 
-  scope.own(
-    "subscription",
-    eventBus.subscribe("transport:reconnect-status", (event) => {
-      const payload = event.payload as TransportReconnectStatusPayload;
-      if (payload.status === "connected") sendVisiblePanels(visiblePanels);
-    }),
-  );
-
   return {
     getSnapshot: () => snapshot,
 

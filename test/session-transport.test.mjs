@@ -360,6 +360,10 @@ test("inbound text and GMCP frames reach distinct callbacks", async (t) => {
 
   assert.deepEqual(harness.texts, ["hello world"]);
   assert.deepEqual(harness.gmcpFrames, [{ packageName: "Char.Vitals", data: { hp: 99 } }]);
+  assert.equal(
+    harness.transport.getHealthSnapshot().bytesReceived,
+    new TextEncoder().encode("hello world").byteLength + gmcpBytes.byteLength,
+  );
 });
 
 test("send preserves text and binary frame types", async (t) => {
@@ -381,6 +385,7 @@ test("send preserves text and binary frame types", async (t) => {
   assert.equal(sent?.[0], textPayload);
   assert.ok(sent?.[1] instanceof Uint8Array);
   assert.deepEqual([...sent[1]], [1, 2, 3]);
+  assert.equal(harness.transport.getHealthSnapshot().bytesSent, 7);
 });
 
 test("double connect opens exactly one socket", async (t) => {

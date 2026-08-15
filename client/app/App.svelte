@@ -2,6 +2,7 @@
   import { untrack } from "svelte";
   import type { ShellBootstrap } from "./bootstrap-transaction.ts";
   import type { Session, SessionConnectionSnapshot } from "../runtime/session.ts";
+  import type { ConnectionHealthSnapshot } from "../runtime/connection-health.ts";
   import type { TransportEndpoint, TransportName } from "../transport/types.ts";
   import WorkspaceHost from "../workspace/WorkspaceHost.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
@@ -45,6 +46,31 @@
   let settingsOpen = $state(false);
   let settingsButton = $state<HTMLButtonElement>();
   let themeKey = $state(untrack(() => session.configuration.getSnapshot().themeKey));
+  let health = $state<ConnectionHealthSnapshot>(
+    untrack(() => session.connectionHealth.getSnapshot()),
+  );
+  let rfc2549Enabled = $state(false);
+  let rfc2549QosOverride = $state<string | null>(null);
+  let manualRedMarks = $state<Array<{ ts: string; type: string; detail: unknown }>>([]);
+
+  const redEventTypes = new Set([
+    "force-reconnect",
+    "send-error",
+    "message-handler-error",
+    "ws-send-error",
+    "ws-gmcp-send-error",
+  ]);
+  const recentRfcEvents = $derived(health.transport.events.slice(-8));
+  const rfcRedMarks = $derived(
+    recentRfcEvents.filter(({ type }) => redEventTypes.has(type)).length + manualRedMarks.length,
+  );
+  const rfcQos = $derived.by(() => {
+    if (rfc2549QosOverride) return rfc2549QosOverride;
+    if (!health.inputs.connected || health.transport.stalledAt || rfcRedMarks > 0) return "Coach";
+    if (health.transport.bufferedAmount > 65_536) return "Business";
+    if (health.transport.recentCommandCount >= 3) return "First";
+    return "Concorde";
+  });
 
   const reconnectVisible = $derived(
     everConnected &&
@@ -71,6 +97,57 @@
   });
 
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
+  $effect(() => session.connectionHealth.subscribe((next) => (health = next)));
+
+  $effect(() => {
+    const truthy = (value: string | null): boolean =>
+      value !== null && ["", "1", "true", "yes", "on"].includes(value.trim().toLowerCase());
+    const params = new URLSearchParams(location.search);
+    try {
+      rfc2549Enabled = params.has("rfc2549")
+        ? truthy(params.get("rfc2549"))
+        : truthy(localStorage.getItem("darkflow-rfc2549"));
+    } catch {
+      rfc2549Enabled = params.has("rfc2549") && truthy(params.get("rfc2549"));
+    }
+
+    const api = {
+      enable: () => setRfc2549Enabled(true),
+      disable: () => setRfc2549Enabled(false),
+      toggle: () => setRfc2549Enabled(!rfc2549Enabled),
+      snapshot: () => ({
+        enabled: rfc2549Enabled,
+        qos: rfcQos,
+        route: rfcRoute(),
+        bytes: {
+          sent: health.transport.bytesSent,
+          received: health.transport.bytesReceived,
+          total: health.transport.bytesSent + health.transport.bytesReceived,
+        },
+        redMarks: rfcRedMarks,
+        pulseRate: rfcPulse(),
+        socket: health.transport,
+      }),
+      setQoS: (className: string) => {
+        rfc2549QosOverride = className.trim() || null;
+      },
+      markRed: (reason?: string) => {
+        manualRedMarks = [
+          ...manualRedMarks,
+          {
+            ts: new Date().toISOString(),
+            type: "manual-red",
+            detail: { reason: reason || "manual mark" },
+          },
+        ].slice(-20);
+      },
+    };
+    const target = window as typeof window & { rfc2549Debug?: typeof api };
+    target.rfc2549Debug = api;
+    return () => {
+      if (target.rfc2549Debug === api) delete target.rfc2549Debug;
+    };
+  });
 
   $effect(() => {
     session.setConnectionEndpoint(endpoint);
@@ -199,7 +276,43 @@
       : location.reload();
     Promise.resolve(operation).catch(() => {});
   }
+
+  function setRfc2549Enabled(enabled: boolean): void {
+    rfc2549Enabled = enabled;
+    try {
+      if (enabled) localStorage.setItem("darkflow-rfc2549", "1");
+      else localStorage.removeItem("darkflow-rfc2549");
+    } catch {
+      // The URL opt-in remains usable when storage is unavailable.
+    }
+  }
+
+  function formatBytes(value: number): string {
+    if (value < 1_024) return `${value} B`;
+    if (value < 1_048_576) return `${(value / 1_024).toFixed(1)} KB`;
+    return `${(value / 1_048_576).toFixed(1)} MB`;
+  }
+
+  function rfcRoute(): string {
+    const { protocol, host, port } = health.endpoint;
+    return `${protocol}${protocol.startsWith("telnet") ? " bridge" : " direct"} to ${host}:${port}`;
+  }
+
+  function rfcPulse(): string {
+    if (recentRfcEvents.length < 2) return "idle";
+    const first = Date.parse(recentRfcEvents[0]?.ts ?? "");
+    const last = Date.parse(recentRfcEvents.at(-1)?.ts ?? "");
+    return Number.isFinite(first) && Number.isFinite(last) && last > first
+      ? `${(recentRfcEvents.length / ((last - first) / 60_000)).toFixed(1)}/min`
+      : `${recentRfcEvents.length} events`;
+  }
 </script>
+
+<svelte:window
+  onkeydown={(event) => {
+    if (rfc2549Enabled && event.key === "Escape") setRfc2549Enabled(false);
+  }}
+/>
 
 <main
   bind:this={shellRoot}
@@ -273,6 +386,40 @@
     queueMicrotask(() => settingsButton?.focus());
   }}
 />
+
+{#if rfc2549Enabled}
+  <section
+    class="rfc2549-debug-panel"
+    aria-label="RFC 2549 debug panel"
+    data-qos={rfcQos.toLowerCase()}
+  >
+    <div class="rfc2549-header">
+      <div>
+        <span class="rfc2549-kicker">RFC 2549</span>
+        <h2>Avian QoS</h2>
+      </div>
+      <button
+        type="button"
+        class="rfc2549-close"
+        title="Disable RFC 2549 debug"
+        onclick={() => setRfc2549Enabled(false)}>×</button
+      >
+    </div>
+    <div class="rfc2549-body">
+      {#each [["QoS class", rfcQos], ["Route", rfcRoute()], ["Frequent flyer miles", formatBytes(health.transport.bytesSent + health.transport.bytesReceived)], ["Carrier queue", String(recentRfcEvents.length)], ["RED-marked packets", String(rfcRedMarks)], ["Pulse rate", rfcPulse()]] as [label, value] (label)}
+        <div class="rfc2549-row"><span>{label}</span><strong>{value}</strong></div>
+      {/each}
+      <ol class="rfc2549-events">
+        {#each recentRfcEvents as event (event)}
+          <li><span>{new Date(event.ts).toLocaleTimeString()}</span>{event.type}</li>
+        {:else}
+          <li><span>--:--:--</span>carrier queue idle</li>
+        {/each}
+      </ol>
+      <div class="rfc2549-footnote">RFC 2549 debug visualization only. Transport is unchanged.</div>
+    </div>
+  </section>
+{/if}
 
 {#if updateDisplay}
   <aside class="update-banner" data-testid="update-banner" aria-live="polite">

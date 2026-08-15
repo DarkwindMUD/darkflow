@@ -20,6 +20,7 @@ import { migrateLegacyData } from "../storage/legacy-migration.ts";
 import { readState, type StorageLike } from "../storage/repository.ts";
 import type { CharacterProfileId, ServerProfileId } from "../model/ids.ts";
 import type { TransportState } from "../transport/types.ts";
+import { loadClientSettings } from "./client-settings.ts";
 
 /** Temporary Phase 1 bootstrap diagnostic exposed until later cutover steps finish. */
 export interface BootstrapDiagnostic {
@@ -303,6 +304,7 @@ export async function runBootTransaction(
         uuidFactory: deps.uuidFactory,
         registry,
         getAutoReconnect: () => state.settings.autoReconnect !== false,
+        getLagMonitorEnabled: () => loadClientSettings(deps.storage).settings.lagMonitorEnabled,
         getClientInfo: () => ({
           client: "Darkflow",
           version: state.clientVersion || "unknown",

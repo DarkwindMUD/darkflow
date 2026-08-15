@@ -19,6 +19,7 @@ import { createSessionRuntimeState } from "./runtime-state.ts";
 import { createAutomationRuntimeState, type AutomationRuntimeState } from "./automation-runtime.ts";
 import { createSession, type Session } from "./session.ts";
 import { createSessionInformation } from "./information.ts";
+import { createSessionConnectionHealth } from "./connection-health.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -51,6 +52,7 @@ export interface SessionFactoryDeps {
   now?: () => number;
   onText: (text: string) => void;
   subscribeText?: (listener: (text: string) => void) => Unsubscribe;
+  getLagMonitorEnabled?: () => boolean;
 }
 
 /** Result of attempting to create a session from validated application state. */
@@ -187,6 +189,14 @@ export function createSessionFromState(
   const automationRuntime = createAutomationRuntimeState(scope);
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
   const information = createSessionInformation(gmcp, scope, eventBus);
+  const connectionHealth = createSessionConnectionHealth(
+    gmcp,
+    transport,
+    scope,
+    eventBus,
+    () => ({ ...connectionEndpoint }),
+    { ...(deps.getLagMonitorEnabled ? { getEnabled: deps.getLagMonitorEnabled } : {}) },
+  );
 
   const configurationListeners = new Set<
     (snapshot: ReturnType<typeof runtimeState.getEffectiveConfiguration>) => void
@@ -220,6 +230,7 @@ export function createSessionFromState(
       return () => configurationListeners.delete(listener);
     },
     information,
+    connectionHealth,
   });
 
   return {

@@ -25,6 +25,7 @@ import type {
 import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./room.ts";
 import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client.ts";
 import type { CompletionRequest, CompletionResult } from "./completion.ts";
+import type { CorePing, DarkwindLagStatus } from "./diagnostics.ts";
 import type {
   DarkwindAvatar,
   DarkwindAchievements,
@@ -101,6 +102,8 @@ export const validateDarkwindClientNaws = typia.createValidate<DarkwindClientNaw
 export const validateDarkwindSessionRecovered = typia.createValidate<DarkwindSessionRecovered>();
 export const validateCompletionRequest = typia.createValidate<CompletionRequest>();
 export const validateCompletionResult = typia.createValidate<CompletionResult>();
+export const validateCorePing = typia.createValidate<CorePing>();
+export const validateDarkwindLagStatus = typia.createValidate<DarkwindLagStatus>();
 export const validateGroup = typia.createValidate<Group>();
 export const validateDarkwindAvatar = typia.createValidate<DarkwindAvatar>();
 export const validateDarkwindDivine = typia.createValidate<DarkwindDivine>();
@@ -180,6 +183,8 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Cyberware.List")]: validateDarkwindCyberware,
   [canonicalPackageName("Darkwind.Cyberware.Details")]: validateDarkwindCyberwareDetails,
   [canonicalPackageName("Darkwind.Cyberware.Image")]: validateDarkwindCyberwareImage,
+  [canonicalPackageName("Core.Ping")]: validateCorePing,
+  [canonicalPackageName("Darkwind.Lag.Status")]: validateDarkwindLagStatus,
 };
 
 /** Returns the structural validator for a canonical package name, if modeled. */
@@ -193,7 +198,6 @@ export const modeledGmcpPackageNames = Object.keys(PACKAGE_VALIDATORS);
 /** Canonical package names with no inbound validator; legacy passthrough until Phase 2 ports. */
 export const unmodeledGmcpPackageNames: readonly string[] = [
   "Core.Hello",
-  "Core.Ping",
   "Game",
   "Darkwind.Combat.State",
   "Darkwind.Combat.Events",
@@ -224,7 +228,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Broadcast.Show",
   "Darkwind.LinuxRescue.Open",
   "Darkwind.Lag.Get",
-  "Darkwind.Lag.Status",
   "Darkwind.Fishing.Open",
   "Darkwind.Fishing.Cast",
   "Darkwind.Fishing.Bite",

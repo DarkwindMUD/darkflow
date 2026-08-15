@@ -95,13 +95,10 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   information.setVisiblePanels(["group"]);
   const sentBeforeConnected = sent.length;
   assert.equal(sentBeforeConnected, sentBeforeReconnect + 1);
-  // The workspace does not own a reconnect timer: the information capability
-  // resends its last derived visibility when the session reconnects.
+  // The composed session handshake owns the one reconnect resend using the
+  // subscription payload retained by the GMCP bus.
   eventBus.publish("transport:reconnect-status", { status: "connected", transport: "ws" });
-  const resent = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
-  assert.equal(sent.length, sentBeforeConnected + 1);
-  assert.equal(resent.panels.group, true);
-  assert.equal(resent.panels.avatar, false);
+  assert.equal(sent.length, sentBeforeConnected);
 });
 
 test("divine patron attaches to vitals regardless of frame order", async (t) => {

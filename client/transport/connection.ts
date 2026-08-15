@@ -294,7 +294,7 @@ export function createSessionTransport(
               kind: "text",
               size: event.data.length,
             });
-            health.recordInboundText(at);
+            health.recordInboundText(at, new TextEncoder().encode(event.data).byteLength);
             callbacks.onText(event.data);
             reconnect.scheduleLostTransmissionRecovery(event.data, health);
           } else {
@@ -304,7 +304,7 @@ export function createSessionTransport(
               kind: "gmcp",
               size: arr.byteLength,
             });
-            health.recordInboundGmcp(at);
+            health.recordInboundGmcp(at, arr.byteLength);
             callbacks.onGmcpFrame(packageName, data);
           }
           health.recordBufferedAmount(socket);
@@ -426,7 +426,11 @@ export function createSessionTransport(
 
       const kind = metadata?.kind ?? "generic";
       try {
-        health.noteOutboundActivity(kind, metadata, liveSocket);
+        const size =
+          typeof payload === "string"
+            ? new TextEncoder().encode(payload).byteLength
+            : payload.byteLength;
+        health.noteOutboundActivity(kind, { ...metadata, size }, liveSocket);
         liveSocket.send(payload);
         health.recordBufferedAmount(liveSocket);
         return true;

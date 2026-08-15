@@ -97,6 +97,7 @@ export function createSessionInformation(
   eventBus: SessionEventBus,
 ): SessionInformation {
   let snapshot = deepFreeze(emptySnapshot());
+  let visiblePanels: readonly InformationPanelId[] = [];
   const listeners = new Set<(snapshot: SessionInformationSnapshot) => void>();
 
   const publish = (next: SessionInformationSnapshot): void => {
@@ -108,6 +109,16 @@ export function createSessionInformation(
 
   const update = (changes: Partial<SessionInformationSnapshot>): void => {
     publish({ ...snapshot, ...changes });
+  };
+
+  const sendVisiblePanels = (ids: readonly InformationPanelId[]): void => {
+    const visible = new Set(ids);
+    const panels = Object.fromEntries(
+      INFORMATION_PANEL_IDS.map((id) => [id, visible.has(id)]),
+    ) as Record<string, boolean>;
+    panels.vitals = true;
+    if (panels.buffs) panels.status = true;
+    gmcp.sendSubscriptions({ panels });
   };
 
   const listen = <T>(
@@ -197,6 +208,14 @@ export function createSessionInformation(
     }),
   );
 
+  scope.own(
+    "subscription",
+    eventBus.subscribe("transport:reconnect-status", (event) => {
+      const payload = event.payload as TransportReconnectStatusPayload;
+      if (payload.status === "connected") sendVisiblePanels(visiblePanels);
+    }),
+  );
+
   return {
     getSnapshot: () => snapshot,
 
@@ -213,15 +232,8 @@ export function createSessionInformation(
       if (scope.disposed) {
         return;
       }
-      const visible = new Set(ids);
-      const panels = Object.fromEntries(
-        INFORMATION_PANEL_IDS.map((id) => [id, visible.has(id)]),
-      ) as Record<string, boolean>;
-      panels.vitals = true;
-      if (panels.buffs) {
-        panels.status = true;
-      }
-      gmcp.sendSubscriptions({ panels });
+      visiblePanels = [...ids];
+      sendVisiblePanels(visiblePanels);
     },
   };
 }

@@ -1,13 +1,20 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
   import type { CharacterProfileId } from "../model/ids";
+  import type { InformationPanelId } from "../runtime/information.ts";
   import type { Session } from "../runtime/session.ts";
   import { createWorkspace } from "./dockview-workspace";
+  import InformationPanel from "./InformationPanel.svelte";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
   import { focusTerminalIsland } from "./terminal-island";
-  import type { Workspace, WorkspacePanelSpec, WorkspaceSnapshot } from "./workspace";
+  import type {
+    Workspace,
+    WorkspacePanelSpec,
+    WorkspaceRendererRegistry,
+    WorkspaceSnapshot,
+  } from "./workspace";
 
   let {
     characterProfileId,
@@ -27,11 +34,33 @@
     state: {},
     placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
+  const informationPanelLabels: readonly [InformationPanelId, string][] = [
+    ["avatar", "Avatar"],
+    ["status", "Status"],
+    ["vitals", "Vitals"],
+    ["guildVitals", "Guild vitals"],
+    ["xpmon", "XP monitor"],
+    ["omens", "Omens"],
+    ["sky", "Sky"],
+    ["stats", "Stats"],
+    ["buffs", "Buffs"],
+    ["worth", "Worth"],
+    ["group", "Group"],
+  ];
+  const informationPanels: readonly (WorkspacePanelSpec & { id: InformationPanelId })[] =
+    informationPanelLabels.map(([id, title]) => ({
+      id,
+      kind: id,
+      title,
+      state: {},
+      placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+    }));
 
   let host: HTMLElement;
   let workspace: Workspace | undefined;
   let status = $state("Loading workspace...");
   let placeholderOpen = $state(true);
+  let openInformationPanelIds = $state<string[]>([]);
   let sheetOpen = $state(false);
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
@@ -40,6 +69,27 @@
     workspace?.addOrUpdatePanel(placeholder);
     workspace?.activatePanel(placeholder.id);
     placeholderOpen = true;
+  }
+
+  function syncVisiblePanels(): void {
+    const visible = informationPanels.filter((panel) => workspace?.hasPanel(panel.id));
+    openInformationPanelIds = visible.map((panel) => panel.id);
+    session.information.setVisiblePanels(visible.map((panel) => panel.id));
+  }
+
+  function informationPanelOpen(panel: WorkspacePanelSpec): boolean {
+    return openInformationPanelIds.includes(panel.id);
+  }
+
+  async function toggleInformationPanel(panel: WorkspacePanelSpec): Promise<void> {
+    if (!workspace) return;
+    if (workspace.hasPanel(panel.id)) {
+      await workspace.removePanel(panel.id);
+    } else {
+      workspace.addOrUpdatePanel(panel);
+      workspace.activatePanel(panel.id);
+    }
+    syncVisiblePanels();
   }
 
   function focusTerminal(): void {
@@ -79,18 +129,26 @@
     if (!workspace) return;
     await workspace.removePanel(placeholder.id);
     await workspace.removePanel(terminal.id);
+    await Promise.all(informationPanels.map((panel) => workspace!.removePanel(panel.id)));
     workspace.addOrUpdatePanel(terminal);
     workspace.addOrUpdatePanel(placeholder);
     placeholderOpen = true;
+    syncVisiblePanels();
     const result = saveCharacterWorkspace(localStorage, characterProfileId, workspace.save());
     status = result.success ? "Workspace reset" : result.message;
     focusTerminal();
   }
 
   onMount(() => {
-    const currentWorkspace = createWorkspace(host, {
+    const rendererRegistry: WorkspaceRendererRegistry = {
       placeholder: { component: PlaceholderPanel },
       terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
+      ...Object.fromEntries(
+        informationPanels.map((panel) => [panel.kind, { component: InformationPanel, session }]),
+      ),
+    };
+    const currentWorkspace = createWorkspace(host, {
+      ...rendererRegistry,
     });
     workspace = currentWorkspace;
     currentWorkspace.addOrUpdatePanel(terminal);
@@ -104,7 +162,8 @@
         ? loaded.message
         : "";
     const restored =
-      snapshot !== null && currentWorkspace.restore(snapshot, [terminal, placeholder]);
+      snapshot !== null &&
+      currentWorkspace.restore(snapshot, [terminal, placeholder, ...informationPanels]);
     if (!restored) {
       currentWorkspace.addOrUpdatePanel(terminal);
       currentWorkspace.addOrUpdatePanel(placeholder);
@@ -121,6 +180,7 @@
       status = "Restored workspace was missing the terminal; it has been re-added.";
     }
     placeholderOpen = currentWorkspace.hasPanel(placeholder.id);
+    syncVisiblePanels();
 
     let pending: WorkspaceSnapshot | undefined;
     let timer: number | undefined;
@@ -139,7 +199,10 @@
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(flush, 75);
     };
-    const unsubscribe = currentWorkspace.subscribeLayout(scheduleSave);
+    const unsubscribe = currentWorkspace.subscribeLayout((next) => {
+      scheduleSave(next);
+      syncVisiblePanels();
+    });
     const flushOnLeave = () => flush();
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
@@ -150,6 +213,7 @@
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       unsubscribe();
+      session.information.setVisiblePanels([]);
       flush();
       workspace = undefined;
       void currentWorkspace.dispose();
@@ -172,6 +236,15 @@
     {:else}
       <button type="button" onclick={openPlaceholder}>Open panel</button>
     {/if}
+    {#each informationPanels as panel}
+      <button
+        type="button"
+        aria-pressed={informationPanelOpen(panel)}
+        onclick={() => toggleInformationPanel(panel)}
+      >
+        {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+      </button>
+    {/each}
   </div>
   <button
     bind:this={sheetTrigger}
@@ -208,6 +281,15 @@
     <div class="mobile-panel-tabs" aria-label="Open panels">
       <button type="button" onclick={() => selectPanel(focusTerminal)}>Terminal</button>
       <button type="button" onclick={() => selectPanel(openPlaceholder)}>Panel placeholder</button>
+      {#each informationPanels as panel}
+        <button
+          type="button"
+          aria-pressed={informationPanelOpen(panel)}
+          onclick={() => selectPanel(() => void toggleInformationPanel(panel))}
+        >
+          {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+        </button>
+      {/each}
     </div>
     <div class="mobile-sheet-controls">
       <button type="button" onclick={focusTerminal}>Focus terminal</button>

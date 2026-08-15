@@ -51,7 +51,7 @@ function createInformation(modules) {
 
 test("information snapshots accept valid frames, merge deltas, and stay frozen", async (t) => {
   const modules = await loadModules(t);
-  const { bus, information, sent } = createInformation(modules);
+  const { bus, eventBus, information, sent } = createInformation(modules);
   const snapshots = [];
   information.subscribe((snapshot) => snapshots.push(snapshot));
 
@@ -90,6 +90,18 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   assert.equal(subscription.panels.buffs, true);
   assert.equal(subscription.panels.status, true);
   assert.equal(subscription.panels.vitals, true);
+
+  const sentBeforeReconnect = sent.length;
+  information.setVisiblePanels(["group"]);
+  const sentBeforeConnected = sent.length;
+  assert.equal(sentBeforeConnected, sentBeforeReconnect + 1);
+  // The workspace does not own a reconnect timer: the information capability
+  // resends its last derived visibility when the session reconnects.
+  eventBus.publish("transport:reconnect-status", { status: "connected", transport: "ws" });
+  const resent = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(sent.length, sentBeforeConnected + 1);
+  assert.equal(resent.panels.group, true);
+  assert.equal(resent.panels.avatar, false);
 });
 
 test("divine patron attaches to vitals regardless of frame order", async (t) => {

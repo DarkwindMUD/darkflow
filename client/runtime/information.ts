@@ -1,6 +1,6 @@
 import typia from "typia";
 
-import { deepFreeze } from "../configuration/snapshot.ts";
+import { deepFreeze } from "../configuration/snapshot";
 import type {
   CharItemsList,
   CharItemsMutation,
@@ -56,7 +56,7 @@ import {
   validateDarkwindQuestsList,
   validateDarkwindQuestsUpdate,
   validateGroup,
-} from "../gmcp/contracts/validators.ts";
+} from "../gmcp/contracts/validators";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
 import type { TransportReconnectStatusPayload } from "../transport/types.ts";
 import type { SessionEventBus } from "./event-bus.ts";

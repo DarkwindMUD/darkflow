@@ -110,13 +110,14 @@ function populateLegacyStorage(storage, modules, fixture) {
   }
 }
 
-function createBootHarness(modules, options = {}) {
+function createBootHarness(t, modules, options = {}) {
   const storage = options.storage ?? createMemoryStorage();
   const windowTarget = {
     __darkflowPhase1Runtime: undefined,
     __darkflowPhase1Bootstrap: undefined,
     __darkflowPhase1Session: undefined,
   };
+  t.after(() => windowTarget.__darkflowPhase1Runtime?.session.dispose());
   const texts = [];
   let clientLoadCount = 0;
   let bootstrapPhase = null;
@@ -277,7 +278,7 @@ test("MH1 CMH2 same-slot double bootstrap creates one session and one client loa
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
 
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
   const first = await harness.runTransaction();
   const second = await harness.runTransaction();
 
@@ -296,7 +297,7 @@ test("MH2 migration preserves legacy keys and second migration skips", async (t)
   populateLegacyStorage(storage, modules, fixture);
   const before = storage.snapshot();
 
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
   await harness.runTransaction();
   const afterFirst = storage.snapshot();
 
@@ -320,7 +321,7 @@ test("MH2 malformed config falls back without aborting boot", async (t) => {
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   await harness.runTransaction({
     fetchConfig: async () => ({ notValid: true }),
@@ -335,7 +336,7 @@ test("MH3 default character resolves from defaults.defaultCharacterProfileId", a
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   const result = await harness.runTransaction();
   const stored = JSON.parse(storage.getItem(modules.SESSION_CORE_STORAGE_KEY));
@@ -348,7 +349,7 @@ test("MH10 CMH3 post-create failure disposes session and clears runtime slot", a
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   await assert.rejects(
     () =>
@@ -372,7 +373,7 @@ test("CMH1 bridge install performs no DOM connection state write before markLega
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   await harness.runTransaction();
   assert.deepEqual(harness.connectionStateCalls, []);
@@ -386,7 +387,7 @@ test("CMH3 partial boot failure loads one client after cleanup", async (t) => {
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   await assert.rejects(() =>
     harness.runTransaction({
@@ -409,7 +410,7 @@ test("Green PR 2 client mount failure clears the session runtime", async (t) => 
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, { storage });
+  const harness = createBootHarness(t, modules, { storage });
 
   await assert.rejects(
     () =>
@@ -431,7 +432,7 @@ test("Green PR 2 returns shell bootstrap values without runtime handles", async 
   const fixture = loadFixture("single-scope");
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
-  const harness = createBootHarness(modules, {
+  const harness = createBootHarness(t, modules, {
     storage,
     config: { ...modules.DEFAULT_CONFIG_JSON, gameName: "Example", host: "mud.example.com" },
   });

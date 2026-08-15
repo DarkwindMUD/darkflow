@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 export default defineConfig({
   testDir: "e2e",
   testMatch:
-    /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|production-artifact|session-disposal|transports)\.spec\.ts/,
+    /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|phase2-information-panels|phase2-diagnostics|production-artifact|session-disposal|transports)\.spec\.ts/,
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
@@ -15,12 +15,12 @@ export default defineConfig({
     {
       name: "chromium",
       testMatch:
-        /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|production-artifact|session-disposal)\.spec\.ts/,
+        /(?:phase2-shell|phase2-workspace|phase2-terminal|phase2-settings|phase2-information-panels|phase2-diagnostics|production-artifact|session-disposal)\.spec\.ts/,
       use: devices["Desktop Chrome"],
     },
     {
       name: "mobile-chromium",
-      testMatch: /phase2-(workspace|terminal|settings)\.spec\.ts/,
+      testMatch: /phase2-(workspace|terminal|settings|information-panels)\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 390, height: 844 },

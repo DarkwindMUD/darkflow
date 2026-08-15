@@ -42,6 +42,9 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
   await expect(health).toContainText("drift 4ms avg, 35ms max");
   await expect.poll(() => endpoint.gmcpMessages, { timeout: 8_000 }).toContain("Core.Ping");
 
+  endpoint.sendGmcp("Darkwind.Lag.Status", { hb_drift_avg_ms: "invalid" });
+  await expect(health).toContainText("drift 4ms avg, 35ms max");
+
   await health.getByRole("button", { name: "Run full check" }).click();
   await expect(health.getByRole("button", { name: "Checking..." })).toBeDisabled();
 
@@ -68,4 +71,33 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
   await expect(page.getByLabel("RFC 2549 debug panel")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByLabel("RFC 2549 debug panel")).toHaveCount(0);
+
+  endpoint.dropConnections();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await expect(health).not.toContainText("drift 4ms avg, 35ms max");
+  await page.getByRole("button", { name: "Retry now", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(health).toContainText("drift 4ms avg, 35ms max");
+  await expect(health).toContainText("1 reconnect(s)");
+
+  await page.evaluate(() => {
+    (
+      window as unknown as { __darkflowPhase1Runtime: { session: { dispose(): void } } }
+    ).__darkflowPhase1Runtime.session.dispose();
+  });
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+  endpoint.sendGmcp("Darkwind.Lag.Status", {
+    uptime_s: 200,
+    window_s: 60,
+    hb_interval_ms: 2_000,
+    hb_drift_avg_ms: 99,
+    hb_drift_max_ms: 999,
+    hb_missed: 10,
+    cmds_per_sec_x100: 1,
+    lines_per_sec_x100: 1,
+    hb_processed_pct: 50,
+    obj_processed_pct: 50,
+  });
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
 });

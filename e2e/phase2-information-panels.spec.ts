@@ -63,7 +63,9 @@ test("inventory and progress panels open from desktop and mobile controls", asyn
   }
 });
 
-test("wire data drives inventory, progress, and accessible cyberware details", async ({ page }) => {
+test("wire data survives malformed frames and resets across reconnect and disposal", async ({
+  page,
+}) => {
   await connect(page);
   const endpoint = fixtures.endpoints.ws;
   for (const title of ["Inventory", "Quests", "Achievements", "Cyberware"]) {
@@ -108,6 +110,13 @@ test("wire data drives inventory, progress, and accessible cyberware details", a
     "Explorer",
   );
 
+  endpoint.sendGmcp("Char.Items.List", { location: "inv", items: "invalid" });
+  endpoint.sendGmcp("Darkwind.Quests.List", { invalid: true });
+  await expect(inventory).toContainText("A bronze sword");
+  await expect(page.locator('.information-panel[data-panel-id="quests"]')).toContainText(
+    "Gather herbs",
+  );
+
   const cyberwareRow = page.getByRole("button", { name: /Targeting Suite/ });
   await cyberwareRow.focus();
   await cyberwareRow.press("Enter");
@@ -138,4 +147,33 @@ test("wire data drives inventory, progress, and accessible cyberware details", a
   await dialog.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(cyberwareRow).toBeFocused();
+
+  endpoint.dropConnections();
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await expect(inventory).toContainText("Empty");
+  await expect(page.locator('.information-panel[data-panel-id="quests"]')).toContainText(
+    "No quest data",
+  );
+  await page.getByRole("button", { name: "Retry now", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+
+  endpoint.sendGmcp("Char.Items.List", {
+    location: "inv",
+    items: [{ id: "needle", name: "a silver needle", attrib: "" }],
+  });
+  await expect(inventory).toContainText("A silver needle");
+  await expect(inventory).not.toContainText("A bronze sword");
+
+  await page.evaluate(() => {
+    (
+      window as unknown as { __darkflowPhase1Runtime: { session: { dispose(): void } } }
+    ).__darkflowPhase1Runtime.session.dispose();
+  });
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+  endpoint.sendGmcp("Char.Items.List", {
+    location: "inv",
+    items: [{ id: "late", name: "late item", attrib: "" }],
+  });
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
 });

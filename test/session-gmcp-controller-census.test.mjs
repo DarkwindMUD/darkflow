@@ -4,6 +4,39 @@ import path from "node:path";
 import test from "node:test";
 
 const PUBLIC_JS = path.resolve("public/js");
+const STEP_6_OWNERS = Object.freeze({
+  "client/runtime/connection-health.ts": ["Core.Ping", "Darkwind.Lag.Status"],
+  "client/runtime/information.ts": [
+    "Char.Vitals",
+    "Char.Status",
+    "Char.StatusVars",
+    "Char.Stats",
+    "Char.RealStats",
+    "Char.Worth",
+    "Char.Items.List",
+    "Char.Items.Add",
+    "Char.Items.Remove",
+    "Char.Items.Update",
+    "Char.Defences.List",
+    "Char.Defences.Add",
+    "Char.Defences.Remove",
+    "Group",
+    "Darkwind.Char.Avatar",
+    "Darkwind.Divine",
+    "Darkwind.Sky",
+    "Darkwind.GuildVitals",
+    "Darkwind.XPMon",
+    "Darkwind.Quests.List",
+    "Darkwind.Quests.Active",
+    "Darkwind.Quests.Update",
+    "Darkwind.Quests.Complete",
+    "Darkwind.Achievements.List",
+    "Darkwind.Achievements.Update",
+    "Darkwind.Cyberware.List",
+    "Darkwind.Cyberware.Details",
+    "Darkwind.Cyberware.Image",
+  ],
+});
 const EXPECTED_REGISTRATIONS = Object.freeze({
   "announcements-manager.js": 4,
   "app.js": 2,
@@ -53,4 +86,18 @@ test("all 109 legacy GMCP registrations declare session lifecycle ownership", as
     total += actual;
   }
   assert.equal(total, 109);
+});
+
+test("Step 6 families have Phase 2 owners while legacy rollback stays registered", async () => {
+  const panelManager = await readFile(path.join(PUBLIC_JS, "panel-manager.js"), "utf8");
+  const lagMonitor = await readFile(path.join(PUBLIC_JS, "lag-monitor.js"), "utf8");
+
+  for (const [owner, packages] of Object.entries(STEP_6_OWNERS)) {
+    const source = await readFile(path.resolve(owner), "utf8");
+    const legacy = owner.endsWith("connection-health.ts") ? lagMonitor : panelManager;
+    for (const packageName of packages) {
+      assert.match(source, new RegExp(`["']${packageName.replaceAll(".", "\\.")}["']`));
+      assert.match(legacy, new RegExp(`\\.on\\(["']${packageName.replaceAll(".", "\\.")}["']`));
+    }
+  }
 });

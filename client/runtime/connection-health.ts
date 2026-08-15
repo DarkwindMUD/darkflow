@@ -1,6 +1,6 @@
-import { deepFreeze } from "../configuration/snapshot.ts";
+import { deepFreeze } from "../configuration/snapshot";
 import type { DarkwindLagStatus } from "../gmcp/contracts/diagnostics.ts";
-import { validateCorePing, validateDarkwindLagStatus } from "../gmcp/contracts/validators.ts";
+import { validateCorePing, validateDarkwindLagStatus } from "../gmcp/contracts/validators";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
 import type {
   SessionTransport,

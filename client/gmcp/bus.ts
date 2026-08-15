@@ -91,6 +91,7 @@ export interface SessionGmcpBus {
   requestChannelPlayers(): boolean;
   enableChannel(channel: string): boolean;
   requestCompletion(request: CompletionRequest): boolean;
+  requestCyberwareDetails(id: string): boolean;
   onCompletionResult(handler: CompletionResultHandler): void;
   offCompletionResult(handler: CompletionResultHandler): void;
   restartHandshake(payload?: Partial<GmcpSubscriptionPayload>): boolean;
@@ -346,6 +347,11 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
     return validateCompletionRequest(request).success
       ? this.send("Darkwind.Completion.Request", request)
       : false;
+  }
+
+  requestCyberwareDetails(id: string): boolean {
+    const value = typeof id === "string" ? id.trim() : "";
+    return value ? this.send("Darkwind.Cyberware.Details", { id: value }) : false;
   }
 
   onCompletionResult(handler: CompletionResultHandler): void {

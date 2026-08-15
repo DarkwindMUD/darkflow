@@ -118,6 +118,63 @@ test("divine patron attaches to vitals regardless of frame order", async (t) => 
   assert.equal(late.information.getSnapshot().vitals?.divine_patron, "mitra");
 });
 
+test("information reduces inventory, progress, and requested cyberware details", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, information, sent } = createInformation(modules);
+
+  bus.dispatch("Char.Items.List", {
+    location: "inv",
+    items: [{ id: "sword", name: "a sword" }],
+  });
+  bus.dispatch("Char.Items.Add", { location: "inv", item: { id: "shield", name: "a shield" } });
+  bus.dispatch("Char.Items.Update", { location: "inv", item: { id: "sword", name: "a sharp sword" } });
+  bus.dispatch("Char.Items.Remove", { location: "inv", item: { id: "shield" } });
+  bus.dispatch("Darkwind.Quests.List", [{
+    id: "herbs",
+    name: "Gather herbs",
+    status: "Started",
+    current: 1,
+    total: 3,
+    objectives: [{ name: "Herbs", current: 1, required: 3, status: "started" }],
+  }]);
+  bus.dispatch("Darkwind.Quests.Update", {
+    questId: "herbs",
+    objective: "Herbs",
+    current: 3,
+    required: 3,
+    readyToTurnIn: true,
+  });
+  bus.dispatch("Darkwind.Achievements.List", {
+    summary: { unlockedTierCount: 1, totalTierCount: 2, completedFamilyCount: 0, totalFamilyCount: 1 },
+    families: [{ id: "explorer", name: "Explorer", currentValue: 2, nextTierThreshold: 5 }],
+  });
+  bus.dispatch("Darkwind.Achievements.Update", {
+    families: [{ id: "explorer", name: "Explorer", currentValue: 3, nextTierThreshold: 5 }],
+  });
+  bus.dispatch("Darkwind.Cyberware.List", {
+    installed: [{ id: "eyes", name: "Targeting suite" }],
+    strain: { used: 2, total: 6 },
+  });
+
+  assert.equal(information.requestCyberwareDetails(" eyes "), true);
+  assert.equal(sent.at(-1), 'Darkwind.Cyberware.Details {"id":"eyes"}');
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "other", description: "Ignore me" });
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Locked on" });
+  bus.dispatch("Darkwind.Cyberware.Image", { id: "eyes", url: "/eyes.png" });
+
+  const snapshot = information.getSnapshot();
+  assert.deepEqual(snapshot.inventory, [{ id: "sword", name: "a sharp sword" }]);
+  assert.equal(snapshot.quests?.list[0]?.current, 3);
+  assert.equal(snapshot.quests?.list[0]?.readyToTurnIn, true);
+  assert.equal(snapshot.achievements?.families[0]?.currentValue, 3);
+  assert.equal(snapshot.cyberwareDetail?.description, "Locked on");
+  assert.equal(snapshot.cyberwareDetail?.image, "/eyes.png");
+
+  eventBus.publish("transport:reconnect-status", { status: "scheduled", attempt: 1, transport: "wss" });
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Stale" });
+  assert.equal(information.getSnapshot().cyberwareDetail, null);
+});
+
 test("information ignores malformed frames while compatibility handlers still receive them", async (t) => {
   const modules = await loadModules(t);
   const { bus, information } = createInformation(modules);
@@ -133,6 +190,12 @@ test("information ignores malformed frames while compatibility handlers still re
   bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
   assert.equal(legacy.length, 2);
   assert.equal(information.getSnapshot().vitals?.hp, 1);
+
+  const questFrames = [];
+  bus.on("Darkwind.Quests.Update", (data) => questFrames.push(data));
+  bus.dispatch("Darkwind.Quests.Update", { questId: "herbs", objective: "Herbs", current: "wrong", required: 2 });
+  assert.equal(questFrames.length, 1);
+  assert.equal(information.getSnapshot().quests, null);
 });
 
 test("information resets on disconnect and stays isolated after disposal", async (t) => {

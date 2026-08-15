@@ -27,10 +27,18 @@ import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-cl
 import type { CompletionRequest, CompletionResult } from "./completion.ts";
 import type {
   DarkwindAvatar,
+  DarkwindAchievements,
+  DarkwindAchievementsUpdate,
+  DarkwindCyberware,
+  DarkwindCyberwareDetails,
+  DarkwindCyberwareImage,
   DarkwindDivine,
   DarkwindGuildVitals,
   DarkwindSky,
   DarkwindXpMon,
+  DarkwindQuestsActive,
+  DarkwindQuestsUpdate,
+  DarkwindQuest,
   Group,
 } from "./information.ts";
 import type {
@@ -99,6 +107,16 @@ export const validateDarkwindDivine = typia.createValidate<DarkwindDivine>();
 export const validateDarkwindSky = typia.createValidate<DarkwindSky>();
 export const validateDarkwindGuildVitals = typia.createValidate<DarkwindGuildVitals>();
 export const validateDarkwindXpMon = typia.createValidate<DarkwindXpMon>();
+export const validateDarkwindQuestsList = typia.createValidate<DarkwindQuest[]>();
+export const validateDarkwindQuestsActive = typia.createValidate<DarkwindQuestsActive>();
+export const validateDarkwindQuestsUpdate = typia.createValidate<DarkwindQuestsUpdate>();
+export const validateDarkwindQuestsComplete = typia.createValidate<Record<string, unknown>>();
+export const validateDarkwindAchievements = typia.createValidate<DarkwindAchievements>();
+export const validateDarkwindAchievementsUpdate =
+  typia.createValidate<DarkwindAchievementsUpdate>();
+export const validateDarkwindCyberware = typia.createValidate<DarkwindCyberware>();
+export const validateDarkwindCyberwareDetails = typia.createValidate<DarkwindCyberwareDetails>();
+export const validateDarkwindCyberwareImage = typia.createValidate<DarkwindCyberwareImage>();
 
 /** Typia validator invoked by canonical inbound package name. */
 export type GmcpPayloadValidator = (input: unknown) => typia.IValidation<unknown>;
@@ -153,6 +171,15 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Sky")]: validateDarkwindSky,
   [canonicalPackageName("Darkwind.GuildVitals")]: validateDarkwindGuildVitals,
   [canonicalPackageName("Darkwind.XPMon")]: validateDarkwindXpMon,
+  [canonicalPackageName("Darkwind.Quests.List")]: validateDarkwindQuestsList,
+  [canonicalPackageName("Darkwind.Quests.Active")]: validateDarkwindQuestsActive,
+  [canonicalPackageName("Darkwind.Quests.Update")]: validateDarkwindQuestsUpdate,
+  [canonicalPackageName("Darkwind.Quests.Complete")]: validateDarkwindQuestsComplete,
+  [canonicalPackageName("Darkwind.Achievements.List")]: validateDarkwindAchievements,
+  [canonicalPackageName("Darkwind.Achievements.Update")]: validateDarkwindAchievementsUpdate,
+  [canonicalPackageName("Darkwind.Cyberware.List")]: validateDarkwindCyberware,
+  [canonicalPackageName("Darkwind.Cyberware.Details")]: validateDarkwindCyberwareDetails,
+  [canonicalPackageName("Darkwind.Cyberware.Image")]: validateDarkwindCyberwareImage,
 };
 
 /** Returns the structural validator for a canonical package name, if modeled. */
@@ -187,12 +214,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Snoop.Command",
   "Darkwind.Snoop.Stop",
   "Darkwind.Snoop.Closed",
-  "Darkwind.Quests.List",
-  "Darkwind.Quests.Active",
-  "Darkwind.Quests.Update",
-  "Darkwind.Quests.Complete",
-  "Darkwind.Achievements.List",
-  "Darkwind.Achievements.Update",
   "Darkwind.Announcements.List",
   "Darkwind.Announcements.New",
   "Darkwind.Announcements.Update",
@@ -215,9 +236,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Fishing.Art",
   "Darkwind.Fishing.Cancel",
   "Darkwind.Fishing.End",
-  "Darkwind.Cyberware.List",
-  "Darkwind.Cyberware.Details",
-  "Darkwind.Cyberware.Image",
   "Darkwind.StreetSamurai",
   "Darkwind.Room.Playlist.State",
   "Darkwind.Room.Playlist.Open",

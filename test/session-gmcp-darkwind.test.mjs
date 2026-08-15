@@ -152,6 +152,18 @@ test("Step 6 information package validators accept representative server payload
     "Darkwind.Sky": { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } },
     "Darkwind.GuildVitals": { items: [{ id: "heat", label: "Heat", cur: 1, max: 10 }] },
     "Darkwind.XPMon": { active: 1, xp: 25 },
+    "Darkwind.Quests.List": [{ id: "herbs", name: "Gather herbs", status: "Started" }],
+    "Darkwind.Quests.Active": [],
+    "Darkwind.Quests.Update": { questId: "herbs", objective: "Herbs", current: 1, required: 2 },
+    "Darkwind.Quests.Complete": { name: "Gather herbs" },
+    "Darkwind.Achievements.List": {
+      summary: { unlockedTierCount: 1, totalTierCount: 2, completedFamilyCount: 0, totalFamilyCount: 1 },
+      families: [{ id: "explorer", name: "Explorer", currentValue: 1 }],
+    },
+    "Darkwind.Achievements.Update": { families: [{ id: "explorer", name: "Explorer", currentValue: 2 }] },
+    "Darkwind.Cyberware.List": { installed: [{ id: "eyes", name: "Targeting suite" }], strain: { used: 1, total: 4 } },
+    "Darkwind.Cyberware.Details": { id: "eyes", description: "Sharp." },
+    "Darkwind.Cyberware.Image": { id: "eyes", url: "/eyes.png" },
   };
 
   for (const [packageName, payload] of Object.entries(fixtures)) {
@@ -166,6 +178,12 @@ test("Step 6 information package validators accept representative server payload
   assert.equal(lookupGmcpValidator("Darkwind.Sky")({ game_now: "late" }).success, false);
   assert.equal(lookupGmcpValidator("Darkwind.GuildVitals")({ items: [{ id: 1 }] }).success, false);
   assert.equal(lookupGmcpValidator("Darkwind.XPMon")({ active: "yes" }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Quests.List")([{ name: 1 }]).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Quests.Update")({ questId: "herbs", objective: "Herbs", current: "wrong", required: 2 }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Achievements.List")({ summary: {}, families: [] }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Cyberware.List")({ installed: [{ id: 1 }], strain: {} }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Cyberware.Details")({ id: 1 }).success, false);
+  assert.equal(lookupGmcpValidator("Darkwind.Cyberware.Image")({ id: "eyes", url: 1 }).success, false);
 });
 
 test("server-native room and MapData2 wire values validate without coercion", async (t) => {

@@ -10,12 +10,14 @@ export type TransportName = "ws" | "wss" | "telnet" | "telnets";
 
 export interface TransportEndpoint {
   readonly commands: string[];
+  readonly gmcpMessages: string[];
   readonly port: number;
   readonly prompt: string;
   readonly protocol: TransportName;
   readonly reply: string;
   activeSocketCount(): number;
   dropConnections(): void;
+  sendGmcp(packageName: string, data: unknown): void;
   sendText(text: string): void;
 }
 
@@ -122,6 +124,7 @@ async function startWebSocketFixture(
   const prompt = `${protocol} fixture ready`;
   const reply = `${protocol} fixture reply`;
   const commands: string[] = [];
+  const gmcpMessages: string[] = [];
   const server =
     protocol === "wss"
       ? createHttpsServer({ cert: certificate, key: privateKey })
@@ -133,7 +136,10 @@ async function startWebSocketFixture(
     socket.send(prompt);
     socket.send(gmcpPayload, { binary: true });
     socket.on("message", (data, isBinary) => {
-      if (isBinary) return;
+      if (isBinary) {
+        gmcpMessages.push(asBuffer(data).toString("utf8"));
+        return;
+      }
       const command = asBuffer(data).toString("utf8");
       commands.push(command);
       if (command === "look") socket.send(reply);
@@ -145,6 +151,7 @@ async function startWebSocketFixture(
     endpoint: {
       activeSocketCount: () => sockets.size,
       commands,
+      gmcpMessages,
       dropConnections() {
         for (const client of webSocketServer.clients) client.terminate();
       },
@@ -152,6 +159,10 @@ async function startWebSocketFixture(
       prompt,
       protocol,
       reply,
+      sendGmcp(packageName, data) {
+        const payload = Buffer.from(`${packageName} ${JSON.stringify(data)}`, "utf8");
+        for (const client of webSocketServer.clients) client.send(payload, { binary: true });
+      },
       sendText(text) {
         for (const client of webSocketServer.clients) client.send(text);
       },
@@ -225,6 +236,7 @@ async function startTelnetFixture(
   const prompt = `${protocol} fixture ready`;
   const reply = `${protocol} fixture reply`;
   const commands: string[] = [];
+  const gmcpMessages: string[] = [];
   const onConnection = (socket: Socket) => {
     const collector = new TelnetTextCollector();
     socket.write(
@@ -252,6 +264,7 @@ async function startTelnetFixture(
     endpoint: {
       activeSocketCount: () => sockets.size,
       commands,
+      gmcpMessages,
       dropConnections() {
         for (const socket of sockets) socket.destroy();
       },
@@ -259,6 +272,15 @@ async function startTelnetFixture(
       prompt,
       protocol,
       reply,
+      sendGmcp(packageName, data) {
+        const payload = Buffer.from(`${packageName} ${JSON.stringify(data)}`, "utf8");
+        const frame = Buffer.concat([
+          Buffer.from([IAC, SB, TELOPT_GMCP]),
+          payload,
+          Buffer.from([IAC, SE]),
+        ]);
+        for (const socket of sockets) socket.write(frame);
+      },
       sendText(text) {
         for (const socket of sockets) socket.write(text);
       },

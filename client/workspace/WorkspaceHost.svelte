@@ -46,6 +46,10 @@
     ["buffs", "Buffs"],
     ["worth", "Worth"],
     ["group", "Group"],
+    ["inventory", "Inventory"],
+    ["quests", "Quests"],
+    ["achievements", "Achievements"],
+    ["cyberware", "Cyberware"],
   ];
   const informationPanels: readonly (WorkspacePanelSpec & { id: InformationPanelId })[] =
     informationPanelLabels.map(([id, title]) => ({
@@ -236,7 +240,7 @@
     {:else}
       <button type="button" onclick={openPlaceholder}>Open panel</button>
     {/if}
-    {#each informationPanels as panel}
+    {#each informationPanels as panel (panel.id)}
       <button
         type="button"
         aria-pressed={informationPanelOpen(panel)}
@@ -281,7 +285,7 @@
     <div class="mobile-panel-tabs" aria-label="Open panels">
       <button type="button" onclick={() => selectPanel(focusTerminal)}>Terminal</button>
       <button type="button" onclick={() => selectPanel(openPlaceholder)}>Panel placeholder</button>
-      {#each informationPanels as panel}
+      {#each informationPanels as panel (panel.id)}
         <button
           type="button"
           aria-pressed={informationPanelOpen(panel)}

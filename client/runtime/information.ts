@@ -2,6 +2,8 @@ import typia from "typia";
 
 import { deepFreeze } from "../configuration/snapshot.ts";
 import type {
+  CharItemsList,
+  CharItemsMutation,
   CharDefence,
   CharRealStats,
   CharStats,
@@ -12,10 +14,18 @@ import type {
 } from "../gmcp/contracts/char.ts";
 import type {
   DarkwindAvatar,
+  DarkwindAchievements,
+  DarkwindAchievementsUpdate,
+  DarkwindCyberware,
+  DarkwindCyberwareDetails,
+  DarkwindCyberwareImage,
   DarkwindDivine,
   DarkwindGuildVitals,
   DarkwindSky,
   DarkwindXpMon,
+  DarkwindQuest,
+  DarkwindQuestsActive,
+  DarkwindQuestsUpdate,
   Group,
   SessionInformationSnapshot,
 } from "../gmcp/contracts/information.ts";
@@ -29,11 +39,22 @@ import {
   validateCharStatusVars,
   validateCharVitals,
   validateCharWorth,
+  validateCharItemsList,
+  validateCharItemsMutation,
+  validateDarkwindAchievements,
+  validateDarkwindAchievementsUpdate,
   validateDarkwindAvatar,
   validateDarkwindDivine,
   validateDarkwindGuildVitals,
   validateDarkwindSky,
   validateDarkwindXpMon,
+  validateDarkwindCyberware,
+  validateDarkwindCyberwareDetails,
+  validateDarkwindCyberwareImage,
+  validateDarkwindQuestsActive,
+  validateDarkwindQuestsComplete,
+  validateDarkwindQuestsList,
+  validateDarkwindQuestsUpdate,
   validateGroup,
 } from "../gmcp/contracts/validators.ts";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
@@ -69,6 +90,7 @@ export interface SessionInformation {
   getSnapshot(): SessionInformationSnapshot;
   subscribe(listener: (snapshot: SessionInformationSnapshot) => void): Unsubscribe;
   setVisiblePanels(ids: readonly InformationPanelId[]): void;
+  requestCyberwareDetails(id: string): boolean;
 }
 
 type PayloadValidator<T> = (input: unknown) => typia.IValidation<T>;
@@ -87,6 +109,11 @@ function emptySnapshot(): SessionInformationSnapshot {
     worth: null,
     defences: [],
     group: null,
+    inventory: [],
+    quests: null,
+    achievements: null,
+    cyberware: null,
+    cyberwareDetail: null,
   };
 }
 
@@ -98,6 +125,7 @@ export function createSessionInformation(
 ): SessionInformation {
   let snapshot = deepFreeze(emptySnapshot());
   let visiblePanels: readonly InformationPanelId[] = [];
+  let requestedCyberwareId: string | null = null;
   const listeners = new Set<(snapshot: SessionInformationSnapshot) => void>();
 
   const publish = (next: SessionInformationSnapshot): void => {
@@ -155,6 +183,32 @@ export function createSessionInformation(
     update({ stats: { ...snapshot.stats, base } }),
   );
   listen<CharWorth>("Char.Worth", validateCharWorth, (worth) => update({ worth }));
+  listen<CharItemsList>("Char.Items.List", validateCharItemsList, ({ location, items }) => {
+    if (location === "inv") update({ inventory: items });
+  });
+  listen<CharItemsMutation>("Char.Items.Add", validateCharItemsMutation, ({ location, item }) => {
+    if (location === "inv") update({ inventory: [...snapshot.inventory, item] });
+  });
+  listen<CharItemsMutation>(
+    "Char.Items.Remove",
+    validateCharItemsMutation,
+    ({ location, item }) => {
+      if (location === "inv")
+        update({ inventory: snapshot.inventory.filter(({ id }) => id !== item.id) });
+    },
+  );
+  listen<CharItemsMutation>(
+    "Char.Items.Update",
+    validateCharItemsMutation,
+    ({ location, item }) => {
+      if (location !== "inv") return;
+      const index = snapshot.inventory.findIndex(({ id }) => id === item.id);
+      if (index < 0) return;
+      const inventory = [...snapshot.inventory];
+      inventory[index] = item;
+      update({ inventory });
+    },
+  );
   listen<CharDefence[]>("Char.Defences.List", validateCharDefencesList, (defences) =>
     update({ defences }),
   );
@@ -197,12 +251,114 @@ export function createSessionInformation(
     update({ guildVitals }),
   );
   listen<DarkwindXpMon>("Darkwind.XPMon", validateDarkwindXpMon, (xpmon) => update({ xpmon }));
+  listen<DarkwindQuest[]>("Darkwind.Quests.List", validateDarkwindQuestsList, (list) =>
+    update({
+      quests: {
+        list,
+        active: snapshot.quests?.active ?? null,
+        lastUpdate: snapshot.quests?.lastUpdate ?? null,
+        lastComplete: snapshot.quests?.lastComplete ?? null,
+      },
+    }),
+  );
+  listen<DarkwindQuestsActive>("Darkwind.Quests.Active", validateDarkwindQuestsActive, (active) =>
+    update({
+      quests: {
+        list: snapshot.quests?.list ?? [],
+        active,
+        lastUpdate: snapshot.quests?.lastUpdate ?? null,
+        lastComplete: snapshot.quests?.lastComplete ?? null,
+      },
+    }),
+  );
+  listen<DarkwindQuestsUpdate>(
+    "Darkwind.Quests.Update",
+    validateDarkwindQuestsUpdate,
+    (lastUpdate) => {
+      const quests = snapshot.quests ?? {
+        list: [],
+        active: null,
+        lastUpdate: null,
+        lastComplete: null,
+      };
+      const list = quests.list.map((quest) => updateQuest(quest, lastUpdate));
+      update({ quests: { ...quests, list, lastUpdate } });
+    },
+  );
+  listen<Record<string, unknown>>(
+    "Darkwind.Quests.Complete",
+    validateDarkwindQuestsComplete,
+    (lastComplete) =>
+      update({
+        quests: {
+          list: snapshot.quests?.list ?? [],
+          active: snapshot.quests?.active ?? null,
+          lastUpdate: snapshot.quests?.lastUpdate ?? null,
+          lastComplete,
+        },
+      }),
+  );
+  listen<DarkwindAchievements>(
+    "Darkwind.Achievements.List",
+    validateDarkwindAchievements,
+    (achievements) => update({ achievements }),
+  );
+  listen<DarkwindAchievementsUpdate>(
+    "Darkwind.Achievements.Update",
+    validateDarkwindAchievementsUpdate,
+    (changes) => {
+      const current = snapshot.achievements ?? {
+        summary: {
+          unlockedTierCount: 0,
+          totalTierCount: 0,
+          completedFamilyCount: 0,
+          totalFamilyCount: 0,
+        },
+        families: [],
+      };
+      const families = changes.families
+        ? [
+            ...current.families.filter(
+              (existing) => !changes.families!.some(({ id }) => id === existing.id),
+            ),
+            ...changes.families,
+          ].sort((a, b) => a.name.localeCompare(b.name))
+        : current.families;
+      update({
+        achievements: {
+          summary: changes.summary ?? current.summary,
+          families,
+          ...(changes.newlyUnlocked ? { newlyUnlocked: changes.newlyUnlocked } : {}),
+        },
+      });
+    },
+  );
+  listen<DarkwindCyberware>("Darkwind.Cyberware.List", validateDarkwindCyberware, (cyberware) =>
+    update({ cyberware, cyberwareDetail: null }),
+  );
+  listen<DarkwindCyberwareDetails>(
+    "Darkwind.Cyberware.Details",
+    validateDarkwindCyberwareDetails,
+    (detail) => {
+      if (detail.id === requestedCyberwareId) update({ cyberwareDetail: detail });
+    },
+  );
+  listen<DarkwindCyberwareImage>(
+    "Darkwind.Cyberware.Image",
+    validateDarkwindCyberwareImage,
+    (image) => {
+      if (image.id === requestedCyberwareId && snapshot.cyberwareDetail?.id === image.id) {
+        update({ cyberwareDetail: { ...snapshot.cyberwareDetail, image: image.url } });
+      }
+    },
+  );
 
   scope.own(
     "subscription",
     eventBus.subscribe("transport:reconnect-status", (event) => {
       const payload = event.payload as TransportReconnectStatusPayload;
       if (payload.status !== "connected") {
+        requestedCyberwareId = null;
         publish(emptySnapshot());
       }
     }),
@@ -235,5 +391,42 @@ export function createSessionInformation(
       visiblePanels = [...ids];
       sendVisiblePanels(visiblePanels);
     },
+
+    requestCyberwareDetails(id) {
+      const value = typeof id === "string" ? id.trim() : "";
+      if (scope.disposed || !value) return false;
+      requestedCyberwareId = value;
+      update({ cyberwareDetail: null });
+      return gmcp.requestCyberwareDetails(value);
+    },
+  };
+}
+
+function updateQuest(quest: DarkwindQuest, update: DarkwindQuestsUpdate): DarkwindQuest {
+  if (quest.id !== update.questId && quest.questPath !== update.questId) return quest;
+  const objectives = quest.objectives?.map((objective) =>
+    objective.name === update.objective
+      ? {
+          ...objective,
+          current: update.current,
+          required: update.required,
+          status: update.current >= update.required ? "finished" : "started",
+        }
+      : objective,
+  );
+  const current = objectives
+    ? objectives.reduce((total, objective) => total + objective.current, 0)
+    : quest.current;
+  return {
+    ...quest,
+    ...(objectives ? { objectives, current } : {}),
+    ...(update.status ? { status: update.status } : {}),
+    ...(update.readyToTurnIn === undefined
+      ? {}
+      : {
+          readyToTurnIn: update.readyToTurnIn,
+          status: update.readyToTurnIn ? "Ready to Turn In" : (update.status ?? quest.status),
+        }),
+    ...(update.giverArea ? { giverArea: update.giverArea } : {}),
   };
 }

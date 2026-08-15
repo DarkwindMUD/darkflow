@@ -1,4 +1,5 @@
 import type {
+  CharItem,
   CharDefence,
   CharRealStats,
   CharStats,
@@ -7,6 +8,111 @@ import type {
   CharVitals,
   CharWorth,
 } from "./char.ts";
+
+export interface DarkwindQuestObjective {
+  name: string;
+  current: number;
+  required: number;
+  status?: string;
+  [key: string]: unknown;
+}
+
+export interface DarkwindQuest {
+  id?: string;
+  questPath?: string;
+  name: string;
+  status: string;
+  current?: number;
+  total?: number;
+  readyToTurnIn?: boolean;
+  giverName?: string;
+  giverArea?: string;
+  objectives?: DarkwindQuestObjective[];
+  [key: string]: unknown;
+}
+
+export interface DarkwindQuests {
+  list: DarkwindQuest[];
+  active: Record<string, unknown> | unknown[] | null;
+  lastUpdate: DarkwindQuestsUpdate | null;
+  lastComplete: Record<string, unknown> | null;
+}
+
+export type DarkwindQuestsActive = Record<string, unknown> | unknown[];
+
+export interface DarkwindQuestsUpdate {
+  questId: string;
+  objective: string;
+  current: number;
+  required: number;
+  questPath?: string;
+  questName?: string;
+  status?: string;
+  readyToTurnIn?: boolean;
+  giverArea?: string;
+  [key: string]: unknown;
+}
+
+export interface DarkwindAchievementSummary {
+  unlockedTierCount: number;
+  totalTierCount: number;
+  completedFamilyCount: number;
+  totalFamilyCount: number;
+  equippedTitle?: { id?: string; title?: string; [key: string]: unknown };
+  leaderboardRank?: number | string;
+  [key: string]: unknown;
+}
+
+export interface DarkwindAchievementFamily {
+  id: string;
+  name: string;
+  currentValue: number;
+  nextTierKey?: string;
+  nextTierThreshold?: number;
+  [key: string]: unknown;
+}
+
+export interface DarkwindAchievements {
+  summary: DarkwindAchievementSummary;
+  families: DarkwindAchievementFamily[];
+  newlyUnlocked?: unknown[];
+}
+
+export interface DarkwindAchievementsUpdate {
+  summary?: DarkwindAchievementSummary;
+  families?: DarkwindAchievementFamily[];
+  newlyUnlocked?: unknown[];
+}
+
+export interface DarkwindCyberwareItem {
+  id: string;
+  name?: string;
+  grade?: string;
+  locations?: string[];
+  strain?: number;
+  [key: string]: unknown;
+}
+
+export interface DarkwindCyberware {
+  installed: DarkwindCyberwareItem[];
+  strain: { used?: number; total?: number; [key: string]: unknown };
+}
+
+export interface DarkwindCyberwareDetails {
+  id: string;
+  name?: string;
+  description?: string;
+  scan?: string;
+  image?: string;
+  image_pending?: number | boolean;
+  error?: string;
+  [key: string]: unknown;
+}
+
+export interface DarkwindCyberwareImage {
+  id: string;
+  url: string;
+}
 
 /** Group roster supplied by the root Group package. */
 export interface GroupMember {
@@ -119,4 +225,9 @@ export interface SessionInformationSnapshot {
   worth: CharWorth | null;
   defences: CharDefence[];
   group: Group | null;
+  inventory: CharItem[];
+  quests: DarkwindQuests | null;
+  achievements: DarkwindAchievements | null;
+  cyberware: DarkwindCyberware | null;
+  cyberwareDetail: DarkwindCyberwareDetails | null;
 }

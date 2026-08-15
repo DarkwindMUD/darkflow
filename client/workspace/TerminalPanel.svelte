@@ -33,7 +33,7 @@
       island = createTerminalIsland(host, panelId);
       let previousBuffer: string | undefined;
       let previousAppend: unknown;
-      return panelState.subscribe((value) => {
+      const unsubscribe = panelState.subscribe((value) => {
         const candidate = value.buffer ?? value.output ?? value.text;
         const buffer = Array.isArray(candidate) ? candidate.join("\n") : candidate;
         if (typeof buffer === "string" && buffer !== previousBuffer) {
@@ -45,6 +45,11 @@
           previousAppend = value.append;
         }
       });
+      return () => {
+        unsubscribe();
+        island?.dispose();
+        island = undefined;
+      };
     }
     if (!output || !commandInput || !sendButton || !batchDialog || !batchInput || !batchForm)
       return;

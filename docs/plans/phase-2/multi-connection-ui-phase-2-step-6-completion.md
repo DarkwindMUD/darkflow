@@ -2,8 +2,7 @@
 
 ## Status
 
-**COMPLETE locally** on 2026-08-15 at base revision `0fed172` plus the uncommitted
-Green PR 5 worktree.
+**COMPLETE locally** on 2026-08-15 at revision `66199ec`.
 
 The non-default `/phase2/` path now owns the three Step 6 parity rows. Packaged
 Electron, default-root cutover, hosted CI, and release certification remain Step
@@ -13,7 +12,7 @@ Electron, default-root cutover, hosted CI, and release certification remain Step
 
 | Parity row                          | Local result                                                                                                                                                                                                                                               |
 | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `P2-6-character-group-vitals`       | Character panels passed valid/malformed wire data, loading/empty state, keyboard interaction, reconnect reset/rehydration, disposal, built web, and 390x844 mobile Chromium. Room image/media remains exclusively `P2-7-room-image`.                       |
+| `P2-6-character-group-vitals`       | Character panels passed valid/malformed wire data, loading/empty state, keyboard interaction, reconnect reset/rehydration, disposal, built web, and 390x844 mobile Chromium. Room image/media remains exclusively `P2-8-room-image`.                       |
 | `P2-6-inventory-progress-cyberware` | Inventory, quests, achievements, and cyberware passed full/delta reducers, malformed-frame rejection, outbound detail requests, mismatched detail rejection, dialog focus return, reconnect replacement, disposal, built web, and 390x844 mobile Chromium. |
 | `P2-6-lag-rfc2549`                  | Connection health and RFC 2549 passed ping/status handling, malformed-status rejection, reconnect gaps, full-check ownership, QoS/RED controls, keyboard close, disposal, and built Chromium.                                                              |
 

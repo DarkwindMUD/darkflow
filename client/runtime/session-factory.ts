@@ -20,6 +20,7 @@ import { createAutomationRuntimeState, type AutomationRuntimeState } from "./aut
 import { createSession, type Session } from "./session.ts";
 import { createSessionInformation } from "./information.ts";
 import { createSessionConnectionHealth } from "./connection-health.ts";
+import { createSessionInteractions } from "./interactions.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -189,6 +190,7 @@ export function createSessionFromState(
   const automationRuntime = createAutomationRuntimeState(scope);
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
   const information = createSessionInformation(gmcp, scope, eventBus);
+  const interactions = createSessionInteractions(gmcp, scope, eventBus, transport);
   const connectionHealth = createSessionConnectionHealth(
     gmcp,
     transport,
@@ -231,6 +233,7 @@ export function createSessionFromState(
     },
     information,
     connectionHealth,
+    interactions,
   });
 
   return {

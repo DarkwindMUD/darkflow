@@ -5,7 +5,13 @@
   import type { ConnectionHealthSnapshot } from "../runtime/connection-health.ts";
   import type { TransportEndpoint, TransportName } from "../transport/types.ts";
   import WorkspaceHost from "../workspace/WorkspaceHost.svelte";
+  import AnnouncementsOverlay from "./AnnouncementsOverlay.svelte";
+  import BroadcastOverlay from "./BroadcastOverlay.svelte";
+  import GiphyOverlay from "./GiphyOverlay.svelte";
+  import LinuxRescueOverlay from "./LinuxRescueOverlay.svelte";
+  import ServerWindowHost from "./ServerWindowHost.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
+  import SnoopOverlay from "./SnoopOverlay.svelte";
   // @ts-expect-error Legacy UI module has no declaration file.
   import { gameTitle } from "../../public/js/brand.js";
   // @ts-expect-error Legacy UI module has no declaration file.
@@ -45,6 +51,9 @@
   let clientVersion = $state<string | null>(null);
   let settingsOpen = $state(false);
   let settingsButton = $state<HTMLButtonElement>();
+  let announcementsOpen = $state(false);
+  let announcementsButton = $state<HTMLButtonElement>();
+  let interactionSnapshot = $state(untrack(() => session.interactions.getSnapshot()));
   let themeKey = $state(untrack(() => session.configuration.getSnapshot().themeKey));
   let health = $state<ConnectionHealthSnapshot>(
     untrack(() => session.connectionHealth.getSnapshot()),
@@ -98,6 +107,7 @@
 
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
   $effect(() => session.connectionHealth.subscribe((next) => (health = next)));
+  $effect(() => session.interactions.subscribe((next) => (interactionSnapshot = next)));
 
   $effect(() => {
     const truthy = (value: string | null): boolean =>
@@ -326,9 +336,23 @@
       <h1>{gameTitle(shell.gameName)}</h1>
       <p>Phase 2 integration shell</p>
     </div>
-    <button bind:this={settingsButton} type="button" onclick={() => (settingsOpen = true)}>
-      Settings
-    </button>
+    <div class="app-actions">
+      <button
+        bind:this={announcementsButton}
+        type="button"
+        onclick={() => (announcementsOpen = true)}
+      >
+        Announcements
+        {#if interactionSnapshot.announcements.unreadCount > 0}
+          <span class="toolbar-count-badge" aria-label="Unread announcements">
+            {interactionSnapshot.announcements.unreadCount}
+          </span>
+        {/if}
+      </button>
+      <button bind:this={settingsButton} type="button" onclick={() => (settingsOpen = true)}>
+        Settings
+      </button>
+    </div>
   </header>
 
   <form class="connection-form" aria-label="Connection" onsubmit={connect}>
@@ -386,6 +410,20 @@
     queueMicrotask(() => settingsButton?.focus());
   }}
 />
+
+<ServerWindowHost {session} />
+<SnoopOverlay {session} />
+<AnnouncementsOverlay
+  open={announcementsOpen}
+  {session}
+  onclose={() => {
+    announcementsOpen = false;
+    queueMicrotask(() => announcementsButton?.focus());
+  }}
+/>
+<GiphyOverlay {session} />
+<BroadcastOverlay {session} />
+<LinuxRescueOverlay {session} />
 
 {#if rfc2549Enabled}
   <section
@@ -479,8 +517,14 @@
     height: 2.5rem;
   }
 
-  .app-chrome > button {
+  .app-actions {
+    display: flex;
+    gap: 0.5rem;
     margin-left: auto;
+  }
+
+  .app-actions button {
+    position: relative;
   }
 
   h1,
@@ -534,7 +578,7 @@
   .reconnect-overlay {
     position: fixed;
     inset: 0;
-    z-index: 1000;
+    z-index: 4000;
     display: grid;
     place-items: center;
     padding: 1rem;

@@ -62,6 +62,26 @@ import type {
   DarkwindWindowOpen,
   DarkwindWindowUpdate,
 } from "./darkwind-window.ts";
+import type {
+  DarkwindAnnouncementsList,
+  DarkwindAnnouncementsNew,
+  DarkwindAnnouncementsState,
+  DarkwindAnnouncementsUpdate,
+  DarkwindBroadcastShow,
+  DarkwindFishingArt,
+  DarkwindFishingBite,
+  DarkwindFishingCaught,
+  DarkwindFishingEnd,
+  DarkwindFishingEscaped,
+  DarkwindFishingFight,
+  DarkwindFishingOpen,
+  DarkwindGiphyShow,
+  DarkwindLinuxRescueOpen,
+  DarkwindSnoopAppend,
+  DarkwindSnoopClose,
+  DarkwindSnoopOpen,
+  DarkwindSnoopStatus,
+} from "./interactions.ts";
 
 export const validateCoreSupports = typia.createValidate<CoreSupportsPayload>();
 export const validateCharVitals = typia.createValidate<CharVitals>();
@@ -120,6 +140,26 @@ export const validateDarkwindAchievementsUpdate =
 export const validateDarkwindCyberware = typia.createValidate<DarkwindCyberware>();
 export const validateDarkwindCyberwareDetails = typia.createValidate<DarkwindCyberwareDetails>();
 export const validateDarkwindCyberwareImage = typia.createValidate<DarkwindCyberwareImage>();
+export const validateDarkwindSnoopOpen = typia.createValidate<DarkwindSnoopOpen>();
+export const validateDarkwindSnoopAppend = typia.createValidate<DarkwindSnoopAppend>();
+export const validateDarkwindSnoopStatus = typia.createValidate<DarkwindSnoopStatus>();
+export const validateDarkwindSnoopClose = typia.createValidate<DarkwindSnoopClose>();
+export const validateDarkwindAnnouncementsList = typia.createValidate<DarkwindAnnouncementsList>();
+export const validateDarkwindAnnouncementsNew = typia.createValidate<DarkwindAnnouncementsNew>();
+export const validateDarkwindAnnouncementsUpdate =
+  typia.createValidate<DarkwindAnnouncementsUpdate>();
+export const validateDarkwindAnnouncementsState =
+  typia.createValidate<DarkwindAnnouncementsState>();
+export const validateDarkwindGiphyShow = typia.createValidate<DarkwindGiphyShow>();
+export const validateDarkwindBroadcastShow = typia.createValidate<DarkwindBroadcastShow>();
+export const validateDarkwindLinuxRescueOpen = typia.createValidate<DarkwindLinuxRescueOpen>();
+export const validateDarkwindFishingOpen = typia.createValidate<DarkwindFishingOpen>();
+export const validateDarkwindFishingBite = typia.createValidate<DarkwindFishingBite>();
+export const validateDarkwindFishingFight = typia.createValidate<DarkwindFishingFight>();
+export const validateDarkwindFishingCaught = typia.createValidate<DarkwindFishingCaught>();
+export const validateDarkwindFishingEscaped = typia.createValidate<DarkwindFishingEscaped>();
+export const validateDarkwindFishingArt = typia.createValidate<DarkwindFishingArt>();
+export const validateDarkwindFishingEnd = typia.createValidate<DarkwindFishingEnd>();
 
 /** Typia validator invoked by canonical inbound package name. */
 export type GmcpPayloadValidator = (input: unknown) => typia.IValidation<unknown>;
@@ -183,6 +223,24 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Cyberware.List")]: validateDarkwindCyberware,
   [canonicalPackageName("Darkwind.Cyberware.Details")]: validateDarkwindCyberwareDetails,
   [canonicalPackageName("Darkwind.Cyberware.Image")]: validateDarkwindCyberwareImage,
+  [canonicalPackageName("Darkwind.Snoop.Open")]: validateDarkwindSnoopOpen,
+  [canonicalPackageName("Darkwind.Snoop.Append")]: validateDarkwindSnoopAppend,
+  [canonicalPackageName("Darkwind.Snoop.Status")]: validateDarkwindSnoopStatus,
+  [canonicalPackageName("Darkwind.Snoop.Close")]: validateDarkwindSnoopClose,
+  [canonicalPackageName("Darkwind.Announcements.List")]: validateDarkwindAnnouncementsList,
+  [canonicalPackageName("Darkwind.Announcements.New")]: validateDarkwindAnnouncementsNew,
+  [canonicalPackageName("Darkwind.Announcements.Update")]: validateDarkwindAnnouncementsUpdate,
+  [canonicalPackageName("Darkwind.Announcements.State")]: validateDarkwindAnnouncementsState,
+  [canonicalPackageName("Darkwind.Giphy.Show")]: validateDarkwindGiphyShow,
+  [canonicalPackageName("Darkwind.Broadcast.Show")]: validateDarkwindBroadcastShow,
+  [canonicalPackageName("Darkwind.LinuxRescue.Open")]: validateDarkwindLinuxRescueOpen,
+  [canonicalPackageName("Darkwind.Fishing.Open")]: validateDarkwindFishingOpen,
+  [canonicalPackageName("Darkwind.Fishing.Bite")]: validateDarkwindFishingBite,
+  [canonicalPackageName("Darkwind.Fishing.Fight")]: validateDarkwindFishingFight,
+  [canonicalPackageName("Darkwind.Fishing.Caught")]: validateDarkwindFishingCaught,
+  [canonicalPackageName("Darkwind.Fishing.Escaped")]: validateDarkwindFishingEscaped,
+  [canonicalPackageName("Darkwind.Fishing.Art")]: validateDarkwindFishingArt,
+  [canonicalPackageName("Darkwind.Fishing.End")]: validateDarkwindFishingEnd,
   [canonicalPackageName("Core.Ping")]: validateCorePing,
   [canonicalPackageName("Darkwind.Lag.Status")]: validateDarkwindLagStatus,
 };
@@ -211,34 +269,8 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Visual.Event",
   "Darkwind.Visual.Preview",
   "Darkwind.Room.Image",
-  "Darkwind.Snoop.Open",
-  "Darkwind.Snoop.Append",
-  "Darkwind.Snoop.Status",
-  "Darkwind.Snoop.Close",
-  "Darkwind.Snoop.Command",
-  "Darkwind.Snoop.Stop",
-  "Darkwind.Snoop.Closed",
-  "Darkwind.Announcements.List",
-  "Darkwind.Announcements.New",
-  "Darkwind.Announcements.Update",
-  "Darkwind.Announcements.State",
-  "Darkwind.Announcements.MarkRead",
-  "Darkwind.Giphy.Show",
   "Darkwind.Sound",
-  "Darkwind.Broadcast.Show",
-  "Darkwind.LinuxRescue.Open",
   "Darkwind.Lag.Get",
-  "Darkwind.Fishing.Open",
-  "Darkwind.Fishing.Cast",
-  "Darkwind.Fishing.Bite",
-  "Darkwind.Fishing.Hook",
-  "Darkwind.Fishing.Fight",
-  "Darkwind.Fishing.Result",
-  "Darkwind.Fishing.Caught",
-  "Darkwind.Fishing.Escaped",
-  "Darkwind.Fishing.Art",
-  "Darkwind.Fishing.Cancel",
-  "Darkwind.Fishing.End",
   "Darkwind.StreetSamurai",
   "Darkwind.Room.Playlist.State",
   "Darkwind.Room.Playlist.Open",

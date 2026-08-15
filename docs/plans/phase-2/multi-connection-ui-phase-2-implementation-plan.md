@@ -171,8 +171,8 @@ Phase 1 Step 16 COMPLETE
        -> 3 workspace, layout, and mobile sheet
             -> 4 terminal, input, completion, automation
             -> 6 panel boundary and core information panels
-                 -> 7 map, world, room media, and playlist
-                 -> 8 server windows and interactive workflows
+                 -> 7 server windows and interactive workflows
+                      -> 8 map, world, room media, and playlist
                  -> 9 IDE and bundled CodeMirror
                  -> 10 notifications, sound, and media
                  -> 11 combat, tutorial, effects, and specialty surfaces
@@ -183,9 +183,11 @@ Steps 4-11 complete
 ```
 
 Steps 3 and 5 may proceed independently after Step 2. Steps 4 and 6 may proceed
-independently after Step 3. Steps 7-11 may parallelize only after Step 6 passes
-and their detailed plans establish disjoint ownership. Step 12 waits for every
-preceding gate.
+independently after Step 3. Step 7 proceeds after Step 6 so `/phase2/` can log in
+to a MUD before Step 8 exercises authenticated map, world, room-media, and
+playlist behavior. Steps 9-11 may parallelize only after Step 6 passes and their
+detailed plans establish disjoint ownership. Step 12 waits for every preceding
+gate.
 
 ## Individual implementation-planning steps
 
@@ -316,9 +318,24 @@ boundary for Steps 7-11 is frozen.
 **Later plan resolves:** Exact vertical slices, representative wire fixtures, and
 any consumer that appears to require an internal session handle or Dockview type.
 
-### Step 7 — Port map, world, room-media, speedwalk, and playlist surfaces
+### Step 7 — Port server windows and interactive workflows
 
 **Depends on:** Step 6.
+
+**Outcome:** Port `Darkwind.Window`, snoop, announcements, Giphy, broadcast,
+Linux rescue, fishing, and their actions to session-scoped Svelte roots and
+controllers.
+
+**Exit:** Open/update/close, focus, user actions, responsive presentation,
+reconnect, malformed input, and disposal pass for every assigned family. Users
+should be able to login to a MUD.
+
+**Later plan resolves:** Generic versus specialized window lifecycles and the
+independent vertical slices.
+
+### Step 8 — Port map, world, room-media, speedwalk, and playlist surfaces
+
+**Depends on:** Steps 6 and 7.
 
 **Outcome:** Host the retained map algorithms behind Svelte/workspace surfaces
 while preserving world-owned data and session-owned view state
@@ -329,20 +346,6 @@ layout restore, mobile interaction, typed/outbound GMCP, and disposal pass.
 
 **Later plan resolves:** Existing map data/view/storage ownership and the exact
 MapData2/room/playlist fixtures.
-
-### Step 8 — Port server windows and interactive workflows
-
-**Depends on:** Step 6.
-
-**Outcome:** Port `Darkwind.Window`, snoop, announcements, Giphy, broadcast,
-Linux rescue, fishing, and their actions to session-scoped Svelte roots and
-controllers.
-
-**Exit:** Open/update/close, focus, user actions, responsive presentation,
-reconnect, malformed input, and disposal pass for every assigned family.
-
-**Later plan resolves:** Generic versus specialized window lifecycles and the
-independent vertical slices.
 
 ### Step 9 — Port the IDE and bundle CodeMirror
 

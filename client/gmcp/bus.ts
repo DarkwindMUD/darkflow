@@ -3,6 +3,21 @@ import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
 import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame.ts";
 import type { CoreHello } from "./contracts/core.ts";
 import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
+import type {
+  DarkwindAnnouncementsMarkRead,
+  DarkwindFishingCast,
+  DarkwindFishingCancel,
+  DarkwindFishingHook,
+  DarkwindFishingResult,
+  DarkwindSnoopClosed,
+  DarkwindSnoopCommand,
+  DarkwindSnoopStop,
+} from "./contracts/interactions.ts";
+import type {
+  DarkwindWindowAction,
+  DarkwindWindowClosed,
+  DarkwindWindowSubmit,
+} from "./contracts/darkwind-window.ts";
 import {
   lookupGmcpValidator,
   validateCompletionRequest,
@@ -92,6 +107,18 @@ export interface SessionGmcpBus {
   enableChannel(channel: string): boolean;
   requestCompletion(request: CompletionRequest): boolean;
   requestCyberwareDetails(id: string): boolean;
+  sendWindowSubmit(payload: DarkwindWindowSubmit): boolean;
+  sendWindowAction(payload: DarkwindWindowAction): boolean;
+  sendWindowClosed(payload: DarkwindWindowClosed): boolean;
+  sendSnoopCommand(payload: DarkwindSnoopCommand): boolean;
+  sendSnoopStop(payload: DarkwindSnoopStop): boolean;
+  sendSnoopClosed(payload: DarkwindSnoopClosed): boolean;
+  requestAnnouncements(): boolean;
+  markAnnouncementRead(payload: DarkwindAnnouncementsMarkRead): boolean;
+  sendFishingCast(payload: DarkwindFishingCast): boolean;
+  sendFishingHook(payload: DarkwindFishingHook): boolean;
+  sendFishingResult(payload: DarkwindFishingResult): boolean;
+  sendFishingCancel(payload: DarkwindFishingCancel): boolean;
   sendPing(): boolean;
   requestLagStatus(): boolean;
   onCompletionResult(handler: CompletionResultHandler): void;
@@ -354,6 +381,58 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
   requestCyberwareDetails(id: string): boolean {
     const value = typeof id === "string" ? id.trim() : "";
     return value ? this.send("Darkwind.Cyberware.Details", { id: value }) : false;
+  }
+
+  sendWindowSubmit(payload: DarkwindWindowSubmit): boolean {
+    return this.send("Darkwind.Window.Submit", payload);
+  }
+
+  sendWindowAction(payload: DarkwindWindowAction): boolean {
+    return this.send("Darkwind.Window.Action", payload);
+  }
+
+  sendWindowClosed(payload: DarkwindWindowClosed): boolean {
+    return this.send("Darkwind.Window.Closed", payload);
+  }
+
+  sendSnoopCommand(payload: DarkwindSnoopCommand): boolean {
+    return this.send("Darkwind.Snoop.Command", payload);
+  }
+
+  sendSnoopStop(payload: DarkwindSnoopStop): boolean {
+    return this.send("Darkwind.Snoop.Stop", payload);
+  }
+
+  sendSnoopClosed(payload: DarkwindSnoopClosed): boolean {
+    return this.send("Darkwind.Snoop.Closed", payload);
+  }
+
+  requestAnnouncements(): boolean {
+    return this.sendSubscriptions({
+      reason: "modal-open",
+      full: false,
+      features: { announcementsList: true },
+    });
+  }
+
+  markAnnouncementRead(payload: DarkwindAnnouncementsMarkRead): boolean {
+    return this.send("Darkwind.Announcements.MarkRead", payload);
+  }
+
+  sendFishingCast(payload: DarkwindFishingCast): boolean {
+    return this.send("Darkwind.Fishing.Cast", payload);
+  }
+
+  sendFishingHook(payload: DarkwindFishingHook): boolean {
+    return this.send("Darkwind.Fishing.Hook", payload);
+  }
+
+  sendFishingResult(payload: DarkwindFishingResult): boolean {
+    return this.send("Darkwind.Fishing.Result", payload);
+  }
+
+  sendFishingCancel(payload: DarkwindFishingCancel): boolean {
+    return this.send("Darkwind.Fishing.Cancel", payload);
   }
 
   sendPing(): boolean {

@@ -89,6 +89,7 @@ test("Darkwind.Window Open/Update/Close validate documented envelopes", async (t
     }).success,
     true,
   );
+  assert.equal(updateValidator({ id: "login", updates: "invalid" }).success, false);
 
   const closeValidator = lookupGmcpValidator("Darkwind.Window.Close");
   assert.ok(closeValidator);
@@ -184,6 +185,131 @@ test("Step 6 information package validators accept representative server payload
   assert.equal(lookupGmcpValidator("Darkwind.Cyberware.List")({ installed: [{ id: 1 }], strain: {} }).success, false);
   assert.equal(lookupGmcpValidator("Darkwind.Cyberware.Details")({ id: 1 }).success, false);
   assert.equal(lookupGmcpValidator("Darkwind.Cyberware.Image")({ id: "eyes", url: 1 }).success, false);
+});
+
+test("Step 7 interaction validators accept live shapes and reject malformed payloads", async (t) => {
+  const { lookupGmcpValidator } = await loadDarkwindModules(t);
+  const item = {
+    id: 42,
+    status: "active",
+    title: "Spring Festival",
+    summary: "Now live.",
+    author: "Elyndar",
+    authorRealName: "elyndar",
+    createdAt: 1776834302,
+    updatedAt: 0,
+    updatedBy: 0,
+    archivedAt: 0,
+    markdown: "# Spring Festival",
+    isRead: 0,
+  };
+  const open = {
+    session: "f-12ab34cd",
+    terrain: "lake",
+    skill: 250,
+    poleTier: 1,
+    baitTier: 2,
+    baited: 1,
+    sceneArtUrl: 0,
+  };
+  const valid = {
+    "Darkwind.Snoop.Open": {
+      id: "snoop",
+      target: "Denian",
+      targetRealName: "denian",
+      snooper: "Acer",
+      startedAt: 1778582400,
+    },
+    "Darkwind.Snoop.Append": {
+      id: "snoop",
+      type: "output",
+      text: "Center of Town!\n",
+      timestamp: 1778582401,
+    },
+    "Darkwind.Snoop.Status": { id: "snoop", text: "Connected.", timestamp: 1778582402 },
+    "Darkwind.Snoop.Close": { id: "snoop", reason: "stopped" },
+    "Darkwind.Announcements.List": { active: [item], archived: [], unreadCount: 1 },
+    "Darkwind.Announcements.New": { item, unreadCount: 1 },
+    "Darkwind.Announcements.Update": { item, bucket: "active", unreadCount: 0 },
+    "Darkwind.Announcements.State": { unreadCount: 1 },
+    "Darkwind.Giphy.Show": { gifUrl: "https://media.giphy.com/a.gif", durationMs: 10000 },
+    "Darkwind.Broadcast.Show": { message: "The city gates are open.", sentAt: 1778582403 },
+    "Darkwind.LinuxRescue.Open": { fullscreen: 1 },
+    "Darkwind.Fishing.Open": open,
+    "Darkwind.Fishing.Bite": { session: open.session, windowMs: 2500, tease: "large" },
+    "Darkwind.Fishing.Fight": {
+      session: open.session,
+      seed: 123456,
+      params: {
+        strength: 7,
+        erratic: 6,
+        stamina: 110,
+        barSize: 20,
+        progressRate: 9,
+        drainRate: 11,
+        tensionRise: 17,
+        tensionDecay: 12,
+        minFightMs: 6000,
+      },
+      fish: { tease: "large", rarityHint: "Rare", artUrl: 0 },
+    },
+    "Darkwind.Fishing.Caught": {
+      session: open.session,
+      fish: {
+        id: "silverfin",
+        name: "Silverfin",
+        short: "a pristine silverfin",
+        rarity: "Rare",
+        sizePct: 82,
+        sizeCm: 74,
+        weightKg: 13,
+        quality: 91,
+        pristine: 1,
+        artUrl: 0,
+      },
+      rewards: { skillup: 1, newSkill: 251 },
+    },
+    "Darkwind.Fishing.Escaped": { session: open.session, reason: "timeout" },
+    "Darkwind.Fishing.Art": {
+      species: "silverfin",
+      artUrl: "https://example.invalid/silverfin.png",
+    },
+    "Darkwind.Fishing.End": { session: open.session, reason: "done", message: "Finished." },
+  };
+  const malformed = {
+    "Darkwind.Snoop.Open": { ...valid["Darkwind.Snoop.Open"], startedAt: "now" },
+    "Darkwind.Snoop.Append": { ...valid["Darkwind.Snoop.Append"], type: "other" },
+    "Darkwind.Snoop.Status": { ...valid["Darkwind.Snoop.Status"], text: 1 },
+    "Darkwind.Snoop.Close": { id: 1 },
+    "Darkwind.Announcements.List": { active: {}, archived: [], unreadCount: 1 },
+    "Darkwind.Announcements.New": { item: { ...item, id: "42" }, unreadCount: 1 },
+    "Darkwind.Announcements.Update": { item, bucket: "deleted", unreadCount: 0 },
+    "Darkwind.Announcements.State": { unreadCount: "one" },
+    "Darkwind.Giphy.Show": { gifUrl: 1 },
+    "Darkwind.Broadcast.Show": { message: "Valid", sentAt: "now" },
+    "Darkwind.LinuxRescue.Open": { fullscreen: "yes" },
+    "Darkwind.Fishing.Open": { ...open, skill: "high" },
+    "Darkwind.Fishing.Bite": { session: open.session, windowMs: "soon", tease: "large" },
+    "Darkwind.Fishing.Fight": { ...valid["Darkwind.Fishing.Fight"], seed: "random" },
+    "Darkwind.Fishing.Caught": {
+      ...valid["Darkwind.Fishing.Caught"],
+      fish: { ...valid["Darkwind.Fishing.Caught"].fish, quality: "high" },
+    },
+    "Darkwind.Fishing.Escaped": { session: open.session, reason: 1 },
+    "Darkwind.Fishing.Art": { species: "silverfin", artUrl: 1 },
+    "Darkwind.Fishing.End": { session: open.session, reason: 1 },
+  };
+
+  for (const [packageName, payload] of Object.entries(valid)) {
+    const validator = lookupGmcpValidator(packageName);
+    assert.ok(validator, `expected validator for ${packageName}`);
+    assert.equal(validator(payload).success, true, `${packageName} rejected live payload`);
+    assert.equal(
+      validator(malformed[packageName]).success,
+      false,
+      `${packageName} accepted malformed payload`,
+    );
+  }
 });
 
 test("server-native room and MapData2 wire values validate without coercion", async (t) => {

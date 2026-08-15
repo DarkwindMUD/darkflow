@@ -1,14 +1,17 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
   import type { Session } from "../runtime/session.ts";
   import { createWorkspace } from "./dockview-workspace";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
+  import FishingPanel from "./FishingPanel.svelte";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
+  import ServerWindowPanel from "./ServerWindowPanel.svelte";
   import { focusTerminalIsland } from "./terminal-island";
   import type {
     Workspace,
@@ -16,6 +19,8 @@
     WorkspaceRendererRegistry,
     WorkspaceSnapshot,
   } from "./workspace";
+
+  const SHARED_VIDEO_GEOMETRY_KEY = "darkwind-shared-video-window-geometry";
 
   let {
     characterProfileId,
@@ -131,24 +136,61 @@
     });
   }
 
-  async function resetWorkspace(): Promise<void> {
-    if (!workspace) return;
-    await workspace.removePanel(placeholder.id);
-    await workspace.removePanel(terminal.id);
-    await Promise.all(informationPanels.map((panel) => workspace!.removePanel(panel.id)));
-    workspace.addOrUpdatePanel(terminal);
-    workspace.addOrUpdatePanel(placeholder);
-    placeholderOpen = true;
-    syncVisiblePanels();
-    const result = saveCharacterWorkspace(localStorage, characterProfileId, workspace.save());
-    status = result.success ? "Workspace reset" : result.message;
-    focusTerminal();
+  function serverPanelPlacement(
+    window: InteractionWindow,
+  ): NonNullable<WorkspacePanelSpec["placement"]> {
+    if (window.sourceId !== window.id) {
+      try {
+        const geometry = JSON.parse(
+          localStorage.getItem(SHARED_VIDEO_GEOMETRY_KEY) ?? "null",
+        ) as Record<string, unknown> | null;
+        const x = Number(geometry?.x);
+        const y = Number(geometry?.y);
+        const width = Number(geometry?.w);
+        const height = Number(geometry?.h);
+        if ([x, y, width, height].every(Number.isFinite)) {
+          return {
+            kind: "floating",
+            bounds: {
+              left: Math.max(0, Math.min(x, Math.max(0, innerWidth - 80))),
+              top: Math.max(0, Math.min(y, Math.max(0, innerHeight - 80))),
+              width: Math.max(260, Math.min(width, Math.max(260, innerWidth - 24))),
+              height: Math.max(180, Math.min(height, Math.max(180, innerHeight - 80))),
+            },
+          };
+        }
+      } catch {
+        // Ignore missing or corrupt legacy geometry.
+      }
+    }
+    if (window.dock === "float") {
+      const width = window.defaultFloatW ?? 420;
+      const height = window.defaultFloatH ?? 320;
+      const rawLeft = window.defaultFloatX ?? 40;
+      const rawTop = window.defaultFloatY ?? 40;
+      return {
+        kind: "floating",
+        bounds: {
+          left: rawLeft < 0 ? Math.max(0, innerWidth + rawLeft - width) : rawLeft,
+          top: rawTop < 0 ? Math.max(0, innerHeight + rawTop - height) : rawTop,
+          width,
+          height,
+        },
+      };
+    }
+    return {
+      kind: "grid",
+      direction: window.dock === "left" ? "left" : window.dock === "bottom" ? "below" : "right",
+      referencePanelId: terminal.id,
+    };
   }
 
   onMount(() => {
     const rendererRegistry: WorkspaceRendererRegistry = {
       placeholder: { component: PlaceholderPanel },
       terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
+      "server-window": { component: ServerWindowPanel, session },
+      fishing: { component: FishingPanel, session },
       ...Object.fromEntries(
         informationPanels.map((panel) => [
           panel.kind,
@@ -196,6 +238,13 @@
 
     let pending: WorkspaceSnapshot | undefined;
     let timer: number | undefined;
+    // This lifecycle-only lookup is never rendered, so it needs no reactive wrapper.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
+    const serverPanelIds = new Map<string, string>();
+    let fishingPanelOpen = false;
+    let interactionSnapshot = session.interactions.getSnapshot();
+    let dismissedFishingEnd: typeof interactionSnapshot.fishing.end = null;
+    const hasTransientPanels = () => serverPanelIds.size > 0 || fishingPanelOpen;
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -211,10 +260,110 @@
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(flush, 75);
     };
+    const cancelPendingSave = () => {
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = undefined;
+      pending = undefined;
+    };
+    const resetWorkspace = async (): Promise<void> => {
+      cancelPendingSave();
+      const transientPanelIds = [...serverPanelIds.values()];
+      const hadFishingPanel = fishingPanelOpen;
+      for (const windowId of serverPanelIds.keys()) session.interactions.closeWindow(windowId);
+      if (interactionSnapshot.fishing.open) {
+        session.interactions.cancelFishing(interactionSnapshot.fishing.open.session);
+      }
+      await Promise.all([
+        ...transientPanelIds.map((panelId) => currentWorkspace.removePanel(panelId)),
+        ...(hadFishingPanel ? [currentWorkspace.removePanel("fishing")] : []),
+      ]);
+      serverPanelIds.clear();
+      fishingPanelOpen = false;
+      await currentWorkspace.removePanel(placeholder.id);
+      await currentWorkspace.removePanel(terminal.id);
+      await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
+      currentWorkspace.addOrUpdatePanel(terminal);
+      currentWorkspace.addOrUpdatePanel(placeholder);
+      placeholderOpen = true;
+      syncVisiblePanels();
+      const result = saveCharacterWorkspace(
+        localStorage,
+        characterProfileId,
+        currentWorkspace.save(),
+      );
+      status = result.success ? "Workspace reset" : result.message;
+      focusTerminal();
+    };
+    const syncInteractionPanels = (next: typeof interactionSnapshot) => {
+      interactionSnapshot = next;
+      const desiredWindows = Object.values(next.windows).filter(
+        (window) => window.type === "panel",
+      );
+      const desiredIds = new Set(desiredWindows.map(({ id }) => id));
+
+      for (const [windowId, panelId] of [...serverPanelIds]) {
+        if (desiredIds.has(windowId)) continue;
+        serverPanelIds.delete(windowId);
+        void currentWorkspace.removePanel(panelId);
+      }
+      for (const window of desiredWindows) {
+        const panelId = serverPanelIds.get(window.id) ?? `server-window-${window.id}`;
+        const exists = currentWorkspace.hasPanel(panelId);
+        serverPanelIds.set(window.id, panelId);
+        currentWorkspace.addOrUpdatePanel({
+          id: panelId,
+          kind: "server-window",
+          title: window.title || window.sourceId,
+          state: { windowId: window.id },
+          ...(!exists ? { placement: serverPanelPlacement(window) } : {}),
+        });
+      }
+
+      if (next.fishing.open || !next.fishing.end) dismissedFishingEnd = null;
+      const shouldShowFishing = Boolean(
+        next.fishing.open || (next.fishing.end && next.fishing.end !== dismissedFishingEnd),
+      );
+      if (shouldShowFishing) {
+        const exists = currentWorkspace.hasPanel("fishing");
+        fishingPanelOpen = true;
+        currentWorkspace.addOrUpdatePanel({
+          id: "fishing",
+          kind: "fishing",
+          title: "Fishing",
+          state: {},
+          ...(!exists
+            ? {
+                placement: {
+                  kind: "floating" as const,
+                  bounds: { left: 40, top: 40, width: 420, height: 500 },
+                },
+              }
+            : {}),
+        });
+      } else if (fishingPanelOpen) {
+        fishingPanelOpen = false;
+        void currentWorkspace.removePanel("fishing");
+      }
+
+      if (hasTransientPanels()) cancelPendingSave();
+    };
     const unsubscribe = currentWorkspace.subscribeLayout((next) => {
-      scheduleSave(next);
+      for (const [windowId, panelId] of serverPanelIds) {
+        if (!currentWorkspace.hasPanel(panelId) && interactionSnapshot.windows[windowId]) {
+          session.interactions.closeWindow(windowId);
+        }
+      }
+      if (fishingPanelOpen && !currentWorkspace.hasPanel("fishing")) {
+        fishingPanelOpen = false;
+        if (!interactionSnapshot.fishing.open) {
+          dismissedFishingEnd = interactionSnapshot.fishing.end;
+        }
+      }
+      if (hasTransientPanels()) cancelPendingSave();
+      else scheduleSave(next);
       syncVisiblePanels();
     });
+    const unsubscribeInteractions = session.interactions.subscribe(syncInteractionPanels);
     const flushOnLeave = () => flush();
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
@@ -224,6 +373,7 @@
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
+      unsubscribeInteractions();
       unsubscribe();
       session.information.setVisiblePanels([]);
       flush();

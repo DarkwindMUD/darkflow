@@ -14,7 +14,7 @@
   Step 1 parity rows, current public `Session`, legacy panel reducers/renderers,
   lag controller, workspace registry, and browser fixtures
 - Adversarial review: focused — public-boundary leakage, GMCP direction and
-  validation, duplicated Step 7 ownership, reconnect reset, disposal, and
+  validation, duplicated Step 8 ownership, reconnect reset, disposal, and
   rollback
 
 ## Planning status
@@ -113,15 +113,15 @@ mobile, keyboard, theme, and disposal evidence replaces all three `P2-6-*` rows.
 ## Out of scope
 
 - Room image, room/map world state, maps, speedwalk, and room playlist — their
-  dedicated `P2-7-*` rows own Step 7
-  (`docs/plans/phase-2/multi-connection-ui-phase-2-step-1-parity-matrix.md:158-167`).
+  dedicated `P2-8-*` rows own Step 8
+  (`docs/plans/phase-2/multi-connection-ui-phase-2-step-1-parity-matrix.md:169-178`).
   The broad “room media” phrase in `P2-6-character-group-vitals` is not a second
   owner.
-- Enemy/combat presentation, tutorial, visual effects, Street Samurai, fishing,
-  and specialty surfaces — Step 11 owns them.
-- Chat, announcements, mentions, notifications, sound, broadcast, Giphy, and
-  login media — Step 10 owns them.
-- Server windows, snoop, Linux rescue, and IDE — Steps 8-9 own them.
+- Enemy/combat presentation, tutorial, visual effects, Street Samurai, and
+  specialty surfaces — Step 11 owns them.
+- Chat, mentions, notifications, sound, and login media — Step 10 owns them.
+- Server windows, snoop, announcements, Giphy, broadcast, Linux rescue, and
+  fishing — Step 7 owns them; Step 9 owns IDE.
 - Replacing Dockview, changing workspace persistence schema, converting legacy
   `darkwind-panel-state`, deleting the placeholder from old saved layouts, or
   deleting legacy panel sources/adapters.
@@ -132,7 +132,7 @@ mobile, keyboard, theme, and disposal evidence replaces all three `P2-6-*` rows.
 
 ## Assumptions
 
-- [The dedicated `P2-7-room-image` row is authoritative over the stray Step 6
+- [The dedicated `P2-8-room-image` row is authoritative over the stray Step 6
   “room media” phrase] — if false: Step 6 must add room transition/media state,
   image loading, and another visible panel before its completion gate.
 - [The retained renderer markup is parity behavior worth reusing] — if false:
@@ -346,7 +346,7 @@ events, raw sockets, or unowned resources.
 **Intent:** Extend the existing transport owner with arbitrary server-to-client
 GMCP frames and outbound capture, then run one integrated reconnect/malformed/
 mobile/disposal proof. Correct the duplicate room-media phrase in
-`P2-6-character-group-vitals` to its dedicated `P2-7-room-image` owner, then
+`P2-6-character-group-vitals` to its dedicated `P2-8-room-image` owner, then
 update only the three `P2-6-*` rows with replacement evidence. Record the exact
 families moved to the Phase 2 owner and freeze the four proven seams; do not
 delete legacy registrations or adapters.
@@ -417,7 +417,7 @@ fixture, and replan its contract before claiming the owning row.
   development/built verification
 - Replan trigger: a real payload cannot satisfy a narrow typed contract; a panel
   requires `SessionFacadeHandles`/Dockview types; retained renderer extraction
-  imports legacy runtime state; or the dedicated Step 7 room-image ownership is
+  imports legacy runtime state; or the dedicated Step 8 room-image ownership is
   rejected
 - Confidence: medium — the session/workspace patterns and retained algorithms are
   proven, but several Darkwind families are intentionally unmodeled and need real

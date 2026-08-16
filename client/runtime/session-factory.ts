@@ -22,6 +22,7 @@ import { createSessionInformation } from "./information.ts";
 import { createSessionConnectionHealth } from "./connection-health.ts";
 import { createSessionInteractions } from "./interactions.ts";
 import { createSessionWorld } from "./world.ts";
+import { createSessionIde } from "./ide.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -204,6 +205,9 @@ export function createSessionFromState(
     (command) =>
       transport.send(command, { kind: "command", size: command.length, preview: command }),
   );
+  const ide = createSessionIde(gmcp, scope, eventBus, transport, {
+    createTransferId: deps.uuidFactory,
+  });
   const connectionHealth = createSessionConnectionHealth(
     gmcp,
     transport,
@@ -248,6 +252,7 @@ export function createSessionFromState(
     connectionHealth,
     interactions,
     world,
+    ide,
   });
 
   return {

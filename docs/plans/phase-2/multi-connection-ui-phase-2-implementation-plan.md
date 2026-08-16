@@ -349,8 +349,8 @@ Completion evidence:
 [`multi-connection-ui-phase-2-step-8-completion.md`](multi-connection-ui-phase-2-step-8-completion.md).
 
 **Status:** `COMPLETE` — automated development/built/mobile evidence and the
-authenticated live map, room-image, and read-only Jukebox gate passed; commit is
-pending user approval.
+authenticated live map, room-image, and read-only Jukebox gate passed; commit
+`182b474` owns the Step 8 replacement.
 
 **Depends on:** Steps 6 and 7.
 
@@ -365,6 +365,17 @@ layout restore, mobile interaction, typed/outbound GMCP, and disposal pass.
 MapData2/room/playlist fixtures.
 
 ### Step 9 — Port the IDE and bundle CodeMirror
+
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-9-implementation-plan.md`](multi-connection-ui-phase-2-step-9-implementation-plan.md).
+
+Completion evidence:
+[`multi-connection-ui-phase-2-step-9-completion.md`](multi-connection-ui-phase-2-step-9-completion.md).
+
+**Status:** `COMPLETE` — development/built/mobile, source-free packaged Electron,
+and authenticated live read/edit/discard evidence passed; commit is pending user
+approval. The live gate succeeded on retry after an initial fetch failure and
+reconnect.
 
 **Depends on:** Step 6.
 

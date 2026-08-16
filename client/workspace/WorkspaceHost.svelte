@@ -9,6 +9,7 @@
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
+  import IdePanel from "./IdePanel.svelte";
   import MapPanel from "./MapPanel.svelte";
   import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import RoomImagePanel from "./RoomImagePanel.svelte";
@@ -241,11 +242,28 @@
   }
 
   onMount(() => {
+    let ideCloseGuard = (): boolean => true;
+    const registerIdeCloseGuard = (guard: () => boolean): (() => void) => {
+      ideCloseGuard = guard;
+      return () => {
+        if (ideCloseGuard === guard) ideCloseGuard = () => true;
+      };
+    };
     const rendererRegistry: WorkspaceRendererRegistry = {
       placeholder: { component: PlaceholderPanel },
       terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
       "server-window": { component: ServerWindowPanel, session },
       fishing: { component: FishingPanel, session },
+      ide: {
+        canClose: () => ideCloseGuard(),
+        component: IdePanel,
+        componentProps: {
+          focusFallback: focusTerminal,
+          registerCloseGuard: registerIdeCloseGuard,
+        },
+        preserveDomWhenHidden: true,
+        session,
+      },
       map: { component: MapPanel, session },
       areaMap: { component: MapPanel, session },
       roomImage: { component: RoomImagePanel, session },
@@ -308,12 +326,15 @@
     let fishingPanelOpen = false;
     let areaMapPanelOpen = false;
     let interactionSnapshot = session.interactions.getSnapshot();
+    let ideSnapshot = session.ide.getSnapshot();
     let worldSnapshot = session.world.getSnapshot();
     let seenBrowseOpenVersion = 0;
     let seenPlaylistOpenVersion = 0;
     let dismissedFishingEnd: typeof interactionSnapshot.fishing.end = null;
+    let idePanelOpen = false;
+    let seenIdeOpenVersion = 0;
     const hasTransientPanels = () =>
-      serverPanelIds.size > 0 || fishingPanelOpen || areaMapPanelOpen;
+      serverPanelIds.size > 0 || fishingPanelOpen || areaMapPanelOpen || idePanelOpen;
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -335,6 +356,9 @@
       pending = undefined;
     };
     const resetWorkspace = async (): Promise<void> => {
+      if (idePanelOpen && !(await currentWorkspace.requestClosePanel("ide"))) return;
+      if (ideSnapshot.document) session.ide.close();
+      idePanelOpen = false;
       cancelPendingSave();
       const transientPanelIds = [...serverPanelIds.values()];
       const hadFishingPanel = fishingPanelOpen;
@@ -448,6 +472,40 @@
       if (hasTransientPanels()) cancelPendingSave();
       if (visibilityChanged) syncVisiblePanels();
     };
+    const syncIdePanel = (next: typeof ideSnapshot) => {
+      ideSnapshot = next;
+      if (next.document) {
+        const exists = currentWorkspace.hasPanel("ide");
+        idePanelOpen = true;
+        currentWorkspace.addOrUpdatePanel({
+          id: "ide",
+          kind: "ide",
+          title: next.document.title || next.document.path || "IDE",
+          state: {},
+          ...(!exists
+            ? {
+                placement: {
+                  kind: "floating" as const,
+                  bounds: {
+                    left: Math.max(20, (innerWidth - Math.min(900, innerWidth - 40)) / 2),
+                    top: Math.max(12, (innerHeight - Math.min(620, innerHeight - 80)) / 2),
+                    width: Math.min(900, innerWidth - 40),
+                    height: Math.min(620, innerHeight - 80),
+                  },
+                },
+              }
+            : {}),
+        });
+        if (next.openVersion > seenIdeOpenVersion) {
+          seenIdeOpenVersion = next.openVersion;
+          currentWorkspace.activatePanel("ide");
+        }
+      } else if (idePanelOpen) {
+        idePanelOpen = false;
+        void currentWorkspace.removePanel("ide");
+      }
+      if (hasTransientPanels()) cancelPendingSave();
+    };
     const unsubscribe = currentWorkspace.subscribeLayout((next) => {
       for (const [windowId, panelId] of serverPanelIds) {
         if (!currentWorkspace.hasPanel(panelId) && interactionSnapshot.windows[windowId]) {
@@ -463,11 +521,16 @@
       if (areaMapPanelOpen && !currentWorkspace.hasPanel(areaMap.id)) {
         areaMapPanelOpen = false;
       }
+      if (idePanelOpen && !currentWorkspace.hasPanel("ide")) {
+        idePanelOpen = false;
+        session.ide.close();
+      }
       if (hasTransientPanels()) cancelPendingSave();
       else scheduleSave(next);
       syncVisiblePanels();
     });
     const unsubscribeInteractions = session.interactions.subscribe(syncInteractionPanels);
+    const unsubscribeIde = session.ide.subscribe(syncIdePanel);
     const unsubscribeWorld = session.world.subscribe(syncWorldPanels);
     const saveMapPanelState = (event: Event) => {
       const detail = (event as CustomEvent<{ mapZoom?: unknown; panelId?: unknown }>).detail;
@@ -493,6 +556,7 @@
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       host.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
+      unsubscribeIde();
       unsubscribeInteractions();
       unsubscribe();
       session.information.setVisiblePanels([]);

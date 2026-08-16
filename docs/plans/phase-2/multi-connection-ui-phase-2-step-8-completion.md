@@ -6,9 +6,9 @@
 worktree.
 
 The non-default `/phase2/` path now owns the four Step 8 parity rows. The live
-gate passed against `darkwind.ai:4242` over WSS. Packaged Electron, default-root
-cutover, hosted CI, and release certification remain Step 12 work and are not
-claimed here.
+gate passed against `darkwind.ai:4242` over WSS. Editor-specific packaged
+execution is Step 9 work; default-root cutover, hosted CI, and release
+certification remain Step 12 work and are not claimed here.
 
 ## Replacement evidence
 
@@ -64,5 +64,5 @@ Legacy `/`, retained singleton wrappers, renderer/playlist cores, styles, map
 storage, playlist settings, and legacy panels remain intact. Revert the Step 8
 commit and use legacy `/` if a live regression is found.
 
-Step 12 still owns packaged Electron proof, hosted/release certification,
-default-root cutover, and any legacy deletion.
+Step 9 owns editor-specific packaged execution proof. Step 12 still owns
+hosted/release certification, default-root cutover, and any legacy deletion.

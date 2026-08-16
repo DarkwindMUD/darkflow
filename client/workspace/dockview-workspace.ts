@@ -61,24 +61,53 @@ export interface WorkspaceInspector {
 }
 
 class WorkspaceTabRenderer implements ITabRenderer {
-  readonly element = document.createElement("span");
+  readonly element = document.createElement("div");
+  readonly #label = document.createElement("span");
   #titleSubscription: { dispose(): void } | undefined;
 
-  constructor(private readonly panelId: string) {
+  constructor(
+    private readonly panelId: string,
+    private readonly closePanel?: () => void,
+  ) {
+    this.element.className = "dv-default-tab";
     this.element.dataset.panelDragHandle = "true";
     this.element.dataset.panelId = panelId;
+    this.#label.className = "dv-default-tab-content";
+    this.element.appendChild(this.#label);
+
+    if (closePanel) {
+      const closeButton = document.createElement("button");
+      closeButton.type = "button";
+      closeButton.className = "dv-default-tab-action";
+      closeButton.textContent = "×";
+      closeButton.style.background = "none";
+      closeButton.style.border = "0";
+      closeButton.style.color = "inherit";
+      closeButton.style.cursor = "pointer";
+      closeButton.style.font = "inherit";
+      closeButton.addEventListener("pointerdown", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      closeButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.closePanel?.();
+      });
+      this.element.appendChild(closeButton);
+    }
   }
 
   init(parameters: TabPartInitParameters): void {
-    this.element.textContent = parameters.title;
+    this.#setTitle(parameters.title);
     this.#titleSubscription = parameters.api.onDidTitleChange(({ title }) => {
-      this.element.textContent = title;
+      this.#setTitle(title);
     });
   }
 
   update(parameters: DockviewParameters): void {
     if (typeof parameters.title === "string") {
-      this.element.textContent = parameters.title;
+      this.#setTitle(parameters.title);
     }
   }
 
@@ -86,6 +115,12 @@ class WorkspaceTabRenderer implements ITabRenderer {
     this.#titleSubscription?.dispose();
     this.#titleSubscription = undefined;
     this.element.remove();
+  }
+
+  #setTitle(title: string | undefined): void {
+    this.#label.textContent = title ?? "";
+    const closeButton = this.element.querySelector<HTMLButtonElement>("button");
+    if (closeButton) closeButton.setAttribute("aria-label", `Close ${title ?? this.panelId}`);
   }
 }
 
@@ -121,6 +156,7 @@ class SvelteDockviewRenderer implements IContentRenderer {
         panelId: this.panelId,
         state: this.state,
         ...(this.definition.session ? { session: this.definition.session } : {}),
+        ...this.definition.componentProps,
       },
     });
     this.element.dataset.workspaceRootId = `${this.panelId}-${++rootSequence}`;
@@ -181,10 +217,18 @@ export function createWorkspace(
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
+  let requestClosePanel: (id: string) => Promise<boolean> = async () => false;
   let suppressLayoutEvents = true;
 
   const api = createDockview(host, {
-    createTabComponent: ({ id }) => new WorkspaceTabRenderer(id),
+    createTabComponent: ({ id }) => {
+      const record = records.get(id);
+      const definition = record ? registry[record.kind] : undefined;
+      return new WorkspaceTabRenderer(
+        id,
+        definition?.canClose ? () => void requestClosePanel(id) : undefined,
+      );
+    },
     createComponent: ({ id, name }) => {
       const record = records.get(id);
       const definition = registry[name];
@@ -463,6 +507,30 @@ export function createWorkspace(
     };
   };
 
+  const removePanel = async (id: string): Promise<void> => {
+    assertUsable();
+    const panel = api.getPanel(id);
+    if (!panel) {
+      records.delete(id);
+      return;
+    }
+
+    const renderer = renderers.get(id);
+    records.delete(id);
+    api.removePanel(panel);
+    trackUnmount(renderer);
+    queueMicrotask(annotateFloatingTitlebars);
+    await waitForUnmounts();
+  };
+
+  requestClosePanel = async (id: string): Promise<boolean> => {
+    const record = records.get(id);
+    const definition = record ? registry[record.kind] : undefined;
+    if (definition?.canClose && !definition.canClose()) return false;
+    await removePanel(id);
+    return true;
+  };
+
   return {
     addOrUpdatePanel(spec) {
       assertUsable();
@@ -507,21 +575,9 @@ export function createWorkspace(
       return !disposed && api.getPanel(id) !== undefined;
     },
 
-    async removePanel(id) {
-      assertUsable();
-      const panel = api.getPanel(id);
-      if (!panel) {
-        records.delete(id);
-        return;
-      }
+    removePanel,
 
-      const renderer = renderers.get(id);
-      api.removePanel(panel);
-      trackUnmount(renderer);
-      queueMicrotask(annotateFloatingTitlebars);
-      await waitForUnmounts();
-      records.delete(id);
-    },
+    requestClosePanel,
 
     save() {
       assertUsable();

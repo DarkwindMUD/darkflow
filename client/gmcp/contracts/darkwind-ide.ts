@@ -2,8 +2,10 @@
 export interface DarkwindIdeOpen {
   path: string;
   content: string;
+  title?: string;
   language?: string;
-  readOnly?: boolean;
+  readOnly?: boolean | 0 | 1;
+  editable?: boolean | 0 | 1;
   [key: string]: unknown;
 }
 
@@ -13,8 +15,10 @@ export interface DarkwindIdeOpenStart {
   session: string;
   path: string;
   content: string;
+  title?: string;
   language?: string;
-  readOnly?: boolean;
+  readOnly?: boolean | 0 | 1;
+  editable?: boolean | 0 | 1;
   chunks: number;
   totalLength: number;
   hash?: string;
@@ -40,7 +44,7 @@ export interface DarkwindIdeOpenFinish {
 /** Darkwind.IDE.SaveResult inbound payload (docs/gmcp-darkwind-ide.md:174-195). */
 export interface DarkwindIdeSaveResult {
   path?: string;
-  success: boolean;
+  success: boolean | 0 | 1;
   message?: string;
   errors?: Array<{
     line: number;

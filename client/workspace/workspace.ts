@@ -36,7 +36,9 @@ export interface WorkspaceRendererProps {
 }
 
 export interface WorkspaceRendererDefinition {
+  canClose?: () => boolean;
   component: Component<WorkspaceRendererProps>;
+  componentProps?: Record<string, unknown>;
   preserveDomWhenHidden?: boolean;
   session?: Session;
 }
@@ -48,6 +50,7 @@ export interface Workspace {
   activatePanel(id: string): void;
   hasPanel(id: string): boolean;
   removePanel(id: string): Promise<void>;
+  requestClosePanel(id: string): Promise<boolean>;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;
   subscribeLayout(listener: (snapshot: WorkspaceSnapshot) => void): () => void;

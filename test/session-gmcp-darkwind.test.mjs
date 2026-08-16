@@ -408,8 +408,10 @@ test("Darkwind.IDE inbound messages validate documented examples", async (t) => 
     lookupGmcpValidator("Darkwind.IDE.Open")({
       path: "/domains/darkwind/rooms/tavern.c",
       content: "// file content here...",
+      title: "The Tavern",
       language: "lpc",
-      readOnly: false,
+      readOnly: 1,
+      editable: 0,
     }).success,
     true,
   );
@@ -419,8 +421,10 @@ test("Darkwind.IDE inbound messages validate documented examples", async (t) => 
       session: "transfer-id",
       path: "/domains/darkwind/rooms/tavern.c",
       content: "",
+      title: "The Tavern",
       language: "c",
-      readOnly: false,
+      readOnly: 0,
+      editable: 1,
       chunks: 12,
       totalLength: 384000,
       hash: "sha1...",
@@ -457,12 +461,17 @@ test("Darkwind.IDE inbound messages validate documented examples", async (t) => 
   assert.equal(
     lookupGmcpValidator("Darkwind.IDE.SaveResult")({
       path: "/domains/darkwind/rooms/tavern.c",
-      success: false,
+      success: 0,
       message: "Compilation failed.",
       errors: [{ line: 15, column: 0, message: "Missing ';' before end of line" }],
     }).success,
     true,
   );
+  assert.equal(
+    lookupGmcpValidator("Darkwind.IDE.SaveResult")({ success: 1, message: "Saved." }).success,
+    true,
+  );
+  assert.equal(lookupGmcpValidator("Darkwind.IDE.SaveResult")({ success: 2 }).success, false);
   assert.equal(
     lookupGmcpValidator("Darkwind.IDE.SaveResult")({
       success: false,

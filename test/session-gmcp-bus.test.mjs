@@ -422,6 +422,46 @@ test("world send helpers validate and emit exact package directions", async (t) 
   assert.equal(spy.calls.length, 4);
 });
 
+test("IDE send helpers validate and emit exact package directions", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const spy = createSendSpy();
+  const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
+
+  assert.equal(bus.sendIdeSave({ path: "/a.c", content: "a" }), true);
+  assert.equal(
+    bus.sendIdeSaveStart({
+      session: "save-1",
+      path: "/a.c",
+      chunks: 2,
+      totalLength: 4,
+      hash: "abc",
+    }),
+    true,
+  );
+  assert.equal(bus.sendIdeSaveChunk({ session: "save-1", index: 0, content: "aa" }), true);
+  assert.equal(bus.sendIdeSaveFinish({ session: "save-1" }), true);
+  assert.equal(bus.sendIdeSaveAbort({ session: "save-1", reason: "closed" }), true);
+  assert.equal(bus.sendIdeClose({ path: "/a.c" }), true);
+
+  assert.deepEqual(spy.calls, [
+    'Darkwind.IDE.Save {"path":"/a.c","content":"a"}',
+    'Darkwind.IDE.SaveStart {"session":"save-1","path":"/a.c","chunks":2,"totalLength":4,"hash":"abc"}',
+    'Darkwind.IDE.SaveChunk {"session":"save-1","index":0,"content":"aa"}',
+    'Darkwind.IDE.SaveFinish {"session":"save-1"}',
+    'Darkwind.IDE.SaveAbort {"session":"save-1","reason":"closed"}',
+    'Darkwind.IDE.Close {"path":"/a.c"}',
+  ]);
+
+  assert.equal(bus.sendIdeSave({ path: 1, content: "a" }), false);
+  assert.equal(bus.sendIdeSaveStart({ session: "save-1", path: "/a.c", chunks: "2" }), false);
+  assert.equal(bus.sendIdeSaveChunk({ session: "save-1", index: "0", content: "aa" }), false);
+  assert.equal(bus.sendIdeSaveFinish({}), false);
+  assert.equal(bus.sendIdeSaveAbort({ session: 1 }), false);
+  assert.equal(bus.sendIdeClose({}), false);
+  assert.equal(spy.calls.length, 6);
+});
+
 test("throwing handlers do not starve remaining handlers on the same frame", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
   const diagnostics = new SessionDiagnostics(sessionId);

@@ -206,7 +206,7 @@ async function createMainWindow() {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(`${appOrigin}/`);
+  await mainWindow.loadURL(`${appOrigin}${smokeTest ? '/phase2/' : '/'}`);
 }
 
 async function runSmokeTest() {
@@ -214,6 +214,15 @@ async function runSmokeTest() {
     const localSession = mainWindow.webContents.session;
 
     const result = await mainWindow.webContents.executeJavaScript(`(async () => {
+      const waitFor = async (read, label) => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const value = read();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error('Timed out waiting for ' + label);
+      };
       const fetchResult = async (url, responseType = null) => {
         const response = await fetch(url);
         return {
@@ -227,6 +236,23 @@ async function runSmokeTest() {
       const info = await window.darkflowDesktop.getInfo();
       const configResponse = await fetchResult('/config.json', 'json');
       const versionResponse = await fetchResult('/api/version', 'json');
+      const bridge = await waitFor(
+        () => window.__darkflowPhase1RuntimeBridge,
+        'the Phase 2 runtime bridge',
+      );
+      bridge.gmcpDispatch('Darkwind.IDE.Open', {
+        path: '/domains/fixture/packaged-smoke.c',
+        title: 'Packaged IDE smoke',
+        content: 'int packaged_smoke = 1;\\n',
+        language: 'c',
+        readOnly: 0,
+        editable: 1,
+      });
+      const editor = await waitFor(
+        () => document.querySelector('.ide-pane[data-panel-id="ide"] .cm-editor'),
+        'the packaged CodeMirror editor',
+      );
+      editor.querySelector('.cm-content').focus();
       return {
         title: document.title,
         desktopApi: Boolean(desktopApi),
@@ -241,8 +267,53 @@ async function runSmokeTest() {
         howlerRoute: await fetchResult('/vendor/howler.core.min.js'),
         icon: await fetchResult('/assets/brand/darkflow-icon-512.png'),
         phase0: await fetchResult('/phase0/'),
+        ide: {
+          bridge: typeof bridge.gmcpDispatch === 'function',
+          opened: Boolean(editor),
+        },
       };
     })()`);
+
+    const editMarker = '// packaged Electron edit';
+    await mainWindow.webContents.insertText(editMarker);
+    result.ide = {
+      ...result.ide,
+      ...await mainWindow.webContents.executeJavaScript(`(async () => {
+        const waitFor = async (read, label) => {
+          const deadline = Date.now() + 10000;
+          while (Date.now() < deadline) {
+            const value = read();
+            if (value) return value;
+            await new Promise((resolve) => setTimeout(resolve, 20));
+          }
+          throw new Error('Timed out waiting for ' + label);
+        };
+        const root = await waitFor(
+          () => document.querySelector('.ide-pane[data-panel-id="ide"]'),
+          'the IDE panel',
+        );
+        await waitFor(() => root.querySelector('.ide-modified-dot'), 'the IDE dirty marker');
+        const content = root.querySelector('.cm-content').textContent;
+        let confirmMessage = '';
+        const previousConfirm = window.confirm;
+        window.confirm = (message) => {
+          confirmMessage = String(message);
+          return true;
+        };
+        root.querySelector('.ide-btn-close').click();
+        window.confirm = previousConfirm;
+        await waitFor(
+          () => !document.querySelector('.ide-pane[data-panel-id="ide"]'),
+          'the IDE panel to close',
+        );
+        return {
+          modified: true,
+          content,
+          confirmMessage,
+          closed: true,
+        };
+      })()`),
+    };
 
     const phase0Source = await fetchDesktopRoute('/phase0/main.ts');
     const viteClient = await fetchDesktopRoute('/@vite/client');
@@ -270,6 +341,12 @@ async function runSmokeTest() {
       phase0Source,
       viteClient,
       ...smokeDiagnostics,
+    });
+    Object.assign(result.ide, {
+      localEditorChunks: smokeDiagnostics.localEditorChunks,
+      externalEditorRequests: smokeDiagnostics.externalEditorRequests,
+      localChunkLoaded: smokeDiagnostics.localEditorChunks.length > 0,
+      noExternalEditorNetwork: smokeDiagnostics.externalEditorRequests.length === 0,
     });
 
     if (desktopServeMode !== 'built'
@@ -301,6 +378,14 @@ async function runSmokeTest() {
         || result.phase0.status !== 200
         || result.phase0Source.status !== 404
         || result.viteClient.status !== 404
+        || !result.ide.bridge
+        || !result.ide.opened
+        || !result.ide.modified
+        || !result.ide.content.includes(editMarker)
+        || result.ide.confirmMessage !== 'You have unsaved changes. Close anyway?'
+        || !result.ide.closed
+        || !result.ide.localChunkLoaded
+        || !result.ide.noExternalEditorNetwork
         || smokeDiagnostics.consoleFailures.length
         || smokeDiagnostics.pageFailures.length
         || smokeDiagnostics.requestFailures.length
@@ -332,6 +417,8 @@ function monitorSmokeFailures(localSession) {
     pageFailures: [],
     requestFailures: [],
     websocketRequests: [],
+    localEditorChunks: [],
+    externalEditorRequests: [],
   };
 
   mainWindow.webContents.on('console-message', (event) => {
@@ -352,6 +439,12 @@ function monitorSmokeFailures(localSession) {
   });
   localSession.webRequest.onBeforeRequest((details, callback) => {
     if (details.resourceType === 'webSocket') diagnostics.websocketRequests.push(details.url);
+    const url = new URL(details.url);
+    if (url.origin === appOrigin && /^\/assets\/ide-editor-[^/]+\.js$/.test(url.pathname)) {
+      diagnostics.localEditorChunks.push(details.url);
+    } else if ((url.protocol === 'http:' || url.protocol === 'https:') && url.origin !== appOrigin) {
+      diagnostics.externalEditorRequests.push(details.url);
+    }
     callback({});
   });
 

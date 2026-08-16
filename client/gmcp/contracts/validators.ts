@@ -47,7 +47,13 @@ import type {
   DarkwindIdeOpenChunk,
   DarkwindIdeOpenFinish,
   DarkwindIdeOpenStart,
+  DarkwindIdeClose,
+  DarkwindIdeSave,
+  DarkwindIdeSaveAbort,
+  DarkwindIdeSaveChunk,
+  DarkwindIdeSaveFinish,
   DarkwindIdeSaveResult,
+  DarkwindIdeSaveStart,
 } from "./darkwind-ide.ts";
 import type {
   MapData2Area,
@@ -121,6 +127,12 @@ export const validateDarkwindIdeOpenStart = typia.createValidate<DarkwindIdeOpen
 export const validateDarkwindIdeOpenChunk = typia.createValidate<DarkwindIdeOpenChunk>();
 export const validateDarkwindIdeOpenFinish = typia.createValidate<DarkwindIdeOpenFinish>();
 export const validateDarkwindIdeSaveResult = typia.createValidate<DarkwindIdeSaveResult>();
+export const validateDarkwindIdeSave = typia.createValidate<DarkwindIdeSave>();
+export const validateDarkwindIdeSaveStart = typia.createValidate<DarkwindIdeSaveStart>();
+export const validateDarkwindIdeSaveChunk = typia.createValidate<DarkwindIdeSaveChunk>();
+export const validateDarkwindIdeSaveFinish = typia.createValidate<DarkwindIdeSaveFinish>();
+export const validateDarkwindIdeSaveAbort = typia.createValidate<DarkwindIdeSaveAbort>();
+export const validateDarkwindIdeClose = typia.createValidate<DarkwindIdeClose>();
 export const validateMapData2Current = typia.createValidate<MapData2Current>();
 export const validateMapData2Area = typia.createValidate<MapData2Area>();
 export const validateMapData2Update = typia.createValidate<MapData2Update>();

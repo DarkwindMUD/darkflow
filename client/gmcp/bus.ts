@@ -5,6 +5,14 @@ import type { CoreHello } from "./contracts/core.ts";
 import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
 import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2.ts";
 import type {
+  DarkwindIdeClose,
+  DarkwindIdeSave,
+  DarkwindIdeSaveAbort,
+  DarkwindIdeSaveChunk,
+  DarkwindIdeSaveFinish,
+  DarkwindIdeSaveStart,
+} from "./contracts/darkwind-ide.ts";
+import type {
   DarkwindAnnouncementsMarkRead,
   DarkwindFishingCast,
   DarkwindFishingCancel,
@@ -26,6 +34,12 @@ import {
   lookupGmcpValidator,
   validateCompletionRequest,
   validateCompletionResult,
+  validateDarkwindIdeClose,
+  validateDarkwindIdeSave,
+  validateDarkwindIdeSaveAbort,
+  validateDarkwindIdeSaveChunk,
+  validateDarkwindIdeSaveFinish,
+  validateDarkwindIdeSaveStart,
   validateMapData2Browse,
   validateMapData2Sync,
 } from "./contracts/validators.ts";
@@ -113,6 +127,12 @@ export interface SessionGmcpBus {
   sendMapData2Browse(payload: MapData2Browse): boolean;
   sendRoomPlaylistAction(payload: DarkwindRoomPlaylistAction): boolean;
   sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean;
+  sendIdeSave(payload: DarkwindIdeSave): boolean;
+  sendIdeSaveStart(payload: DarkwindIdeSaveStart): boolean;
+  sendIdeSaveChunk(payload: DarkwindIdeSaveChunk): boolean;
+  sendIdeSaveFinish(payload: DarkwindIdeSaveFinish): boolean;
+  sendIdeSaveAbort(payload: DarkwindIdeSaveAbort): boolean;
+  sendIdeClose(payload: DarkwindIdeClose): boolean;
   requestChannelPlayers(): boolean;
   enableChannel(channel: string): boolean;
   requestCompletion(request: CompletionRequest): boolean;
@@ -394,6 +414,42 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
   sendRoomPlaylistReport(payload: DarkwindRoomPlaylistReport): boolean {
     return validateDarkwindRoomPlaylistReport(payload).success
       ? this.send("Darkwind.Room.Playlist.Report", payload)
+      : false;
+  }
+
+  sendIdeSave(payload: DarkwindIdeSave): boolean {
+    return validateDarkwindIdeSave(payload).success
+      ? this.send("Darkwind.IDE.Save", payload)
+      : false;
+  }
+
+  sendIdeSaveStart(payload: DarkwindIdeSaveStart): boolean {
+    return validateDarkwindIdeSaveStart(payload).success
+      ? this.send("Darkwind.IDE.SaveStart", payload)
+      : false;
+  }
+
+  sendIdeSaveChunk(payload: DarkwindIdeSaveChunk): boolean {
+    return validateDarkwindIdeSaveChunk(payload).success
+      ? this.send("Darkwind.IDE.SaveChunk", payload)
+      : false;
+  }
+
+  sendIdeSaveFinish(payload: DarkwindIdeSaveFinish): boolean {
+    return validateDarkwindIdeSaveFinish(payload).success
+      ? this.send("Darkwind.IDE.SaveFinish", payload)
+      : false;
+  }
+
+  sendIdeSaveAbort(payload: DarkwindIdeSaveAbort): boolean {
+    return validateDarkwindIdeSaveAbort(payload).success
+      ? this.send("Darkwind.IDE.SaveAbort", payload)
+      : false;
+  }
+
+  sendIdeClose(payload: DarkwindIdeClose): boolean {
+    return validateDarkwindIdeClose(payload).success
+      ? this.send("Darkwind.IDE.Close", payload)
       : false;
   }
 

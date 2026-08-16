@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer, isRunnableDevEnvironment } from "vite";
+import { createSoundManagerStub } from "./fixtures/sound-manager.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -259,6 +260,7 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
   assert.equal(modules.repositoryCommit(storage, graph.state).success, true);
   let nowMs = options.nowMs ?? 0;
   const onlineListeners = new Map();
+  const soundManager = options.soundManager ?? createSoundManagerStub();
 
   const result = modules.createSessionFromState(
     graph.state,
@@ -287,6 +289,7 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
       },
       now: () => nowMs,
       onText: options.onText ?? (() => {}),
+      soundManager,
     },
   );
 
@@ -309,6 +312,8 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
     session,
     registry,
     automation: result.handles.automationRuntime,
+    gmcp: result.handles.gmcp,
+    soundManager,
     advance(ms) {
       nowMs += ms;
       t.mock.timers.tick(ms);
@@ -454,6 +459,61 @@ test("two characters on one server run concurrently", async (t) => {
   assert.equal(harnessA.session.getHealthSnapshot().readyStateName, "open");
   assert.equal(harnessB.session.getHealthSnapshot().readyStateName, "open");
   assert.notEqual(harnessA.session.sessionId, harnessB.session.sessionId);
+});
+
+test("public notification and audio capabilities compose without runtime handles", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
+  FakeWebSocket.reset();
+
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  harness.session.connect();
+  harness.latestSocket()?.open();
+
+  assert.deepEqual(Object.keys(harness.session.notifications).sort(), [
+    "activate",
+    "clear",
+    "getSnapshot",
+    "markExpired",
+    "recordOutputLine",
+    "requestRoster",
+    "resetOutputLines",
+    "subscribe",
+  ]);
+  assert.deepEqual(Object.keys(harness.session.audio).sort(), [
+    "getSnapshot",
+    "loopLocal",
+    "playLocal",
+    "setCategoryEnabled",
+    "setEnabled",
+    "setVolume",
+    "stopLocal",
+    "subscribe",
+    "unlock",
+  ]);
+
+  harness.gmcp.dispatch("Char.Status", { name: "Nacho" });
+  harness.session.notifications.recordOutputLine({ id: 7, text: "Alice: hello @Nacho" });
+  harness.gmcp.dispatch("Comm.Channel.Text", {
+    channel: "gossip",
+    talker: "Alice",
+    text: "hello @Nacho",
+  });
+  assert.equal(harness.session.notifications.getSnapshot().notifications[0]?.lineId, 7);
+
+  harness.gmcp.dispatch("Core.Supports.Set", ["Darkwind.Sound 1"]);
+  harness.gmcp.dispatch("Darkwind.Sound", {
+    type: "play",
+    category: "alert",
+    sound: "ping",
+  });
+  assert.equal(harness.session.audio.getSnapshot().supported, true);
+  assert.deepEqual(harness.soundManager.calls.at(-1), ["play", "alert", "ping", undefined]);
+
+  const resetsBeforeDispose = harness.soundManager.resetCount;
+  harness.session.dispose();
+  assert.equal(harness.soundManager.resetCount, resetsBeforeDispose + 1);
 });
 
 test("public connection snapshots own endpoint, lifecycle, subscriptions, and disposal", async (t) => {

@@ -281,7 +281,7 @@ export async function runBootTransaction(
     const serverProfileId = characterProfile.serverProfileId;
     const zorkOnly = isZorkOnlyLaunch(deps.urlSearchParams, deps.launchUrl);
 
-    const [{ state, dom }, connectionModule, gmcpVariables] = await Promise.all([
+    const [{ state, dom }, connectionModule, gmcpVariables, { soundManager }] = await Promise.all([
       deps.importModule<{
         state: BootstrapLegacyState;
         dom: import("./session-bridge-wiring.ts").LegacyConnectionDom;
@@ -292,6 +292,9 @@ export async function runBootTransaction(
       deps.importModule<{ registerGmcpVariables: (packageName: string, data: unknown) => void }>(
         "/js/gmcp-variables.js",
       ),
+      deps.importModule<{
+        soundManager: import("../runtime/audio.ts").RetainedSoundManager;
+      }>("/js/sound-manager.js"),
     ]);
 
     const registry = createSessionRegistry();
@@ -319,6 +322,7 @@ export async function runBootTransaction(
           deps.onText(text);
         },
         subscribeText: (listener) => textOutputSink.subscribe(listener),
+        soundManager,
       },
     );
 

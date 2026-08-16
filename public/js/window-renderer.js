@@ -311,6 +311,7 @@ function renderFingerProfile(schema) {
     event.stopPropagation();
     document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
       detail: {
+        source: avatarButton,
         src: img.currentSrc || img.src || fallbackAvatar,
         fallback: fallbackAvatar,
         alt: img.alt,
@@ -404,6 +405,7 @@ function renderPlayerRow(schema) {
     event.stopPropagation();
     document.dispatchEvent(new CustomEvent('dw:avatarZoom', {
       detail: {
+        source: avatarButton,
         src: img.currentSrc || img.src || fallbackAvatar,
         fallback: fallbackAvatar,
         alt: img.alt,

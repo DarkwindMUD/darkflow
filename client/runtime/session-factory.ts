@@ -23,6 +23,8 @@ import { createSessionConnectionHealth } from "./connection-health.ts";
 import { createSessionInteractions } from "./interactions.ts";
 import { createSessionWorld } from "./world.ts";
 import { createSessionIde } from "./ide.ts";
+import { createSessionNotifications } from "./notifications.ts";
+import { createSessionAudio, type RetainedSoundManager } from "./audio.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -56,6 +58,7 @@ export interface SessionFactoryDeps {
   onText: (text: string) => void;
   subscribeText?: (listener: (text: string) => void) => Unsubscribe;
   getLagMonitorEnabled?: () => boolean;
+  soundManager: RetainedSoundManager;
 }
 
 /** Result of attempting to create a session from validated application state. */
@@ -208,6 +211,10 @@ export function createSessionFromState(
   const ide = createSessionIde(gmcp, scope, eventBus, transport, {
     createTransferId: deps.uuidFactory,
   });
+  const notifications = createSessionNotifications(gmcp, scope, eventBus, information, {
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
+  const audio = createSessionAudio(gmcp, scope, eventBus, interactions, deps.soundManager);
   const connectionHealth = createSessionConnectionHealth(
     gmcp,
     transport,
@@ -253,6 +260,8 @@ export function createSessionFromState(
     interactions,
     world,
     ide,
+    notifications,
+    audio,
   });
 
   return {

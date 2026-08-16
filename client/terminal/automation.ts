@@ -1,10 +1,12 @@
-import type { ConfigKind, TimerDefinition } from "../model/configuration.ts";
+import type { AutomationStep, ConfigKind, TimerDefinition } from "../model/configuration.ts";
 import type { Session } from "../runtime/session.ts";
 
 // @ts-expect-error Shared legacy/Phase 2 executor core is JavaScript.
 import * as automationExecutor from "../../public/js/automation-executor-core.mjs";
 // @ts-expect-error Shared definition runtime core is JavaScript.
 import * as definitionRuntime from "../../public/js/definition-runtime-core.mjs";
+// @ts-expect-error Shared sound catalog is JavaScript.
+import { isKnownSound } from "../../public/js/sound-manager.js";
 
 const {
   applyHighlightDefinitionsToLine,
@@ -121,6 +123,10 @@ export function createTerminalAutomation({
     findFunctionByName: functionBase.findByTarget,
     getMaxFunctionDepth: () => 10,
   };
+  const playSound = (step: Extract<AutomationStep, { type: "play_sound" }>): boolean =>
+    !disposed &&
+    isKnownSound(step.category, step.sound) &&
+    session.audio.playLocal(step.category, step.sound, step.volume);
 
   const context = () => ({
     managers: {
@@ -133,7 +139,7 @@ export function createTerminalAutomation({
     sendCommand: (text: string) => session.terminal.sendCommand(text),
     scopeKey,
     scheduleWait: (delayMs: number) => runtime.scheduleWait(delayMs),
-    deferSound: true,
+    playSound,
   });
   const executeTimer = (timer: TimerDefinition) => {
     if (disposed || timer.enabled === false) return;

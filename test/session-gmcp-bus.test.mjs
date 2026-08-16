@@ -63,6 +63,7 @@ test("frame.ts reproduces gmcp-normalizer fixtures", async (t) => {
   assert.equal(canonicalPackageName("CHAR.VITALS"), "Char.Vitals");
   assert.equal(canonicalPackageName("Comm.Channel"), "Comm.Channel");
   assert.equal(canonicalPackageName("darkwind.xpmon"), "Darkwind.XPMon");
+  assert.equal(canonicalPackageName("DARKWIND.SOUND"), "Darkwind.Sound");
 
   assert.deepEqual(normalizeSupportsPayload(["room.info 1", "COMM.CHANNEL 1"]), [
     "Room.Info 1",
@@ -163,6 +164,13 @@ test("documented valid payloads pass their registered validators", async (t) => 
     "Comm.Channel.Players": [{ name: "Nacho" }],
     "Comm.Channel.Start": "gossip",
     "Comm.Channel.End": { channel: "gossip" },
+    "Darkwind.Sound": {
+      type: "loop",
+      category: "ambient",
+      sound: "rain",
+      id: "room-ambience",
+      volume: 0.3,
+    },
   };
 
   for (const [packageName, payload] of Object.entries(fixtures)) {
@@ -171,6 +179,15 @@ test("documented valid payloads pass their registered validators", async (t) => 
     const result = validator(payload);
     assert.equal(result.success, true, `valid payload rejected for ${packageName}`);
   }
+
+  assert.equal(
+    lookupGmcpValidator("Darkwind.Sound")({
+      type: "play",
+      category: "ambient",
+      sound: "../outside",
+    }).success,
+    false,
+  );
 
   assert.ok(!lookupGmcpValidator("Darkwind.Window"));
   assert.ok(modeledGmcpPackageNames.length >= Object.keys(fixtures).length);

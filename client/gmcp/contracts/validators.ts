@@ -97,6 +97,7 @@ import type {
   DarkwindRoomPlaylistReport,
   DarkwindRoomPlaylistState,
 } from "./world.ts";
+import { normalizeDarkwindSound, type DarkwindSound } from "./sound";
 
 export const validateCoreSupports = typia.createValidate<CoreSupportsPayload>();
 export const validateCharVitals = typia.createValidate<CharVitals>();
@@ -190,6 +191,16 @@ export const validateDarkwindFishingCaught = typia.createValidate<DarkwindFishin
 export const validateDarkwindFishingEscaped = typia.createValidate<DarkwindFishingEscaped>();
 export const validateDarkwindFishingArt = typia.createValidate<DarkwindFishingArt>();
 export const validateDarkwindFishingEnd = typia.createValidate<DarkwindFishingEnd>();
+export function validateDarkwindSound(input: unknown): typia.IValidation<DarkwindSound> {
+  const data = normalizeDarkwindSound(input);
+  return data
+    ? { success: true, data }
+    : {
+        success: false,
+        data: input,
+        errors: [{ path: "$input", expected: "Darkwind.Sound payload", value: input }],
+      };
+}
 
 /** Typia validator invoked by canonical inbound package name. */
 export type GmcpPayloadValidator = (input: unknown) => typia.IValidation<unknown>;
@@ -274,6 +285,7 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Fishing.Escaped")]: validateDarkwindFishingEscaped,
   [canonicalPackageName("Darkwind.Fishing.Art")]: validateDarkwindFishingArt,
   [canonicalPackageName("Darkwind.Fishing.End")]: validateDarkwindFishingEnd,
+  [canonicalPackageName("Darkwind.Sound")]: validateDarkwindSound,
   [canonicalPackageName("Core.Ping")]: validateCorePing,
   [canonicalPackageName("Darkwind.Lag.Status")]: validateDarkwindLagStatus,
 };
@@ -301,7 +313,6 @@ export const unmodeledGmcpPackageNames: readonly string[] = [
   "Darkwind.Visual.Events",
   "Darkwind.Visual.Event",
   "Darkwind.Visual.Preview",
-  "Darkwind.Sound",
   "Darkwind.Lag.Get",
   "Darkwind.StreetSamurai",
 ];

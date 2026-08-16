@@ -830,11 +830,20 @@ test("malformed modeled Darkwind frames still reach typed handlers", async (t) =
   const bus = createSessionGmcpBus(sessionId, () => true, diagnostics);
   const errorSpy = t.mock.method(console, "error", () => {});
   const seen = [];
+  const sounds = [];
 
   bus.on("Darkwind.Window.Open", (data) => seen.push(data));
+  bus.on("Darkwind.Sound", (data) => sounds.push(data));
   bus.dispatch("Darkwind.Window.Open", { id: "bad", layout: "not-an-object" });
+  bus.dispatch("Darkwind.Sound", {
+    type: "play",
+    category: "ambient",
+    sound: "../outside",
+  });
   assert.equal(seen.length, 1);
+  assert.equal(sounds.length, 1);
   assert.equal(diagnostics.snapshot().suppressedEvents, 0);
-  assert.equal(errorSpy.mock.callCount(), 1);
+  assert.equal(errorSpy.mock.callCount(), 2);
   assert.match(String(errorSpy.mock.calls[0].arguments[0]), /GMCP validation failed for Darkwind\.Window\.Open/);
+  assert.match(String(errorSpy.mock.calls[1].arguments[0]), /GMCP validation failed for Darkwind\.Sound/);
 });

@@ -92,18 +92,7 @@
       editor?.focus();
       requestAnimationFrame(() => {
         if (disposed || generation !== loadGeneration) return;
-        const active = document.activeElement;
-        const activePanelId = active
-          ?.closest<HTMLElement>("[data-panel-id]")
-          ?.getAttribute("data-panel-id");
-        if (
-          active === document.body ||
-          (active instanceof Node && root.contains(active)) ||
-          (active instanceof Element && active.matches(".dv-content-container")) ||
-          activePanelId === panelId
-        ) {
-          editor?.focus();
-        }
+        editor?.focus();
       });
     });
   }

@@ -300,7 +300,14 @@ test("IDE close guards, native tab, reset, repeated lifecycle, and remount stay 
   await expect(ide(page)).toHaveCount(0);
   await expect(commandInput).toBeFocused();
 
-  await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await page.evaluate(async () => {
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+    );
+    document.body.tabIndex = -1;
+    document.body.focus();
+  });
+  await expect(page.locator("body")).toBeFocused();
   open("/domains/fixture/body-focus.c", "Body focus");
   await expect(ide(page)).toBeVisible();
   await page.waitForTimeout(100);

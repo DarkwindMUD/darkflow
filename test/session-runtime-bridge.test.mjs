@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer, isRunnableDevEnvironment } from "vite";
+import { createSoundManagerStub } from "./fixtures/sound-manager.mjs";
 
 import {
   BRIDGE_UNINSTALLED_ERROR,
@@ -183,6 +184,7 @@ function createBridgeHarness(modules, t) {
     webSocketFactory: (url) => new FakeWebSocket(url),
     onlineTarget: { addEventListener() {} },
     onText: (text) => texts.push(text),
+    soundManager: createSoundManagerStub(),
   });
   assert.equal(result.success, true);
 

@@ -13,6 +13,7 @@ const {
   screen,
   shell,
 } = require('electron');
+const { WebSocketServer } = require('ws');
 const packageMetadata = require('../package.json');
 const { createDesktopUpdater } = require('./updater.cjs');
 const {
@@ -43,6 +44,7 @@ let appOrigin = '';
 let desktopToken = '';
 let mainWindow = null;
 let stopLocalServer = null;
+let stopSmokeMud = null;
 let updater = null;
 let smokeDiagnostics = null;
 
@@ -83,6 +85,7 @@ if (!hasSingleInstanceLock) {
 
   app.on('before-quit', () => {
     if (updater) updater.stop();
+    if (stopSmokeMud) stopSmokeMud();
     if (stopLocalServer) stopLocalServer().catch((error) => {
       console.error('[desktop] local server shutdown failed:', error);
     });
@@ -91,6 +94,14 @@ if (!hasSingleInstanceLock) {
 
 async function startDesktopApp() {
   configureDesktopEnvironment();
+
+  if (smokeTest) {
+    const smokeMud = await startSmokeMudServer();
+    process.env.MUD_HOST = '127.0.0.1';
+    process.env.MUD_PORT = String(smokeMud.port);
+    process.env.MUD_WSS = '0';
+    stopSmokeMud = smokeMud.stop;
+  }
 
   const { startServer, stopServer } = require('../server.js');
   const address = await startServer({
@@ -138,6 +149,27 @@ function requestedDesktopPort() {
     throw new Error('DARKFLOW_DESKTOP_PORT must be an integer from 0 through 65535.');
   }
   return smokeTest ? 0 : DEFAULT_DESKTOP_PORT;
+}
+
+function startSmokeMudServer() {
+  return new Promise((resolve, reject) => {
+    const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+    server.once('error', reject);
+    server.once('listening', () => {
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        reject(new Error('The packaged smoke MUD did not expose a TCP port.'));
+        return;
+      }
+      resolve({
+        port: address.port,
+        stop() {
+          for (const client of server.clients) client.terminate();
+          server.close();
+        },
+      });
+    });
+  });
 }
 
 async function createMainWindow() {
@@ -240,6 +272,16 @@ async function runSmokeTest() {
         () => window.__darkflowPhase1RuntimeBridge,
         'the Phase 2 runtime bridge',
       );
+      await waitFor(() => bridge.getConnectionState() === 'connected', 'the smoke MUD connection');
+      bridge.gmcpDispatch('Core.Supports.Set', ['Darkwind.Sound 1']);
+      const audioIndicator = await waitFor(
+        () => {
+          const root = document.querySelector('#audio-widget-root:not([hidden])');
+          return root && root.querySelector('.sound-widget-indicator');
+        },
+        'the supported Svelte audio control',
+      );
+      const audioIndicatorBounds = audioIndicator.getBoundingClientRect();
       bridge.gmcpDispatch('Darkwind.IDE.Open', {
         path: '/domains/fixture/packaged-smoke.c',
         title: 'Packaged IDE smoke',
@@ -271,8 +313,63 @@ async function runSmokeTest() {
           bridge: typeof bridge.gmcpDispatch === 'function',
           opened: Boolean(editor),
         },
+        audio: {
+          connected: bridge.getConnectionState() === 'connected',
+          supported: !document.querySelector('#audio-widget-root').hidden,
+          indicatorBounds: {
+            x: audioIndicatorBounds.x,
+            y: audioIndicatorBounds.y,
+            width: audioIndicatorBounds.width,
+            height: audioIndicatorBounds.height,
+          },
+        },
       };
     })()`);
+
+    const audioPoint = {
+      x: Math.round(result.audio.indicatorBounds.x + result.audio.indicatorBounds.width / 2),
+      y: Math.round(result.audio.indicatorBounds.y + result.audio.indicatorBounds.height / 2),
+    };
+    mainWindow.webContents.sendInputEvent({ type: 'mouseDown', ...audioPoint, button: 'left', clickCount: 1 });
+    mainWindow.webContents.sendInputEvent({ type: 'mouseUp', ...audioPoint, button: 'left', clickCount: 1 });
+    Object.assign(result.audio, await mainWindow.webContents.executeJavaScript(`(async () => {
+      const waitFor = async (read, label) => {
+        const deadline = Date.now() + 10000;
+        while (Date.now() < deadline) {
+          const value = read();
+          if (value) return value;
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        throw new Error('Timed out waiting for ' + label);
+      };
+      const audio = window.__darkflowPhase1Runtime.session.audio;
+      const bridge = window.__darkflowPhase1RuntimeBridge;
+      await waitFor(() => audio.getSnapshot().audioUnlocked, 'trusted audio unlock');
+      const controls = await waitFor(
+        () => document.querySelector('.sound-widget-expanded:not([hidden])'),
+        'the expanded audio controls',
+      );
+      bridge.gmcpDispatch('Darkwind.Sound', {
+        type: 'play',
+        category: 'alert',
+        sound: 'ping',
+      });
+      await waitFor(
+        () => audio.getSnapshot().currentCategory === 'alert',
+        'the injected alert sound activity',
+      );
+      return {
+        unlocked: audio.getSnapshot().audioUnlocked,
+        controlsExpanded: Boolean(controls),
+        injectedActivity: audio.getSnapshot().currentCategory,
+      };
+    })()`));
+
+    const soundDeadline = Date.now() + 10000;
+    while (smokeDiagnostics.localSoundAssets.length === 0 && Date.now() < soundDeadline) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    result.audio.localSoundAssets = smokeDiagnostics.localSoundAssets;
 
     const editMarker = '// packaged Electron edit';
     await mainWindow.webContents.insertText(editMarker);
@@ -365,9 +462,9 @@ async function runSmokeTest() {
         || result.info.distribution !== expectedDistribution
         || result.info.updateStatus.state !== expectedUpdateState
         || result.config.status !== 200
-        || result.config.body.host !== ''
-        || result.config.body.port !== 4242
-        || result.config.body.wss !== true
+        || result.config.body.host !== '127.0.0.1'
+        || result.config.body.port !== Number(process.env.MUD_PORT)
+        || result.config.body.wss !== false
         || result.config.body.gameName !== PRODUCT_NAME
         || result.version.status !== 200
         || result.version.body.version !== packageMetadata.version
@@ -386,10 +483,19 @@ async function runSmokeTest() {
         || !result.ide.closed
         || !result.ide.localChunkLoaded
         || !result.ide.noExternalEditorNetwork
+        || !result.audio.connected
+        || !result.audio.supported
+        || !result.audio.unlocked
+        || !result.audio.controlsExpanded
+        || result.audio.injectedActivity !== 'alert'
+        || result.audio.localSoundAssets.length !== 1
+        || !result.audio.localSoundAssets[0].url.endsWith('/assets/sounds/alert-ping.mp3')
+        || result.audio.localSoundAssets[0].statusCode !== 200
         || smokeDiagnostics.consoleFailures.length
         || smokeDiagnostics.pageFailures.length
         || smokeDiagnostics.requestFailures.length
-        || smokeDiagnostics.websocketRequests.length) {
+        || smokeDiagnostics.websocketRequests.length !== 1
+        || smokeDiagnostics.websocketRequests[0] !== `ws://127.0.0.1:${process.env.MUD_PORT}/`) {
       throw new Error(`Unexpected smoke-test state: ${JSON.stringify(result)}`);
     }
     console.log('[desktop-smoke]', JSON.stringify(result));
@@ -418,6 +524,7 @@ function monitorSmokeFailures(localSession) {
     requestFailures: [],
     websocketRequests: [],
     localEditorChunks: [],
+    localSoundAssets: [],
     externalEditorRequests: [],
   };
 
@@ -446,6 +553,16 @@ function monitorSmokeFailures(localSession) {
       diagnostics.externalEditorRequests.push(details.url);
     }
     callback({});
+  });
+  localSession.webRequest.onCompleted((details) => {
+    const url = new URL(details.url);
+    if (url.origin === appOrigin && url.pathname.startsWith('/assets/sounds/')) {
+      diagnostics.localSoundAssets.push({
+        method: details.method,
+        statusCode: details.statusCode,
+        url: details.url,
+      });
+    }
   });
 
   return diagnostics;

@@ -104,6 +104,7 @@
 
   let host: HTMLElement;
   let workspace: Workspace | undefined;
+  let terminalLineNavigator: ((lineId: number) => boolean) | undefined;
   let status = $state("Loading workspace...");
   let placeholderOpen = $state(true);
   let openInformationPanelIds = $state<string[]>([]);
@@ -162,6 +163,21 @@
   function focusTerminal(): void {
     workspace?.activatePanel(terminal.id);
     focusTerminalIsland(terminal.id);
+  }
+
+  function registerTerminalLineNavigator(navigate: (lineId: number) => boolean): () => void {
+    terminalLineNavigator = navigate;
+    return () => {
+      if (terminalLineNavigator === navigate) terminalLineNavigator = undefined;
+    };
+  }
+
+  export function navigateTerminalLine(lineId: number): boolean {
+    if (!workspace || !terminalLineNavigator) return false;
+    workspace.activatePanel(terminal.id);
+    if (!terminalLineNavigator(lineId)) return false;
+    focusTerminalIsland(terminal.id);
+    return true;
   }
 
   function openSheet(): void {
@@ -251,7 +267,12 @@
     };
     const rendererRegistry: WorkspaceRendererRegistry = {
       placeholder: { component: PlaceholderPanel },
-      terminal: { component: TerminalPanel, preserveDomWhenHidden: true, session },
+      terminal: {
+        component: TerminalPanel,
+        componentProps: { registerLineNavigator: registerTerminalLineNavigator },
+        preserveDomWhenHidden: true,
+        session,
+      },
       "server-window": { component: ServerWindowPanel, session },
       fishing: { component: FishingPanel, session },
       ide: {

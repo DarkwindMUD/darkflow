@@ -390,14 +390,29 @@ and mobile fallback.
 
 ### Step 10 — Port notifications, sound, and media controls
 
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-10-implementation-plan.md`](multi-connection-ui-phase-2-step-10-implementation-plan.md).
+
+Completion evidence:
+[`multi-connection-ui-phase-2-step-10-completion.md`](multi-connection-ui-phase-2-step-10-completion.md).
+
+**Status:** `COMPLETE` on 2026-08-16 — full Node 651/651, development and built
+Chromium/mobile 6/6 each, full development regression 186 passed/6 skipped/0
+failed, source-free packaged Electron trusted unlock plus local audio HTTP 200,
+and authenticated live login-theme and exact channel mention navigation passed.
+All four Step 10 rows are replaced; commit is pending user approval. Nine absent
+retained fishing assets remain an explicitly accepted inherited gap.
+
 **Depends on:** Steps 4 and 6.
 
-**Outcome:** Port one-session notifications, output-line navigation, sound
-controls/engine integration, and login/room media while keeping Phase 3
+**Outcome:** Port one-session in-app notifications, output-line navigation,
+sound controls/engine integration, login theme audio, and game/room ambience
+while keeping Phase 3
 background and cross-session policy out.
 
-**Exit:** Mention/navigation, permission and locked-audio behavior, playback,
-Electron paths, mobile controls, GMCP contracts, reconnect, and disposal pass.
+**Exit:** Mention/navigation, locked-audio behavior, playback, targeted packaged
+Electron audio execution, mobile controls, GMCP contracts, reconnect, and
+disposal pass. Step 12 retains default-root/release ownership.
 
 **Later plan resolves:** Application-owned browser/engine resources versus
 character/session-owned notification and playback state.

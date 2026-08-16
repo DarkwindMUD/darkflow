@@ -5,10 +5,12 @@
   import type { ConnectionHealthSnapshot } from "../runtime/connection-health.ts";
   import type { TransportEndpoint, TransportName } from "../transport/types.ts";
   import WorkspaceHost from "../workspace/WorkspaceHost.svelte";
+  import AudioControls from "./AudioControls.svelte";
   import AnnouncementsOverlay from "./AnnouncementsOverlay.svelte";
   import BroadcastOverlay from "./BroadcastOverlay.svelte";
   import GiphyOverlay from "./GiphyOverlay.svelte";
   import LinuxRescueOverlay from "./LinuxRescueOverlay.svelte";
+  import NotificationsMenu from "./NotificationsMenu.svelte";
   import ServerWindowHost from "./ServerWindowHost.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import SnoopOverlay from "./SnoopOverlay.svelte";
@@ -46,6 +48,7 @@
   let everConnected = $state(false);
   let now = $state(Date.now());
   let shellRoot = $state<HTMLElement>();
+  let workspaceHost = $state<{ navigateTerminalLine(lineId: number): boolean }>();
   let retryButton = $state<HTMLButtonElement>();
   let updateStatus = $state<UpdateStatus | null>(null);
   let clientVersion = $state<string | null>(null);
@@ -316,6 +319,13 @@
       ? `${(recentRfcEvents.length / ((last - first) / 60_000)).toFixed(1)}/min`
       : `${recentRfcEvents.length} events`;
   }
+
+  function activateNotification(id: number): boolean {
+    const lineId = session.notifications.activate(id);
+    if (lineId !== null && workspaceHost?.navigateTerminalLine(lineId)) return true;
+    session.notifications.markExpired(id);
+    return false;
+  }
 </script>
 
 <svelte:window
@@ -337,6 +347,8 @@
       <p>Phase 2 integration shell</p>
     </div>
     <div class="app-actions">
+      <AudioControls {session} />
+      <NotificationsMenu {session} onactivate={activateNotification} />
       <button
         bind:this={announcementsButton}
         type="button"
@@ -399,7 +411,11 @@
   </form>
 
   <p data-testid="connection-status" role="status" aria-live="polite">{connectionStatus}</p>
-  <WorkspaceHost characterProfileId={session.characterProfileId} {session} />
+  <WorkspaceHost
+    bind:this={workspaceHost}
+    characterProfileId={session.characterProfileId}
+    {session}
+  />
 </main>
 
 <SettingsDialog

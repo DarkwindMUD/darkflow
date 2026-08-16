@@ -33,8 +33,13 @@
       const detail = event.detail as Record<string, unknown>;
       const src = typeof detail.src === "string" ? detail.src.trim() : "";
       if (!src) return;
-      if (!avatarZoom && document.activeElement instanceof HTMLElement) {
-        avatarPreviousFocus = document.activeElement;
+      if (!avatarZoom) {
+        avatarPreviousFocus =
+          detail.source instanceof HTMLElement && detail.source.isConnected
+            ? detail.source
+            : document.activeElement instanceof HTMLElement
+              ? document.activeElement
+              : undefined;
       }
       avatarZoom = {
         src,

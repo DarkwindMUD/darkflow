@@ -18,7 +18,7 @@ export interface CommChannelEntry {
 }
 
 /** Comm.Channel.List payload (docs/gmcp-comm.md:46-54). */
-export type CommChannelList = CommChannelEntry[];
+export type CommChannelList = CommChannelEntry[] | Record<string, boolean | 0 | 1>;
 
 /** Comm.Channel.Players roster entry (docs/gmcp-comm.md:63-64). */
 export interface CommChannelPlayer {

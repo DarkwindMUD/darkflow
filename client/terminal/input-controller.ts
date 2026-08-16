@@ -2,6 +2,7 @@ import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.t
 import type { Session } from "../runtime/session.ts";
 import { loadCommandHistory, saveCommandHistory } from "./history.ts";
 import { loadClientSettings } from "../app/client-settings.ts";
+import { createMentionPicker } from "./mention-picker.ts";
 
 // @ts-expect-error Shared legacy/Phase 2 completion core is JavaScript.
 import { createCompletionController } from "../../public/js/completion-core.mjs";
@@ -37,6 +38,7 @@ export function createTerminalInputController({
   appendSystemMessage,
   executeCommand,
   getMappedCommand,
+  returnOutputToLive,
 }: {
   session: Session;
   input: HTMLInputElement;
@@ -49,6 +51,7 @@ export function createTerminalInputController({
   appendSystemMessage: (text: string) => void;
   executeCommand?: (text: string) => boolean;
   getMappedCommand?: (event: KeyboardEvent) => string | null;
+  returnOutputToLive?: () => boolean;
 }): { dispose(): void } {
   let history = loadCommandHistory(localStorage, session.characterProfileId);
   let historyIndex = history.length;
@@ -94,6 +97,7 @@ export function createTerminalInputController({
     ) => session.terminal.subscribeCompletion(listener),
     appendSystemMessage,
   });
+  const mentionPicker = createMentionPicker({ input, notifications: session.notifications });
 
   const send = () => {
     const text = input.value;
@@ -105,6 +109,7 @@ export function createTerminalInputController({
       appendEcho(text);
       pushHistory(text);
     }
+    mentionPicker.close();
     completion.reset();
     if (loadClientSettings(localStorage).settings.repeatLastCommand && text) {
       input.value = text;
@@ -136,6 +141,7 @@ export function createTerminalInputController({
     batchInput.focus();
   };
   const onKeydown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || mentionPicker.handleKeydown(event)) return;
     if (event.key === "Enter") {
       event.preventDefault();
       send();
@@ -174,14 +180,16 @@ export function createTerminalInputController({
     }
   };
   const onDocumentKeydown = (event: KeyboardEvent) => {
-    if (
-      event.defaultPrevented ||
-      isEditableTarget(event.target) ||
-      event.ctrlKey ||
-      event.altKey ||
-      event.metaKey
-    )
+    if (event.defaultPrevented) return;
+    if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"]'))
       return;
+    if (isEditableTarget(event.target) && event.target !== input) return;
+    if (event.key === "Escape" && returnOutputToLive?.()) {
+      event.preventDefault();
+      input.focus();
+      return;
+    }
+    if (isEditableTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return;
     const mappedCommand = getMappedCommand?.(event);
     if (mappedCommand) {
       event.preventDefault();
@@ -229,6 +237,7 @@ export function createTerminalInputController({
       window.removeEventListener("pagehide", flushHistory);
       unsubscribeConfiguration();
       unsubscribeConnection();
+      mentionPicker.dispose();
       completion.dispose();
       for (const timer of batchTimers) window.clearTimeout(timer);
       batchTimers.clear();

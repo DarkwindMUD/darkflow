@@ -325,7 +325,8 @@ test("snoop, announcements, attention overlays, and Linux rescue use live GMCP",
     .toContain('Darkwind.Snoop.Command {"id":"snoop-1","mode":"target","command":"look"}');
   await snoop.getByRole("button", { name: "Stop Snooping" }).click();
   await expect.poll(() => endpoint.gmcpMessages).toContain('Darkwind.Snoop.Stop {"id":"snoop-1"}');
-  await snoop.press("Escape");
+  await targetCommand.focus();
+  await targetCommand.press("Escape");
   await expect
     .poll(() => endpoint.gmcpMessages)
     .toContain('Darkwind.Snoop.Closed {"id":"snoop-1"}');

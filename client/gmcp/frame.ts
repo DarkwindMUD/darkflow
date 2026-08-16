@@ -37,6 +37,7 @@ const CANONICAL_PACKAGES = new Map<string, string>([
   ["darkwind.visual.event", "Darkwind.Visual.Event"],
   ["darkwind.visual.state", "Darkwind.Visual.State"],
   ["darkwind.visual.preview", "Darkwind.Visual.Preview"],
+  ["darkwind.sound", "Darkwind.Sound"],
   ["darkwind.tutorial.state", "Darkwind.Tutorial.State"],
   ["darkwind.tutorial.control", "Darkwind.Tutorial.Control"],
   ["darkwind.tutorial.action", "Darkwind.Tutorial.Action"],

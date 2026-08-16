@@ -14,8 +14,11 @@ export function createTerminalOutputCore({
   clearButton,
   announcer,
   processLine,
+  onOutputLine,
+  onClear,
 }) {
   const lines = [];
+  const lineElements = new Map();
   let activeLine = null;
   let activeText = '';
   let activeFragments = [];
@@ -23,6 +26,9 @@ export function createTerminalOutputCore({
   let announceTimer = 0;
   let disposed = false;
   let paused = false;
+  let navigationLocked = false;
+  let targetLine = null;
+  let nextLineId = 1;
   let announceText = '';
 
   const isAtBottom = () => output.scrollTop + output.clientHeight >= output.scrollHeight - 5;
@@ -31,16 +37,23 @@ export function createTerminalOutputCore({
     pauseButton.setAttribute('aria-pressed', String(paused));
     pauseButton.title = paused ? 'Resume live terminal' : 'Pause live terminal';
   };
+  const renderPending = () => {
+    if (animationFrame) {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = 0;
+    }
+    if (lines.length) {
+      const fragment = document.createDocumentFragment();
+      fragment.append(...lines.splice(0));
+      output.append(fragment);
+    }
+    if (!paused) output.scrollTop = output.scrollHeight;
+  };
   const scheduleRender = () => {
     if (animationFrame || disposed) return;
     animationFrame = requestAnimationFrame(() => {
       animationFrame = 0;
-      if (lines.length) {
-        const fragment = document.createDocumentFragment();
-        fragment.append(...lines.splice(0));
-        output.append(fragment);
-      }
-      if (!paused) output.scrollTop = output.scrollHeight;
+      renderPending();
     });
   };
   const announce = (text) => {
@@ -95,6 +108,11 @@ export function createTerminalOutputCore({
     for (const fragment of result.fragments) {
       appendFragment(line, fragment.text, fragment.style, fragment.href);
     }
+    const renderedText = result.fragments.map((fragment) => fragment.text).join('');
+    const id = nextLineId++;
+    line.dataset.lineId = String(id);
+    lineElements.set(id, line);
+    if (typeof onOutputLine === 'function') onOutputLine({ id, text: renderedText });
   };
   const appendOutput = (text, cssClass = '') => {
     if (disposed || !text) return;
@@ -111,32 +129,49 @@ export function createTerminalOutputCore({
     announce(text.replace(/\x1b\[[^m]*m/g, ''));
     scheduleRender();
   };
-  const clear = () => {
+  const clearState = () => {
     lines.length = 0;
+    lineElements.clear();
     activeLine = null;
     activeText = '';
     activeFragments = [];
     output.replaceChildren();
     announcer.textContent = '';
     announceText = '';
+    nextLineId = 1;
+    navigationLocked = false;
+    targetLine?.classList.remove('output-line-mention-target');
+    targetLine = null;
   };
-  const resume = () => {
+  const clear = () => {
+    if (disposed) return;
+    clearState();
+    if (typeof onClear === 'function') onClear();
+  };
+  const returnToLive = () => {
+    if (disposed) return false;
+    const changed = paused || navigationLocked || targetLine !== null || !isAtBottom();
+    targetLine?.classList.remove('output-line-mention-target');
+    targetLine = null;
+    navigationLocked = false;
     paused = false;
     syncControls();
+    renderPending();
     output.scrollTop = output.scrollHeight;
+    return changed;
   };
   const pause = () => {
     paused = true;
     syncControls();
   };
   const onScroll = () => {
-    if (!disposed) paused = !isAtBottom();
+    if (!disposed && !navigationLocked) paused = !isAtBottom();
     syncControls();
   };
-  const onPauseClick = () => (paused ? resume() : pause());
+  const onPauseClick = () => (paused ? returnToLive() : pause());
 
   pauseButton.addEventListener('click', onPauseClick);
-  liveButton.addEventListener('click', resume);
+  liveButton.addEventListener('click', returnToLive);
   clearButton.addEventListener('click', clear);
   output.addEventListener('scroll', onScroll);
   syncControls();
@@ -146,6 +181,24 @@ export function createTerminalOutputCore({
     appendSystemMessage: (text) => appendOutput(text, 'system-line'),
     clear,
     focus: () => output.focus({ preventScroll: true }),
+    isLineAvailable: (id) => Number.isSafeInteger(id) && lineElements.has(id),
+    navigateToLine: (id) => {
+      if (disposed || !Number.isSafeInteger(id)) return false;
+      const line = lineElements.get(id);
+      if (!line) return false;
+      renderPending();
+      targetLine?.classList.remove('output-line-mention-target');
+      targetLine = line;
+      targetLine.classList.add('output-line-mention-target');
+      navigationLocked = true;
+      paused = true;
+      syncControls();
+      const lineTop =
+        line.getBoundingClientRect().top - output.getBoundingClientRect().top + output.scrollTop;
+      output.scrollTop = Math.max(0, lineTop - Math.round(output.clientHeight * 0.35));
+      return true;
+    },
+    returnToLive,
     snapshot: () => ({ buffer: output.textContent ?? '', scrollTop: output.scrollTop }),
     dispose: () => {
       if (disposed) return;
@@ -153,10 +206,11 @@ export function createTerminalOutputCore({
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (announceTimer) window.clearTimeout(announceTimer);
       pauseButton.removeEventListener('click', onPauseClick);
-      liveButton.removeEventListener('click', resume);
+      liveButton.removeEventListener('click', returnToLive);
       clearButton.removeEventListener('click', clear);
       output.removeEventListener('scroll', onScroll);
-      clear();
+      clearState();
+      if (typeof onClear === 'function') onClear();
     },
   };
 }

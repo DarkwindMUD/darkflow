@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import { createServer, isRunnableDevEnvironment } from "vite";
+import { createSoundManagerStub } from "./fixtures/sound-manager.mjs";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const fixturesDir = path.join(repoRoot, "test", "fixtures", "session-migration");
@@ -190,6 +191,9 @@ function createBootHarness(t, modules, options = {}) {
     }
     if (entry.endsWith("gmcp-variables.js")) {
       return { registerGmcpVariables: () => {} };
+    }
+    if (entry.endsWith("sound-manager.js")) {
+      return { soundManager: createSoundManagerStub() };
     }
     throw new Error(`Unexpected import in bootstrap test: ${entry}`);
   };

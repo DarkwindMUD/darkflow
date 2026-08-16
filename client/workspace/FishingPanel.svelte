@@ -54,6 +54,7 @@
     encodeURIComponent(
       '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 40"><path fill="currentColor" opacity=".55" d="M8 20c8-10 20-14 30-10l10-8v10c4 2 7 5 8 8-1 3-4 6-8 8v10l-10-8c-10 4-22 0-30-10z"/><circle cx="42" cy="17" r="2" fill="#111"/></svg>',
     );
+  const REEL_LOOP_ID = "fishing-reel";
 
   let { panelId, session }: { panelId: string; state: Readable<PanelState>; session?: Session } =
     $props();
@@ -87,6 +88,8 @@
   let biteEndsAt = 0;
   let castPointerId: number | null = null;
   let fightPointerId: number | null = null;
+  let reelActive = false;
+  let tensionWarned = false;
 
   const open = $derived(fishing.open);
   const caught = $derived(fishing.caught);
@@ -134,6 +137,12 @@
     held = false;
   }
 
+  function stopReel(): void {
+    if (!reelActive) return;
+    reelActive = false;
+    activeSession.audio.stopLocal("fishing", REEL_LOOP_ID);
+  }
+
   function sendResult(outcome: "caught" | "snap" | "slack"): void {
     if (!open || !sim || resultReported) return;
     resultReported = true;
@@ -163,6 +172,12 @@
     } else if (phase === "fight" && sim) {
       const outcome = sim.step(dt, held);
       fightState = sim.getState();
+      if (fightState.tension > 85 && !tensionWarned) {
+        tensionWarned = true;
+        activeSession.audio.playLocal("fishing", "tension");
+      } else if (fightState.tension < 70 && tensionWarned) {
+        tensionWarned = false;
+      }
       if (outcome) {
         sendResult(outcome);
         return;
@@ -184,7 +199,9 @@
     sim = createFightSim(next.params, next.seed) as FightSim;
     fightState = sim.getState();
     resultReported = false;
+    tensionWarned = false;
     phase = "fight";
+    reelActive = activeSession.audio.loopLocal("fishing", "reel", REEL_LOOP_ID, 0.6);
     startLoop();
   }
 
@@ -194,6 +211,8 @@
     if (next.open !== lastOpen) {
       lastOpen = next.open;
       stopMotion();
+      stopReel();
+      tensionWarned = false;
       sim = null;
       fightState = null;
       phase = next.open ? (next.open.baited ? "ready" : "nobait") : "idle";
@@ -201,6 +220,7 @@
     if (next.bite && next.bite !== lastBite) {
       lastBite = next.bite;
       stopMotion();
+      activeSession.audio.playLocal("fishing", "splash");
       phase = "bite";
       bitePercent = 100;
       biteEndsAt = performance.now() + next.bite.windowMs;
@@ -213,16 +233,23 @@
     if (next.caught && next.caught !== lastCaught) {
       lastCaught = next.caught;
       stopMotion();
+      stopReel();
+      activeSession.audio.playLocal("fishing", "catch");
+      if (next.caught.fish.pristine) activeSession.audio.playLocal("fishing", "pristine");
       phase = "caught";
     }
     if (next.escaped && next.escaped !== lastEscaped) {
       lastEscaped = next.escaped;
       stopMotion();
+      stopReel();
+      activeSession.audio.playLocal("fishing", next.escaped.reason === "snap" ? "snap" : "slack");
       phase = "escaped";
     }
     if (next.end && next.end !== lastEnd) {
       lastEnd = next.end;
       stopMotion();
+      stopReel();
+      tensionWarned = false;
       phase = "idle";
     }
   }
@@ -252,7 +279,9 @@
     castPointerId = null;
     const power = castPowerAt(performance.now() - castStartedAt);
     castPower = power;
-    phase = activeSession.interactions.castFishing(open.session, power) ? "waiting" : "ready";
+    const sent = activeSession.interactions.castFishing(open.session, power);
+    phase = sent ? "waiting" : "ready";
+    if (sent) activeSession.audio.playLocal("fishing", "cast");
   }
 
   function handleCastKeyDown(event: KeyboardEvent): void {
@@ -274,8 +303,10 @@
   function hook(): void {
     if (phase !== "bite" || bitePercent <= 0 || !open) return;
     stopLoop();
-    if (activeSession.interactions.hookFishing(open.session)) phase = "hooking";
-    else startLoop();
+    if (activeSession.interactions.hookFishing(open.session)) {
+      activeSession.audio.playLocal("fishing", "hook");
+      phase = "hooking";
+    } else startLoop();
   }
 
   function handleGamePointerDown(event: PointerEvent): void {
@@ -313,9 +344,20 @@
     const unsubscribe = activeSession.interactions.subscribe((snapshot) => {
       untrack(() => reconcile(snapshot.fishing));
     });
+    const unsubscribeConnection = activeSession.subscribeConnection((snapshot) => {
+      if (snapshot.state === "connected") return;
+      stopMotion();
+      stopReel();
+      tensionWarned = false;
+      sim = null;
+      resultReported = true;
+    });
     return () => {
       unsubscribe();
+      unsubscribeConnection();
       stopMotion();
+      stopReel();
+      tensionWarned = false;
       const current = activeSession.interactions.getSnapshot().fishing.open;
       if (current) activeSession.interactions.cancelFishing(current.session);
     };

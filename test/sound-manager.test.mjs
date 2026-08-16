@@ -148,6 +148,58 @@ test('replaces and stops loops by Darkflow semantic ID', () => {
   assert.deepEqual(manager.getDebugSnapshot().loops, []);
 });
 
+test('resets active session playback without resetting application sound state', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+  manager.setVolume(0.4);
+  manager.setCategoryEnabled('spell', false);
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  engine.emit(0, 'play');
+
+  const settings = manager.getSettings();
+  const cachedSounds = manager.getDebugSnapshot().cachedSounds;
+  assert.equal(manager.getDebugSnapshot().lastPlayResult.ok, true);
+
+  manager.resetSessionPlayback();
+
+  const reset = manager.getDebugSnapshot();
+  assert.deepEqual(engine.stops.map(({ id }) => id), [1, 2]);
+  assert.equal(engine.created.every(({ listeners }) => listeners.length === 0), true);
+  assert.deepEqual(manager.getSettings(), settings);
+  assert.deepEqual(reset.pendingSounds, []);
+  assert.deepEqual(reset.pendingLoops, []);
+  assert.deepEqual(reset.cachedSounds, cachedSounds);
+  assert.equal(reset.activeOneShots, 0);
+  assert.deepEqual(reset.loops, []);
+  assert.equal(reset.lastPlayResult, null);
+  assert.equal(manager.isAudioUnlocked(), true);
+  assert.deepEqual(engine.globalVolumes, [0.7, 0.4]);
+
+  manager.resetSessionPlayback();
+  assert.equal(engine.stops.length, 2);
+  assert.deepEqual(manager.getDebugSnapshot().cachedSounds, cachedSounds);
+});
+
+test('clears pending session playback and remembered loop metadata', async () => {
+  const { engine, manager } = createManager();
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  assert.equal(manager.getSettings().pendingCount, 2);
+
+  manager.resetSessionPlayback();
+  assert.equal(manager.getSettings().pendingCount, 0);
+
+  await manager.unlockFromUserGesture();
+  document.hidden = true;
+  for (const callback of documentListeners.get('visibilitychange') || []) callback();
+  document.hidden = false;
+  for (const callback of documentListeners.get('visibilitychange') || []) callback();
+
+  assert.equal(engine.plays.length, 0);
+  assert.deepEqual(manager.getDebugSnapshot().loops, []);
+  assert.equal(manager.isAudioUnlocked(), true);
+});
+
 test('applies master volume globally and preserves the stored settings schema', () => {
   const { engine, manager } = createManager({ unlocked: true });
 

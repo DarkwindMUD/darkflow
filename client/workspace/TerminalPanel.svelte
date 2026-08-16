@@ -17,7 +17,13 @@
     panelId,
     state: panelState,
     session,
-  }: { panelId: string; state: Readable<PanelState>; session?: Session } = $props();
+    registerLineNavigator,
+  }: {
+    panelId: string;
+    state: Readable<PanelState>;
+    session?: Session;
+    registerLineNavigator?: (navigate: (lineId: number) => boolean) => (() => void) | void;
+  } = $props();
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
   let commandInput = $state<HTMLInputElement>();
@@ -66,7 +72,10 @@
       )!,
       processLine: (text: string, fragments: TerminalOutputFragment[]) =>
         automation?.processLine(text, fragments) ?? { fragments, gag: false },
+      onOutputLine: session.notifications.recordOutputLine,
+      onClear: session.notifications.resetOutputLines,
     });
+    const unregisterLineNavigator = registerLineNavigator?.(terminal.navigateToLine);
     automation = createTerminalAutomation({
       session,
       appendOutput: terminal.appendOutput,
@@ -85,9 +94,11 @@
       appendSystemMessage: terminal.appendSystemMessage,
       executeCommand: automation.sendCommand,
       getMappedCommand: automation.getMappedCommand,
+      returnOutputToLive: terminal.returnToLive,
     });
 
     return () => {
+      unregisterLineNavigator?.();
       input.dispose();
       unsubscribe();
       automation?.dispose();

@@ -496,6 +496,17 @@ export class SoundManager {
     if (clearMetadata) this.loopMetadata.clear();
   }
 
+  resetSessionPlayback() {
+    for (const token of [...this.oneShotSounds]) {
+      this.audioEngine.stop(token.handle, token.playbackId);
+      this._cleanupOneShot(token);
+    }
+    this.stopAll();
+    this.pendingSounds = [];
+    this.lastPlayResult = null;
+    this._emitChange();
+  }
+
   _queueLoop(item) {
     this.pendingLoops = this.pendingLoops.filter((pending) => pending.id !== item.id);
     this.pendingLoops.push(item);

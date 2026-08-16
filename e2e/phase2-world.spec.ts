@@ -169,6 +169,10 @@ test("map and room image reset across reconnect and remount after session dispos
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
 }) => {
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "layout persistence is desktop-only; mobile suppresses geometry writes",
+  );
   const endpoint = await connect(page);
   await togglePanel(page, "Status");
   await togglePanel(page, "Map");

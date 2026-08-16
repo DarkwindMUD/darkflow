@@ -39,7 +39,9 @@ interface DockviewPanelLike {
     setActive(): void;
     updateParameters(parameters: PanelState): void;
   };
-  group: unknown;
+  group: {
+    api: { setConstraints(value: { minimumWidth?: number; maximumWidth?: number }): void };
+  };
 }
 
 let rootSequence = 0;
@@ -406,6 +408,19 @@ export function createWorkspace(
     title: spec.title,
   });
 
+  // A fixed grid width (rails) survives Dockview's proportional rebalancing only
+  // as a constraint; initialWidth/setSize alone get rebalanced away by later
+  // splits. Floating panels size via bounds, so they are left unconstrained.
+  const pinGridWidth = (panel: unknown, spec: WorkspacePanelSpec): void => {
+    if (spec.placement?.kind !== "grid" || spec.size?.width === undefined) return;
+    // The column width is the group's gridview constraint, not the panel's own
+    // splitview constraint, so pin it on the group api.
+    (panel as DockviewPanelLike).group.api.setConstraints({
+      minimumWidth: spec.size.width,
+      maximumWidth: spec.size.width,
+    });
+  };
+
   const addPanel = (spec: WorkspacePanelSpec): void => {
     const options = panelOptions(spec);
     const placement = spec.placement;
@@ -425,24 +440,30 @@ export function createWorkspace(
     }
 
     if (placement?.kind === "grid" && placement.referencePanelId) {
-      api.addPanel({
-        ...options,
-        position: {
-          direction: placement.direction ?? "within",
-          referencePanel: placement.referencePanelId,
-        },
-      });
+      pinGridWidth(
+        api.addPanel({
+          ...options,
+          position: {
+            direction: placement.direction ?? "within",
+            referencePanel: placement.referencePanelId,
+          },
+        }),
+        spec,
+      );
       queueMicrotask(annotateFloatingTitlebars);
       return;
     }
 
     if (placement?.kind === "grid" && placement.direction && placement.direction !== "within") {
-      api.addPanel({ ...options, position: { direction: placement.direction } });
+      pinGridWidth(
+        api.addPanel({ ...options, position: { direction: placement.direction } }),
+        spec,
+      );
       queueMicrotask(annotateFloatingTitlebars);
       return;
     }
 
-    api.addPanel(options);
+    pinGridWidth(api.addPanel(options), spec);
     queueMicrotask(annotateFloatingTitlebars);
   };
 

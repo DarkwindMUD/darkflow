@@ -20,29 +20,45 @@ async function connect(page: Page): Promise<void> {
   await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
 }
 
-test("character information panels open, restore, and close from the mobile sheet", async ({
-  page,
-}) => {
-  await connect(page);
+/**
+ * Present a panel regardless of zone: default rail panels are already open on
+ * desktop, collapsed on mobile, and launcher-only panels (Cyberware) start
+ * hidden in both. Idempotent.
+ */
+async function ensurePanelOpen(page: Page, title: string, id: string): Promise<void> {
   if ((page.viewportSize()?.width ?? Infinity) <= 700) {
     await page.getByRole("button", { name: "Panels", exact: true }).click();
   }
-  await page.getByRole("button", { name: "Open Omens", exact: true }).click();
+  // Wait for the launcher toggle to settle, then open only if currently closed.
+  const openButton = page.getByRole("button", { name: `Open ${title}`, exact: true });
+  const closeButton = page.getByRole("button", { name: `Close ${title}`, exact: true });
+  await expect(openButton.or(closeButton)).toBeVisible();
+  if (await openButton.isVisible()) await openButton.click();
+  await expect(page.locator(`.information-panel[data-panel-id="${id}"]`)).toHaveCount(1);
+}
+
+test("character information panels present, restore, and close from the active controls", async ({
+  page,
+}) => {
+  await connect(page);
+  const onMobile = (page.viewportSize()?.width ?? Infinity) <= 700;
+  // Omens is a default left-rail panel on desktop; on mobile the sheet selects it.
+  await ensurePanelOpen(page, "Omens", "omens");
   await expect(page.locator('.information-panel[data-panel-id="omens"]')).toContainText(
     "Waiting for omens",
   );
   await page.reload();
+  await ensurePanelOpen(page, "Omens", "omens");
   await expect(page.locator('.information-panel[data-panel-id="omens"]')).toContainText(
     "Waiting for omens",
   );
   const terminal = page.getByLabel("Terminal output");
   const identity = await terminal.getAttribute("data-terminal-identity");
 
-  await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (onMobile) await page.getByRole("button", { name: "Panels", exact: true }).click();
   await page.getByRole("button", { name: "Close Omens", exact: true }).click();
   await expect(page.locator('.information-panel[data-panel-id="omens"]')).toHaveCount(0);
-  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (onMobile) await page.getByRole("button", { name: "Panels", exact: true }).click();
   await page.getByRole("button", { name: "Focus terminal", exact: true }).click();
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
 });
@@ -55,11 +71,7 @@ test("inventory and progress panels open from desktop and mobile controls", asyn
     ["Achievements", "achievements"],
     ["Cyberware", "cyberware"],
   ]) {
-    if ((page.viewportSize()?.width ?? Infinity) <= 700) {
-      await page.getByRole("button", { name: "Panels", exact: true }).click();
-    }
-    await page.getByRole("button", { name: `Open ${title}`, exact: true }).click();
-    await expect(page.locator(`.information-panel[data-panel-id="${id}"]`)).toHaveCount(1);
+    await ensurePanelOpen(page, title, id);
   }
 });
 
@@ -68,11 +80,13 @@ test("wire data survives malformed frames and resets across reconnect and dispos
 }) => {
   await connect(page);
   const endpoint = fixtures.endpoints.ws;
-  for (const title of ["Inventory", "Quests", "Achievements", "Cyberware"]) {
-    if ((page.viewportSize()?.width ?? Infinity) <= 700) {
-      await page.getByRole("button", { name: "Panels", exact: true }).click();
-    }
-    await page.getByRole("button", { name: `Open ${title}`, exact: true }).click();
+  for (const [title, id] of [
+    ["Inventory", "inventory"],
+    ["Quests", "quests"],
+    ["Achievements", "achievements"],
+    ["Cyberware", "cyberware"],
+  ] as const) {
+    await ensurePanelOpen(page, title, id);
   }
 
   endpoint.sendGmcp("Char.Items.List", {

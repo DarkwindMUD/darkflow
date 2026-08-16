@@ -203,6 +203,12 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   const endpoint = fixtures.endpoints.ws;
   await connect(page);
 
+  // This exercises desktop dock/float/redock; the mobile terminal island is
+  // covered by phase2-workspace.
+  test.skip(
+    (page.viewportSize()?.width ?? Infinity) <= 700,
+    "desktop layout-island test; mobile is terminal-centric",
+  );
   const output = page.getByLabel("Terminal output", { exact: true });
   const identity = await output.getAttribute("data-terminal-identity");
   await expect(output).toContainText(endpoint.prompt);
@@ -250,7 +256,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   const beforeLayout = await output.textContent();
   await drag(
     page,
-    page.locator('[data-panel-drag-handle][data-panel-id="panel-placeholder"]'),
+    page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'),
     page.locator('[data-panel-drag-handle][data-panel-id="terminal"]'),
   );
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
@@ -295,7 +301,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await drag(
     page,
     floatingHandle,
-    page.locator('[data-panel-drag-handle][data-panel-id="panel-placeholder"]'),
+    page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'),
   );
   await expect(floatingHandle).toHaveCount(0);
   await page.getByRole("button", { name: "Focus terminal", exact: true }).click();

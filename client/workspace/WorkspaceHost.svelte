@@ -12,7 +12,6 @@
   import FishingPanel from "./FishingPanel.svelte";
   import IdePanel from "./IdePanel.svelte";
   import MapPanel from "./MapPanel.svelte";
-  import PlaceholderPanel from "./PlaceholderPanel.svelte";
   import RoomImagePanel from "./RoomImagePanel.svelte";
   import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
@@ -43,13 +42,6 @@
     kind: "terminal",
     title: "Terminal",
     state: {},
-  };
-  const placeholder: WorkspacePanelSpec = {
-    id: "panel-placeholder",
-    kind: "placeholder",
-    title: "Panels",
-    state: {},
-    placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
   const informationPanelLabels: readonly [InformationPanelId, string][] = [
     ["avatar", "Avatar"],
@@ -115,23 +107,77 @@
     placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
 
+  // Legacy "classic hybrid" default: terminal center, two ordered 260px rails.
+  // Cyberware and Connection health stay launcher-only (available, not default).
+  const RAIL_WIDTH = 260;
+  const leftRailOrder: readonly InformationPanelId[] = [
+    "avatar",
+    "status",
+    "vitals",
+    "guildVitals",
+    "sky",
+    "omens",
+    "buffs",
+    "worth",
+    "xpmon",
+    "stats",
+  ];
+  const rightRailOrder: readonly InformationPanelId[] = [
+    "group",
+    "inventory",
+    "quests",
+    "achievements",
+  ];
+
+  function railPanelSpec(
+    id: InformationPanelId,
+    side: "left" | "right",
+    previousId: string | null,
+  ): WorkspacePanelSpec {
+    const title = informationPanelLabels.find(([panelId]) => panelId === id)?.[1] ?? id;
+    return {
+      id,
+      kind: id,
+      title,
+      state: {},
+      size: { width: RAIL_WIDTH },
+      placement: previousId
+        ? { kind: "grid", direction: "below", referencePanelId: previousId }
+        : { kind: "grid", direction: side, referencePanelId: terminal.id },
+    };
+  }
+
+  /** Build one rail: stack panels top-to-bottom; each carries the 260px width. */
+  function buildRail(
+    ws: Workspace,
+    order: readonly InformationPanelId[],
+    side: "left" | "right",
+  ): void {
+    let previous: string | null = null;
+    for (const id of order) {
+      ws.addOrUpdatePanel(railPanelSpec(id, side, previous));
+      previous = id;
+    }
+  }
+
+  /** Fresh classic-hybrid layout: terminal center plus the two frozen rails. */
+  function applyDefaultLayout(ws: Workspace): void {
+    ws.addOrUpdatePanel(terminal);
+    buildRail(ws, leftRailOrder, "left");
+    buildRail(ws, rightRailOrder, "right");
+    ws.activatePanel(terminal.id);
+  }
+
   let host: HTMLElement;
   let workspace: Workspace | undefined;
   let terminalLineNavigator: ((lineId: number) => boolean) | undefined;
   let status = $state("Loading workspace...");
-  let placeholderOpen = $state(true);
   let openInformationPanelIds = $state<string[]>([]);
   let openWorldPanelIds = $state<string[]>([]);
   let sheetOpen = $state(false);
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
   let combatPanelOpen = $state(false);
-
-  function openPlaceholder(): void {
-    workspace?.addOrUpdatePanel(placeholder);
-    workspace?.activatePanel(placeholder.id);
-    placeholderOpen = true;
-  }
 
   function syncVisiblePanels(): void {
     const visible = informationPanels.filter((panel) => workspace?.hasPanel(panel.id));
@@ -224,13 +270,6 @@
     if (event.target === event.currentTarget) closeSheet();
   }
 
-  function closePlaceholder(): void {
-    if (!workspace) return;
-    void workspace.removePanel(placeholder.id).then(() => {
-      placeholderOpen = false;
-    });
-  }
-
   function serverPanelPlacement(
     window: InteractionWindow,
   ): NonNullable<WorkspacePanelSpec["placement"]> {
@@ -297,7 +336,6 @@
       return !!window && window.closable !== false && window.closable !== 0;
     };
     const rendererRegistry: WorkspaceRendererRegistry = {
-      placeholder: { component: PlaceholderPanel },
       terminal: {
         component: TerminalPanel,
         componentProps: { registerLineNavigator: registerTerminalLineNavigator },
@@ -348,8 +386,6 @@
       ...rendererRegistry,
     });
     workspace = currentWorkspace;
-    currentWorkspace.addOrUpdatePanel(terminal);
-    currentWorkspace.addOrUpdatePanel(placeholder);
 
     const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
     const snapshot = loaded.success ? loaded.snapshot : null;
@@ -360,15 +396,9 @@
         : "";
     const restored =
       snapshot !== null &&
-      currentWorkspace.restore(snapshot, [
-        terminal,
-        placeholder,
-        ...informationPanels,
-        ...worldPanels,
-      ]);
+      currentWorkspace.restore(snapshot, [terminal, ...informationPanels, ...worldPanels]);
     if (!restored) {
-      currentWorkspace.addOrUpdatePanel(terminal);
-      currentWorkspace.addOrUpdatePanel(placeholder);
+      applyDefaultLayout(currentWorkspace);
       status =
         snapshot === null
           ? loadMessage
@@ -381,11 +411,18 @@
       currentWorkspace.addOrUpdatePanel(terminal);
       status = "Restored workspace was missing the terminal; it has been re-added.";
     }
-    placeholderOpen = currentWorkspace.hasPanel(placeholder.id);
     syncVisiblePanels();
 
     let pending: WorkspaceSnapshot | undefined;
     let timer: number | undefined;
+    // Responsive presentation: below 940px the fixed 260px rails cannot coexist
+    // with a >=420px terminal, so leaving the desktop zone captures the desktop
+    // layout, suppresses writes, and presents a terminal-centric view. Returning
+    // restores the captured layout. Reload in a narrow zone loads the last
+    // persisted desktop layout. Rigorous stored-byte isolation lands in PR4.
+    let responsiveZone: "desktop" | "compact" | "mobile" = "desktop";
+    let capturedDesktop: WorkspaceSnapshot | undefined;
+    let suppressPersistence = false;
     let fishingPanelOpen = false;
     let areaMapPanelOpen = false;
     let interactionSnapshot = session.interactions.getSnapshot();
@@ -450,13 +487,10 @@
       serverPanelIds.clear();
       fishingPanelOpen = false;
       areaMapPanelOpen = false;
-      await currentWorkspace.removePanel(placeholder.id);
       await currentWorkspace.removePanel(terminal.id);
       await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       await Promise.all(worldPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
-      currentWorkspace.addOrUpdatePanel(terminal);
-      currentWorkspace.addOrUpdatePanel(placeholder);
-      placeholderOpen = true;
+      applyDefaultLayout(currentWorkspace);
       syncVisiblePanels();
       const result = saveCharacterWorkspace(
         localStorage,
@@ -629,7 +663,7 @@
         idePanelOpen = false;
         session.ide.close();
       }
-      if (hasTransientPanels()) cancelPendingSave();
+      if (suppressPersistence || hasTransientPanels()) cancelPendingSave();
       else scheduleSave(next);
       syncVisiblePanels();
     });
@@ -647,15 +681,53 @@
         title: panel.title,
         state: { ...panel.state, mapZoom: detail.mapZoom },
       });
-      if (panel.id === "map") scheduleSave(currentWorkspace.save());
+      if (panel.id === "map" && !suppressPersistence) scheduleSave(currentWorkspace.save());
     };
+    const zoneForWidth = (width: number): typeof responsiveZone =>
+      width <= 700 ? "mobile" : width < 940 ? "compact" : "desktop";
+    const presentTerminalCentric = (): void => {
+      // Drop the fixed-width rail panels so the terminal reclaims the width.
+      for (const id of [...leftRailOrder, ...rightRailOrder]) {
+        if (currentWorkspace.hasPanel(id)) void currentWorkspace.removePanel(id);
+      }
+    };
+    const applyResponsiveZone = (): void => {
+      const next = zoneForWidth(window.innerWidth);
+      if (next === responsiveZone) return;
+      const leavingDesktop = responsiveZone === "desktop" && next !== "desktop";
+      const enteringDesktop = responsiveZone !== "desktop" && next === "desktop";
+      responsiveZone = next;
+      if (leavingDesktop) {
+        capturedDesktop = currentWorkspace.save();
+        suppressPersistence = true;
+        cancelPendingSave();
+        presentTerminalCentric();
+        syncVisiblePanels();
+      } else if (enteringDesktop) {
+        if (capturedDesktop) {
+          currentWorkspace.restore(capturedDesktop, [
+            terminal,
+            ...informationPanels,
+            ...worldPanels,
+          ]);
+          capturedDesktop = undefined;
+        }
+        suppressPersistence = false;
+        syncVisiblePanels();
+      }
+      // compact <-> mobile keeps the same terminal-centric presentation.
+    };
+    const onResize = () => applyResponsiveZone();
     const flushOnLeave = () => flush();
+    window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
     window.addEventListener("darkflow:reset-workspace", resetWorkspace);
     host.addEventListener("darkflow:map-panel-state", saveMapPanelState);
+    applyResponsiveZone();
 
     return () => {
+      window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
@@ -682,34 +754,31 @@
 
 <section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
   <div class="workspace-controls" aria-label="Panels" data-tutorial-target="panels-menu">
-    <strong>Panels</strong>
     <button type="button" onclick={focusTerminal}>Focus terminal</button>
-    {#if placeholderOpen}
-      <button type="button" onclick={closePlaceholder}>Close panel</button>
-    {:else}
-      <button type="button" onclick={openPlaceholder}>Open panel</button>
-    {/if}
-    {#each informationPanels as panel (panel.id)}
-      <button
-        type="button"
-        aria-pressed={informationPanelOpen(panel)}
-        onclick={() => toggleInformationPanel(panel)}
-      >
-        {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
-      </button>
-    {/each}
-    {#each worldPanels as panel (panel.id)}
-      <button
-        type="button"
-        aria-pressed={worldPanelOpen(panel)}
-        onclick={() => toggleWorldPanel(panel)}
-      >
-        {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
-      </button>
-    {/each}
-    {#if combatPanelOpen}
-      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
-    {/if}
+    <div class="panel-launcher" aria-label="Open panels">
+      {#each informationPanels as panel (panel.id)}
+        <button
+          type="button"
+          aria-pressed={informationPanelOpen(panel)}
+          onclick={() => toggleInformationPanel(panel)}
+        >
+          {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+        </button>
+      {/each}
+      {#each worldPanels as panel (panel.id)}
+        <button
+          type="button"
+          aria-pressed={worldPanelOpen(panel)}
+          onclick={() => toggleWorldPanel(panel)}
+        >
+          {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
+        </button>
+      {/each}
+      {#if combatPanelOpen}
+        <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button
+        >
+      {/if}
+    </div>
   </div>
   <button
     bind:this={sheetTrigger}
@@ -746,7 +815,6 @@
     </div>
     <div class="mobile-panel-tabs" aria-label="Open panels">
       <button type="button" onclick={() => selectPanel(focusTerminal)}>Terminal</button>
-      <button type="button" onclick={() => selectPanel(openPlaceholder)}>Panel placeholder</button>
       {#each informationPanels as panel (panel.id)}
         <button
           type="button"
@@ -779,11 +847,6 @@
     </div>
     <div class="mobile-sheet-controls">
       <button type="button" onclick={focusTerminal}>Focus terminal</button>
-      {#if placeholderOpen}
-        <button type="button" onclick={closePlaceholder}>Close panel</button>
-      {:else}
-        <button type="button" onclick={openPlaceholder}>Open panel</button>
-      {/if}
     </div>
   </div>
 </div>
@@ -793,16 +856,34 @@
     display: grid;
     grid-template-rows: auto auto minmax(0, 1fr);
     gap: 0.75rem;
-    height: min(60vh, 48rem);
-    min-height: 25rem;
-    margin-top: 1.5rem;
+    flex: 1;
+    min-height: 0;
+    margin-top: 0.75rem;
   }
 
   .workspace-controls {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 0.5rem;
     align-items: center;
+    min-width: 0;
+  }
+
+  /* Compact single-row launcher: it scrolls horizontally instead of wrapping
+     into a tall button rack, so it stays a thin strip in the full-height shell. */
+  .panel-launcher {
+    display: flex;
+    flex-wrap: nowrap;
+    gap: 0.375rem;
+    align-items: center;
+    min-width: 0;
+    padding-bottom: 0.25rem;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .panel-launcher button {
+    flex: 0 0 auto;
+    white-space: nowrap;
   }
 
   .workspace-status {

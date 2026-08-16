@@ -431,7 +431,7 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
   test.skip(testInfo.project.name === "mobile-chromium", "desktop controls only");
   await page.goto("/phase2/");
   await expect(page.getByTestId("workspace-host")).toBeVisible();
-  await page.getByRole("button", { name: "Close panel", exact: true }).click();
+  await page.getByRole("button", { name: "Close Avatar", exact: true }).click();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -439,7 +439,7 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
   await dialog.getByRole("button", { name: "Reset workspace", exact: true }).click();
 
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
-  await expect(page.getByRole("button", { name: "Close panel", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close Avatar", exact: true })).toBeVisible();
 });
 
 test("Phase 2 settings dialog closes when the session is disposed", async ({ page }) => {

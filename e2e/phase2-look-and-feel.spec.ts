@@ -230,3 +230,36 @@ test("expresses the classic terminal-center + two-rail layout without a vendor l
     1,
   );
 });
+
+test("collapses rails off the desktop zone and restores them on return", async ({
+  page,
+}, testInfo) => {
+  test.skip(isMobileProject(testInfo), "responsive round-trip runs under the chromium project");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPhase2(page);
+
+  const terminal = page.locator("[data-terminal-identity]");
+  const identity = await terminal.getAttribute("data-terminal-identity");
+  const avatar = page.locator('[data-panel-drag-handle][data-panel-id="avatar"]');
+
+  // Desktop: the frozen left rail is present.
+  await expect(avatar).toBeVisible();
+
+  // Compact (701-939): rails collapse so the terminal keeps its width; one
+  // terminal island survives.
+  await page.setViewportSize({ width: 800, height: 800 });
+  await expect(avatar).toHaveCount(0);
+  await expect(terminal).toHaveCount(1);
+  expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
+
+  // Mobile (<=700): still terminal-centric.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(avatar).toHaveCount(0);
+  await expect(terminal).toHaveCount(1);
+
+  // Back to desktop: the captured rail layout is restored, identity intact.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await expect(avatar).toBeVisible();
+  await expect(terminal).toHaveCount(1);
+  expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
+});

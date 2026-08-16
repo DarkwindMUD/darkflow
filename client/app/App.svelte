@@ -369,7 +369,6 @@
     <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
     <div>
       <h1>{gameTitle(shell.gameName)}</h1>
-      <p>Phase 2 integration shell</p>
     </div>
     <div class="app-actions">
       <AudioControls {session} />
@@ -548,8 +547,11 @@
 <style>
   main {
     box-sizing: border-box;
-    min-height: 100vh;
-    padding: clamp(1rem, 4vw, 3rem);
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    min-height: 100dvh;
+    padding: clamp(0.75rem, 2.5vw, 1.5rem);
     background: var(--df-bg, #0d1117);
     color: var(--df-text, #c9d1d9);
   }
@@ -558,7 +560,7 @@
     display: flex;
     gap: 0.75rem;
     align-items: center;
-    margin-bottom: 1.5rem;
+    margin-bottom: 0.75rem;
   }
 
   .app-chrome img {
@@ -579,10 +581,6 @@
   h1,
   p {
     margin: 0;
-  }
-
-  .app-chrome p {
-    color: var(--df-muted, #8b949e);
   }
 
   .connection-form,

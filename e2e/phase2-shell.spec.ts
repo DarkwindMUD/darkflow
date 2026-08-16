@@ -13,7 +13,7 @@ test("Phase 2 uses one Svelte shell without loading the legacy client", async ({
 
   const shell = page.getByTestId("phase2-shell");
   await expect(shell).toHaveCount(1);
-  await expect(shell).toContainText("Phase 2 integration shell");
+  await expect(shell.getByRole("heading", { level: 1 })).toHaveText("Darkflow");
   await expect(page.getByTestId("phase2-workspace")).toHaveCount(1);
   expect(await shell.getAttribute("data-session-id")).toBeTruthy();
   expect(requests).not.toContain("/js/app.js");

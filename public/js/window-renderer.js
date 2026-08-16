@@ -1,6 +1,9 @@
 import { LAYOUT_TYPES, INPUT_TYPES, DISPLAY_TYPES, STYLE_ALLOWLIST } from './window-types.js';
 import { parseAnsiText, styleToElement } from './ansi.js';
-import { renderStreetSamuraiDashboard } from './street-samurai-dashboard.js';
+import {
+  createStreetSamuraiDashboard,
+  renderStreetSamuraiDashboard,
+} from './street-samurai-dashboard.js';
 import {
   NPC_FALLBACK_IMAGE,
   applyNpcImageFallback,
@@ -39,7 +42,7 @@ function renderNode(schema, buttonHandler, options) {
   }
   if (LAYOUT_TYPES.has(schema.type)) return renderContainer(schema, buttonHandler, options);
   if (INPUT_TYPES.has(schema.type)) return renderInput(schema, buttonHandler);
-  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler);
+  if (DISPLAY_TYPES.has(schema.type)) return renderDisplay(schema, buttonHandler, options);
 
   const span = document.createElement('span');
   span.textContent = '[' + schema.type + ']';
@@ -91,7 +94,7 @@ export function usesNpcDialogueMultiColumnChoices(choiceCount) {
 }
 
 // ── Display elements ────────────────────────────────────────────────
-function renderDisplay(schema, buttonHandler) {
+function renderDisplay(schema, buttonHandler, options) {
   switch (schema.type) {
     case 'npc_dialogue':
       return renderNpcDialogue(schema, buttonHandler);
@@ -100,7 +103,9 @@ function renderDisplay(schema, buttonHandler) {
     case 'finger_profile':
       return renderFingerProfile(schema);
     case 'street_samurai_dashboard':
-      return renderStreetSamuraiDashboard(schema);
+      return options.instanceOwnedStreetSamurai
+        ? createStreetSamuraiDashboard(schema)
+        : renderStreetSamuraiDashboard(schema);
     case 'heading': {
       const el = document.createElement('h3');
       el.className = 'dw-heading';

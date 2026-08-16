@@ -24,9 +24,11 @@ const VISUAL_TERRAIN_BY_CANONICAL = new Map([
   ['hills', 'mountain'],
   ['mountain', 'mountain'],
   ['desert', 'desert'],
+  ['water', 'water'],
   ['sea', 'water'],
   ['lake', 'water'],
   ['river', 'water'],
+  ['coast', 'coast'],
   ['beach', 'coast'],
   ['swamp', 'swamp'],
   ['arctic', 'arctic'],
@@ -126,6 +128,13 @@ function firstAllowed(value, aliases) {
 function normalizeTerrainTokens(value) {
   const found = new Set();
   for (const token of extractTerrainTokens(value)) {
+    const visualTerrain = VISUAL_TERRAIN_BY_CANONICAL.get(token);
+    if (visualTerrain) found.add(visualTerrain);
+    if (found.size >= MAX_TERRAIN_TOKENS) break;
+  }
+  const directTokens = new Set(candidateWords(value));
+  for (const token of ['water', 'coast']) {
+    if (!directTokens.has(token)) continue;
     const visualTerrain = VISUAL_TERRAIN_BY_CANONICAL.get(token);
     if (visualTerrain) found.add(visualTerrain);
     if (found.size >= MAX_TERRAIN_TOKENS) break;

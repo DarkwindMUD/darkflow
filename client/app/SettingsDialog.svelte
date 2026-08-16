@@ -7,8 +7,11 @@
     saveClientSettings,
     type Phase2ClientSettings,
   } from "./client-settings.ts";
+  import type { SessionVisualEffectKey } from "../runtime/visual-effects.ts";
   // @ts-expect-error Legacy theme data has no declaration file.
   import { BUILTIN_THEMES } from "../../public/js/theme-manager.js";
+  // @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
+  import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
 
   let { open, session, onclose }: { open: boolean; session: Session; onclose: () => void } =
     $props();
@@ -21,6 +24,11 @@
   let invalidStoredSettings = $state(false);
 
   const themes = Object.values(BUILTIN_THEMES) as Array<{ key: string; label: string }>;
+  const visualEffectOptions = visualEffectSettings.VISUAL_EFFECT_OPTIONS as readonly {
+    key: SessionVisualEffectKey;
+    label: string;
+    description: string;
+  }[];
 
   function loadDraft(): void {
     const result = loadClientSettings(localStorage);
@@ -56,6 +64,7 @@
       status = settingsResult.message;
       return;
     }
+    session.visualEffects.configure(settings);
 
     const runtime = session.terminal.automation;
     const nextNames = new Set(variables.map(({ name }) => name.trim()).filter(Boolean));
@@ -127,6 +136,30 @@
       <label
         ><input type="checkbox" bind:checked={settings.lagMonitorEnabled} /> Measure connection health</label
       >
+    </fieldset>
+
+    <fieldset class="settings-visual-effects">
+      <legend>Visual effects</legend>
+      <label
+        ><input type="checkbox" bind:checked={settings.visualEffectsEnabled} /> Enable visual effects</label
+      >
+      <details class="settings-visual-effects-details">
+        <summary class="settings-visual-effects-summary">
+          Choose effects
+          <span class="settings-visual-effects-count">
+            {Object.values(settings.visualEffectPreferences).filter(Boolean).length} of
+            {visualEffectOptions.length} enabled
+          </span>
+        </summary>
+        <div class="settings-visual-effects-list">
+          {#each visualEffectOptions as option (option.key)}
+            <label title={option.description}>
+              <input type="checkbox" bind:checked={settings.visualEffectPreferences[option.key]} />
+              {option.label}
+            </label>
+          {/each}
+        </div>
+      </details>
     </fieldset>
 
     <fieldset>

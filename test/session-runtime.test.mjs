@@ -461,7 +461,7 @@ test("two characters on one server run concurrently", async (t) => {
   assert.notEqual(harnessA.session.sessionId, harnessB.session.sessionId);
 });
 
-test("public notification and audio capabilities compose without runtime handles", async (t) => {
+test("public notification, audio, and Step 11 capabilities compose without runtime handles", async (t) => {
   const modules = await loadSessionRuntimeModules(t);
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
   FakeWebSocket.reset();
@@ -491,6 +491,26 @@ test("public notification and audio capabilities compose without runtime handles
     "stopLocal",
     "subscribe",
     "unlock",
+  ]);
+  assert.deepEqual(Object.keys(harness.session.combat).sort(), [
+    "dismissEncounter",
+    "getSnapshot",
+    "setPresentationReady",
+    "setReducedMotion",
+    "subscribe",
+  ]);
+  assert.deepEqual(Object.keys(harness.session.tutorial).sort(), [
+    "getSnapshot",
+    "perform",
+    "setPresentationReady",
+    "subscribe",
+  ]);
+  assert.deepEqual(Object.keys(harness.session.visualEffects).sort(), [
+    "configure",
+    "getSnapshot",
+    "setPresentationVisible",
+    "setReducedMotion",
+    "subscribe",
   ]);
 
   harness.gmcp.dispatch("Char.Status", { name: "Nacho" });

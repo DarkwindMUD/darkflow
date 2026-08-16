@@ -783,6 +783,126 @@ test("Darkwind.Client.NAWS and Session.Recovered contracts", async (t) => {
   assert.equal(lookupGmcpValidator("Darkwind.Session.Recovered"), validateDarkwindSessionRecovered);
 });
 
+test("Step 11 inbound packages are modeled through bounded normalizers", async (t) => {
+  const { lookupGmcpValidator, unmodeledGmcpPackageNames } = await loadDarkwindModules(t);
+  const fixtures = {
+    "Darkwind.Combat.State": {
+      epoch: "combat-1",
+      encounter_id: "encounter-1",
+      seq: 1,
+      visual_enabled: 1,
+      effective: 0,
+      active: 1,
+      current_actor_id: "self",
+      current_target_id: "enemy-1",
+      actors: [{ id: "self", name: "Nacho", role: "player" }],
+      outcome: "",
+      summary: "Combat begins.",
+    },
+    "Darkwind.Combat.Events": {
+      epoch: "combat-1",
+      encounter_id: "encounter-1",
+      first_seq: 2,
+      last_seq: 2,
+      events: [
+        {
+          seq: 2,
+          kind: "attack",
+          perspective: "outgoing",
+          actor_id: "self",
+          target_id: "enemy-1",
+          result: "hit",
+          damage: 4,
+          summary: "You hit.",
+        },
+      ],
+      overflow: { omitted: 0, hits: 0, damage: 0 },
+    },
+    "Darkwind.Combat.Event": {
+      epoch: "combat-1",
+      encounter_id: "encounter-1",
+      seq: 2,
+      kind: "attack",
+      perspective: "outgoing",
+      actor_id: "self",
+      target_id: "enemy-1",
+      result: "hit",
+      summary: "You hit.",
+    },
+    "Darkwind.Tutorial.State": {
+      epoch: "tutorial-1",
+      seq: 1,
+      tutorial_version: 2,
+      status: "active",
+      awaiting_continue: 0,
+      chapter: { id: "orientation", index: 1, total: 5, title: "Orientation" },
+      step: {
+        id: "look",
+        index: 1,
+        total: 21,
+        title: "Look around",
+        task: "Read the room.",
+        hint: "Type look.",
+        help: "help look",
+        example_command: "look",
+        target: "command-input",
+      },
+      route: null,
+      actions: ["hint", "skip"],
+      reason: "snapshot",
+    },
+    "Darkwind.Tutorial.Control": { visible: 0, reason: "screenreader" },
+    "Darkwind.Visual.State": {
+      epoch: "visual-1",
+      seq: 1,
+      reason: "move",
+      planet: "markas",
+      terrain: ["desert", "outside"],
+    },
+    "Darkwind.Visual.Events": {
+      epoch: "visual-1",
+      events: [
+        {
+          seq: 2,
+          kind: "damage",
+          perspective: "incoming",
+          cue: "impact",
+          intensity: 2,
+        },
+      ],
+    },
+    "Darkwind.Visual.Event": {
+      epoch: "visual-1",
+      seq: 2,
+      kind: "damage",
+      perspective: "incoming",
+      cue: "impact",
+      intensity: 2,
+    },
+    "Darkwind.Visual.Preview": { kind: "terrain", value: "desert" },
+    "Darkwind.StreetSamurai": { protocol_version: 1 },
+  };
+
+  for (const [packageName, payload] of Object.entries(fixtures)) {
+    const validator = lookupGmcpValidator(packageName);
+    assert.ok(validator, `${packageName} validator`);
+    assert.equal(validator(payload).success, true, `${packageName} live shape`);
+    assert.equal(unmodeledGmcpPackageNames.includes(packageName), false);
+  }
+
+  assert.equal(
+    lookupGmcpValidator("Darkwind.StreetSamurai")({ protocol_version: 2 }).success,
+    false,
+  );
+  assert.equal(
+    lookupGmcpValidator("Darkwind.Visual.Events")({
+      epoch: "visual-1",
+      events: [{ seq: 1, kind: "damage", perspective: "incoming", cue: "impact", intensity: NaN }],
+    }).success,
+    false,
+  );
+});
+
 test("unmodeled packages never overlap modeled validators", async (t) => {
   const { lookupGmcpValidator, modeledGmcpPackageNames, unmodeledGmcpPackageNames } =
     await loadDarkwindModules(t);

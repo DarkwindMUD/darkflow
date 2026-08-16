@@ -2,8 +2,8 @@
 
 ## Status
 
-**COMPLETE** on 2026-08-16 at committed Step 9 revision `dd67231` plus the
-uncommitted Step 10 worktree. Commit is pending user approval.
+**COMPLETE** on 2026-08-16 in commit `5856d44`, based on committed Step 9
+revision `dd67231`.
 
 Implementation and the Step 10-specific non-live gates pass. Development and
 built Chromium/mobile pass 6/6 each; full Node passes 651/651; and the
@@ -91,8 +91,8 @@ administrative command, or shared game-state mutation is claimed.
 
 Legacy `/` and every retained notification, mention, login, sound, automation,
 fishing, style, storage-key, Howler, and audio-asset owner remain intact. Revert
-the eventual Step 10 commit and use legacy `/` if a regression is found.
+commit `5856d44` and use legacy `/` if a regression is found.
 
-Step 12 still owns default-root cutover, hosted/release certification, complete
+Step 13 still owns default-root cutover, hosted/release certification, complete
 Electron certification, and legacy deletion. Step 10 owns only its targeted
 packaged Svelte/local-audio execution proof.

@@ -701,18 +701,40 @@ function renderDashboard(root) {
   root.appendChild(buildAlertRail(state));
 }
 
-export function renderStreetSamuraiDashboard(schema = {}) {
+export function createStreetSamuraiDashboard(schema = {}) {
   const root = node('section', 'ss-dashboard');
   root.setAttribute('data-dw-id', schema.id || 'street-samurai-dashboard-root');
   root.setAttribute('aria-label', 'Street Samurai Cortex dashboard');
   root.__ssDashboardId = 'ss-dashboard-' + (++dashboardSequence);
+  root.__ssDisposed = false;
   root.__ssActiveTab = VALID_TABS.has(schema.active_tab)
     ? schema.active_tab
     : 'implants';
   root.__ssState = normalizeStreetSamuraiState(schema.state);
-  streetSamuraiDashboardView.register(root);
   renderDashboard(root);
   return root;
+}
+
+export function renderStreetSamuraiDashboard(schema = {}) {
+  const root = createStreetSamuraiDashboard(schema);
+  streetSamuraiDashboardView.register(root);
+  return root;
+}
+
+export function updateStreetSamuraiDashboard(root, payload) {
+  if (!root || !root.__ssDashboardId || root.__ssDisposed) {
+    return false;
+  }
+  root.__ssState = normalizeStreetSamuraiState(payload);
+  renderDashboard(root);
+  return true;
+}
+
+export function disposeStreetSamuraiDashboard(root) {
+  if (!root || !root.__ssDashboardId || root.__ssDisposed) return false;
+  streetSamuraiDashboardView.unregister(root);
+  root.__ssDisposed = true;
+  return true;
 }
 
 export const streetSamuraiDashboardView = {
@@ -720,8 +742,15 @@ export const streetSamuraiDashboardView = {
   lastState: null,
 
   register(root) {
+    root.__ssDisposed = false;
     this.roots.add(root);
     this.lastState = root.__ssState;
+  },
+
+  unregister(root) {
+    if (!this.roots.delete(root)) return false;
+    root.__ssDisposed = true;
+    return true;
   },
 
   update(payload) {
@@ -729,12 +758,18 @@ export const streetSamuraiDashboardView = {
     this.lastState = state;
     for (const root of Array.from(this.roots)) {
       if (root.isConnected === false) {
-        this.roots.delete(root);
+        this.unregister(root);
         continue;
       }
       root.__ssState = state;
       renderDashboard(root);
     }
+  },
+
+  reset() {
+    for (const root of this.roots) root.__ssDisposed = true;
+    this.roots.clear();
+    this.lastState = null;
   },
 
   getSnapshot() {

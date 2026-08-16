@@ -76,10 +76,10 @@ there are users in production.
   record currently describes advisory delivery
   (`docs/plans/phase-1/multi-connection-ui-phase-1-step-16-decision.md:42-49`).
 - Mobile, accessibility, theme, and disposal acceptance belongs to every visible
-  port. Shell-level behavior belongs to Steps 2-3; Step 12 verifies the integrated
+  port. Shell-level behavior belongs to Steps 2-3; Step 13 verifies the integrated
   result.
 - Legacy production remains the rollback source until every Phase 2 gate passes.
-  There is no long-lived production feature flag; Step 12 owns cutover.
+  There is no long-lived production feature flag; Step 13 owns cutover.
 
 ## Must-have outcomes
 
@@ -136,8 +136,8 @@ there are users in production.
 - Parallel ports could drift — mitigation: Step 6 proves the shared boundary;
   later ports own disjoint families and return shared changes to the lead.
 - Desktop-first ports could defer mobile/accessibility — mitigation: each visible
-  port carries those acceptance rows; Step 12 only integrates and certifies them.
-- Final cutover could miss a legacy consumer — mitigation: Step 12 requires GMCP
+  port carries those acceptance rows; Step 13 only integrates and certifies them.
+- Final cutover could miss a legacy consumer — mitigation: Step 13 requires GMCP
   and compatibility censuses, one immutable candidate, and rollback evidence.
 
 ## Decision gates
@@ -179,15 +179,16 @@ Phase 1 Step 16 COMPLETE
        -> 5 settings and configuration editors
 
 Steps 4-11 complete
-  -> 12 production cutover, integrated parity, certification, Phase 3 freeze
+  -> 12 legacy look-and-feel parity
+       -> 13 production cutover, integrated parity, certification, Phase 3 freeze
 ```
 
 Steps 3 and 5 may proceed independently after Step 2. Steps 4 and 6 may proceed
 independently after Step 3. Step 7 proceeds after Step 6 so `/phase2/` can log in
 to a MUD before Step 8 exercises authenticated map, world, room-media, and
 playlist behavior. Steps 9-11 may parallelize only after Step 6 passes and their
-detailed plans establish disjoint ownership. Step 12 waits for every preceding
-gate.
+detailed plans establish disjoint ownership. Step 12 waits for Steps 1-11, and
+Step 13 waits for every preceding gate.
 
 ## Individual implementation-planning steps
 
@@ -230,7 +231,7 @@ ownership from legacy toolbar DOM.
 
 **Implementation evidence:** `COMPLETE` locally on 2026-08-12; see the
 [Step 2 implementation plan](multi-connection-ui-phase-2-step-2-implementation-plan.md)
-and its five `P2-2-*` ledger rows. This is not the Step 12 immutable release
+and its five `P2-2-*` ledger rows. This is not the Step 13 immutable release
 candidate or packaged-Electron evidence.
 
 **Later plan resolves:** The smallest public shell/session surface and every
@@ -245,7 +246,7 @@ Detailed implementation plan:
 `ce22a89154cef7d854d3e3fa4afc3a82c5c364a6`; see the four `P2-3-*` rows and their
 [Step 3 replacement evidence](multi-connection-ui-phase-2-step-1-parity-matrix.md).
 The legacy root, `darkwind-panel-state` bytes, and every migrated character
-workspace remain available for rollback. This is not the Step 12 immutable
+workspace remain available for rollback. This is not the Step 13 immutable
 release candidate or packaged-Electron evidence.
 
 **Depends on:** Step 2.
@@ -400,7 +401,7 @@ Completion evidence:
 Chromium/mobile 6/6 each, full development regression 186 passed/6 skipped/0
 failed, source-free packaged Electron trusted unlock plus local audio HTTP 200,
 and authenticated live login-theme and exact channel mention navigation passed.
-All four Step 10 rows are replaced; commit is pending user approval. Nine absent
+All four Step 10 rows are replaced in commit `5856d44`. Nine absent
 retained fishing assets remain an explicitly accepted inherited gap.
 
 **Depends on:** Steps 4 and 6.
@@ -412,14 +413,26 @@ background and cross-session policy out.
 
 **Exit:** Mention/navigation, locked-audio behavior, playback, targeted packaged
 Electron audio execution, mobile controls, GMCP contracts, reconnect, and
-disposal pass. Step 12 retains default-root/release ownership.
+disposal pass. Step 13 retains default-root/release ownership.
 
 **Later plan resolves:** Application-owned browser/engine resources versus
 character/session-owned notification and playback state.
 
 ### Step 11 — Port combat, tutorial, effects, and specialty surfaces
 
-**Depends on:** Step 6.
+Detailed implementation plan:
+[`multi-connection-ui-phase-2-step-11-implementation-plan.md`](multi-connection-ui-phase-2-step-11-implementation-plan.md).
+
+Completion evidence:
+[`multi-connection-ui-phase-2-step-11-completion.md`](multi-connection-ui-phase-2-step-11-completion.md).
+
+**Status:** `COMPLETE` on 2026-08-16 — full Node 681/681, development and built
+Chromium/mobile specialty fixtures 8/8 each, full development regression 202
+passed/6 skipped/0 failed, build/artifact gates, and user-confirmed authenticated
+live Combat, Tutorial, Visual Effects, and Street Samurai checks passed. Commit
+is pending user approval.
+
+**Depends on:** Steps 6 and 7.
 
 **Outcome:** Port combat, tutorial, visual effects, Street Samurai, and their
 textual fallbacks without adding new design or gameplay behavior.
@@ -427,12 +440,19 @@ textual fallbacks without adding new design or gameplay behavior.
 **Exit:** Each owner-ledger group has one Phase 2 port; ordering, reconnect,
 textual fallback, reduced motion, desktop/mobile presentation, and disposal pass.
 
-**Later plan resolves:** Timing/animation/accessibility behavior and independent
-lifecycle slices.
+**Later plan resolves:** Step 12 owns exact legacy workspace geometry, floating
+pane chrome, theming, and presentation consistency; Step 13 owns release cutover.
 
-### Step 12 — Cut over, certify Phase 2, and freeze Phase 3 interfaces
+### Step 12 — Match legacy look and feel
 
-**Depends on:** Every Step 1-11 gate is green. No partial cutover.
+Phase map:
+[`phase-2-step-12-legacy-look-and-feel.md`](phase-2-step-12-legacy-look-and-feel.md).
+
+The phase map requires a detailed implementation plan before Step 12 code work.
+
+### Step 13 — Cut over, certify Phase 2, and freeze Phase 3 interfaces
+
+**Depends on:** Every Step 1-12 gate is green. No partial cutover.
 
 **Outcome:** Make the Svelte/Dockview ports the production one-session frontend;
 run integrated web/Electron/mobile/accessibility parity against one immutable
@@ -458,7 +478,7 @@ owning step.
 
 ## Rollback
 
-Steps 1-11 do not become the production owner. Each detailed plan preserves its
+Steps 1-12 do not become the production owner. Each detailed plan preserves its
 predecessor and names its local rollback; no user-facing long-lived feature flag
 is introduced.
 
@@ -466,7 +486,7 @@ Step 3 retains the legacy layout byte-for-byte and uses a versioned or otherwise
 explicitly reversible new record. No rollback deletes either layout
 automatically.
 
-Step 12 rollback serves the last certified pre-cutover artifact, which continues
+Step 13 rollback serves the last certified pre-cutover artifact, which continues
 to use preserved legacy sources, keys, and adapters. A failed candidate stays
 `OPEN`, returns to its owning step, and reruns affected downstream gates. Phase 4
 alone removes the legacy rollback path.
@@ -492,7 +512,7 @@ Plan self-review: PASS (9/10)
 
 Notes:
 
-- The 12 steps are mid-level planning horizons; implementation files, commands,
+- The 13 steps are mid-level planning horizons; implementation files, commands,
   PR slices, and worker assignments remain deferred to each step's planning
   session.
 - The first real panel port proves the shared boundary; no speculative panel

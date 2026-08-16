@@ -14,6 +14,9 @@
   import ServerWindowHost from "./ServerWindowHost.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
   import SnoopOverlay from "./SnoopOverlay.svelte";
+  import TutorialOverlay from "./TutorialOverlay.svelte";
+  import VisualEffectsLayer from "./VisualEffectsLayer.svelte";
+  import { loadClientSettings } from "./client-settings.ts";
   // @ts-expect-error Legacy UI module has no declaration file.
   import { gameTitle } from "../../public/js/brand.js";
   // @ts-expect-error Legacy UI module has no declaration file.
@@ -48,7 +51,10 @@
   let everConnected = $state(false);
   let now = $state(Date.now());
   let shellRoot = $state<HTMLElement>();
-  let workspaceHost = $state<{ navigateTerminalLine(lineId: number): boolean }>();
+  let workspaceHost = $state<{
+    navigateTerminalLine(lineId: number): boolean;
+    draftTerminalCommand(command: string): boolean;
+  }>();
   let retryButton = $state<HTMLButtonElement>();
   let updateStatus = $state<UpdateStatus | null>(null);
   let clientVersion = $state<string | null>(null);
@@ -57,6 +63,7 @@
   let announcementsOpen = $state(false);
   let announcementsButton = $state<HTMLButtonElement>();
   let interactionSnapshot = $state(untrack(() => session.interactions.getSnapshot()));
+  let visualSnapshot = $state(untrack(() => session.visualEffects.getSnapshot()));
   let themeKey = $state(untrack(() => session.configuration.getSnapshot().themeKey));
   let health = $state<ConnectionHealthSnapshot>(
     untrack(() => session.connectionHealth.getSnapshot()),
@@ -83,6 +90,20 @@
     if (health.transport.recentCommandCount >= 3) return "First";
     return "Concorde";
   });
+  const incomingVisualMotion = $derived(
+    !shell.zorkOnly &&
+      !visualSnapshot.reducedMotion &&
+      visualSnapshot.enabled &&
+      visualSnapshot.preferences.incomingDamage &&
+      visualSnapshot.activeCues.some(({ slot }) => slot === "incoming"),
+  );
+  const outgoingVisualMotion = $derived(
+    !shell.zorkOnly &&
+      !visualSnapshot.reducedMotion &&
+      visualSnapshot.enabled &&
+      visualSnapshot.preferences.outgoingDamage &&
+      visualSnapshot.activeCues.some(({ slot }) => slot === "outgoing"),
+  );
 
   const reconnectVisible = $derived(
     everConnected &&
@@ -111,6 +132,8 @@
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
   $effect(() => session.connectionHealth.subscribe((next) => (health = next)));
   $effect(() => session.interactions.subscribe((next) => (interactionSnapshot = next)));
+  $effect(() => session.visualEffects.subscribe((next) => (visualSnapshot = next)));
+  $effect(() => session.visualEffects.configure(loadClientSettings(localStorage).settings));
 
   $effect(() => {
     const truthy = (value: string | null): boolean =>
@@ -336,6 +359,8 @@
 
 <main
   bind:this={shellRoot}
+  class:dw-visual-impact-shake={incomingVisualMotion}
+  class:dw-visual-attack-lunge={outgoingVisualMotion}
   data-testid="phase2-shell"
   data-session-id={session.sessionId}
   tabindex="-1"
@@ -414,6 +439,7 @@
   <WorkspaceHost
     bind:this={workspaceHost}
     characterProfileId={session.characterProfileId}
+    presentationAllowed={!shell.zorkOnly}
     {session}
   />
 </main>
@@ -440,6 +466,13 @@
 <GiphyOverlay {session} />
 <BroadcastOverlay {session} />
 <LinuxRescueOverlay {session} />
+{#if !shell.zorkOnly}
+  <TutorialOverlay
+    tutorial={session.tutorial}
+    onExampleCommand={(command) => workspaceHost?.draftTerminalCommand(command)}
+  />
+  <VisualEffectsLayer {session} />
+{/if}
 
 {#if rfc2549Enabled}
   <section

@@ -110,7 +110,16 @@
   }
 </script>
 
-<section class="information-panel" data-panel-id={panelId} data-workspace-owned="true">
+<section
+  class="information-panel"
+  data-panel-id={panelId}
+  data-workspace-owned="true"
+  data-tutorial-target={panelId === "inventory"
+    ? "inventory-panel"
+    : panelId === "vitals"
+      ? "vitals-panel"
+      : undefined}
+>
   <div bind:this={body}></div>
 </section>
 

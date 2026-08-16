@@ -31,6 +31,10 @@ import type {
   DarkwindWindowUpdate,
 } from "../gmcp/contracts/darkwind-window.ts";
 import {
+  normalizeDarkwindStreetSamurai,
+  type DarkwindStreetSamurai,
+} from "../gmcp/contracts/street-samurai.ts";
+import {
   validateDarkwindAnnouncementsList,
   validateDarkwindAnnouncementsNew,
   validateDarkwindAnnouncementsState,
@@ -49,6 +53,7 @@ import {
   validateDarkwindSnoopClose,
   validateDarkwindSnoopOpen,
   validateDarkwindSnoopStatus,
+  validateDarkwindStreetSamurai,
   validateDarkwindWindowClose,
   validateDarkwindWindowOpen,
   validateDarkwindWindowUpdate,
@@ -62,6 +67,24 @@ import type { ResourceScope } from "./resource-scope.ts";
 const MAX_SNOOP_ENTRIES = 1000;
 const AUTH_RESPONSE_TIMEOUT_MS = 8000;
 const AUTH_WINDOW_IDS = new Set(["login", "newchar", "charselect"]);
+const STREET_WINDOW_FIELDS = [
+  "type",
+  "title",
+  "closable",
+  "width",
+  "height",
+  "dock",
+  "order",
+  "defaultFloatW",
+  "defaultFloatH",
+  "defaultFloatX",
+  "defaultFloatY",
+  "defaultBelowPanel",
+  "defaultSnapLeft",
+  "defaultSnapTop",
+  "defaultSnapRight",
+  "defaultSnapBottom",
+] as const;
 
 type AuthWatchdogTransport = Pick<
   SessionTransport,
@@ -119,6 +142,37 @@ function hasYoutubeEmbed(node: unknown): boolean {
     candidate.type === "youtube_embed" ||
     (Array.isArray(candidate.children) && candidate.children.some(hasYoutubeEmbed))
   );
+}
+
+function prepareWindowOpen(input: unknown): DarkwindWindowOpen | null {
+  const result = validateDarkwindWindowOpen(input);
+  if (!result.success) return null;
+  const open = result.data;
+  if (open.layout.type !== "street_samurai_dashboard") return structuredClone(open);
+
+  const state = normalizeDarkwindStreetSamurai(open.layout.state);
+  if (!state) return null;
+  const id =
+    typeof open.layout.id === "string" && open.layout.id.length <= 96 ? open.layout.id : undefined;
+  const activeTab =
+    open.layout.active_tab === "overview" ||
+    open.layout.active_tab === "implants" ||
+    open.layout.active_tab === "diagnostics"
+      ? open.layout.active_tab
+      : undefined;
+  const prepared: Record<string, unknown> = {
+    id: open.id,
+    layout: {
+      type: "street_samurai_dashboard",
+      ...(id ? { id } : {}),
+      ...(activeTab ? { active_tab: activeTab } : {}),
+      state,
+    },
+  };
+  for (const field of STREET_WINDOW_FIELDS) {
+    if (open[field] !== undefined) prepared[field] = open[field];
+  }
+  return prepared as DarkwindWindowOpen;
 }
 
 function removeAnnouncement(items: readonly DarkwindAnnouncement[], id: number) {
@@ -187,18 +241,35 @@ export function createSessionInteractions(
     scope.own("listener", () => gmcp.off(packageName, handler));
   };
 
-  listen<DarkwindWindowOpen>("Darkwind.Window.Open", validateDarkwindWindowOpen, (open) => {
+  const applyWindowOpen = (open: DarkwindWindowOpen): void => {
     const sourceId = open.id;
     const id = hasYoutubeEmbed(open.layout)
       ? `${sourceId.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "video"}-video-${Date.now()}-${++videoWindowCounter}`
       : sourceId;
+    const streetSamurai =
+      open.layout.type === "street_samurai_dashboard"
+        ? (open.layout.state as DarkwindStreetSamurai)
+        : null;
     update({
       windows: {
         ...snapshot.windows,
-        [id]: { ...open, id, sourceId, updates: [], revision: 0 },
+        [id]: {
+          ...open,
+          id,
+          sourceId,
+          updates: [],
+          revision: 0,
+          ...(streetSamurai ? { streetSamurai, streetSamuraiRevision: 0 } : {}),
+        },
       },
     });
-  });
+  };
+  const windowOpenHandler = (data: unknown): void => {
+    const open = prepareWindowOpen(data);
+    if (open) applyWindowOpen(open);
+  };
+  gmcp.on("Darkwind.Window.Open", windowOpenHandler);
+  scope.own("listener", () => gmcp.off("Darkwind.Window.Open", windowOpenHandler));
   listen<DarkwindWindowUpdate>(
     "Darkwind.Window.Update",
     validateDarkwindWindowUpdate,
@@ -223,6 +294,24 @@ export function createSessionInteractions(
     delete windows[id];
     update({ windows });
   });
+  listen<DarkwindStreetSamurai>(
+    "Darkwind.StreetSamurai",
+    validateDarkwindStreetSamurai,
+    (streetSamurai) => {
+      const windows = { ...snapshot.windows };
+      let changed = false;
+      for (const [id, window] of Object.entries(windows)) {
+        if (!window.streetSamurai) continue;
+        windows[id] = {
+          ...window,
+          streetSamurai,
+          streetSamuraiRevision: (window.streetSamuraiRevision ?? 0) + 1,
+        };
+        changed = true;
+      }
+      if (changed) update({ windows });
+    },
+  );
 
   listen<DarkwindSnoopOpen>("Darkwind.Snoop.Open", validateDarkwindSnoopOpen, (open) =>
     update({ snoop: { ...open, entries: [] } }),

@@ -27,6 +27,9 @@ import type { SessionWorld } from "./world.ts";
 import type { SessionIde } from "./ide.ts";
 import type { SessionNotifications } from "./notifications.ts";
 import type { SessionAudio } from "./audio.ts";
+import type { SessionCombat } from "./combat.ts";
+import type { SessionTutorial } from "./tutorial.ts";
+import type { SessionVisualEffects } from "./visual-effects.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -65,6 +68,9 @@ export interface Session {
   readonly ide: SessionIde;
   readonly notifications: SessionNotifications;
   readonly audio: SessionAudio;
+  readonly combat: SessionCombat;
+  readonly tutorial: SessionTutorial;
+  readonly visualEffects: SessionVisualEffects;
   readonly configuration: SessionConfiguration;
   connect(): void;
   disconnect(): void;
@@ -106,6 +112,9 @@ export interface SessionParts {
   ide: SessionIde;
   notifications: SessionNotifications;
   audio: SessionAudio;
+  combat: SessionCombat;
+  tutorial: SessionTutorial;
+  visualEffects: SessionVisualEffects;
 }
 
 /** Wires transport and GMCP event subscriptions into one session lifecycle. */
@@ -133,6 +142,9 @@ export function createSession(parts: SessionParts): Session {
     ide,
     notifications,
     audio,
+    combat,
+    tutorial,
+    visualEffects,
   } = parts;
 
   let disposed = false;
@@ -297,6 +309,12 @@ export function createSession(parts: SessionParts): Session {
     notifications,
 
     audio,
+
+    combat,
+
+    tutorial,
+
+    visualEffects,
 
     configuration,
 

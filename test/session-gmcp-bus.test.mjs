@@ -479,6 +479,59 @@ test("IDE send helpers validate and emit exact package directions", async (t) =>
   assert.equal(spy.calls.length, 6);
 });
 
+test("Step 11 send helpers emit only exact Combat and Tutorial directions", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const spy = createSendSpy();
+  const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
+
+  assert.equal(bus.sendCombatResync(), true);
+  assert.equal(
+    bus.sendTutorialAction({
+      action: "continue",
+      epoch: "tutorial-1",
+      seq: 8,
+      step_id: "look",
+      ignored: "not-on-wire",
+    }),
+    true,
+  );
+  assert.equal(
+    bus.sendTutorialResync({
+      epoch: "tutorial-1",
+      seq: 8,
+      reason: "tutorial-render-recovered",
+      ignored: "not-on-wire",
+    }),
+    true,
+  );
+
+  assert.deepEqual(spy.calls, [
+    "Darkwind.Combat.Resync",
+    'Darkwind.Tutorial.Action {"action":"continue","epoch":"tutorial-1","seq":8,"step_id":"look"}',
+    'Darkwind.Tutorial.Resync {"epoch":"tutorial-1","seq":8,"reason":"tutorial-render-recovered"}',
+  ]);
+
+  assert.equal(
+    bus.sendTutorialAction({ action: "advance", epoch: "tutorial-1", seq: 8, step_id: "look" }),
+    false,
+  );
+  assert.equal(
+    bus.sendTutorialAction({
+      action: "continue",
+      epoch: "tutorial-1",
+      seq: "8",
+      step_id: "look",
+    }),
+    false,
+  );
+  assert.equal(
+    bus.sendTutorialResync({ epoch: "tutorial-1", seq: 8, reason: "" }),
+    false,
+  );
+  assert.equal(spy.calls.length, 3);
+});
+
 test("throwing handlers do not starve remaining handlers on the same frame", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
   const diagnostics = new SessionDiagnostics(sessionId);

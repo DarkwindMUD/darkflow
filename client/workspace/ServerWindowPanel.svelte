@@ -9,6 +9,8 @@
   import type { PanelState } from "./workspace.ts";
   // @ts-expect-error The shared server-window DOM renderer is legacy JavaScript.
   import * as windowRenderer from "../../public/js/window-renderer.js";
+  // @ts-expect-error The retained dashboard renderer is legacy JavaScript.
+  import * as streetSamuraiRenderer from "../../public/js/street-samurai-dashboard.js";
 
   const { collectFormData, renderLayout, updateElements } = windowRenderer;
 
@@ -82,6 +84,7 @@
   function renderServerWindow(host: HTMLElement, initial: InteractionWindow) {
     let current = initial;
     let appliedUpdates = 0;
+    let streetRoot: HTMLElement | null = null;
 
     const handleButton = (buttonId: string | undefined, action: string): void => {
       if (!buttonId) return;
@@ -94,7 +97,17 @@
     const render = (next: InteractionWindow, preserveForm: boolean): void => {
       const saved = preserveForm && isAuthWindow(current) ? collectFormData(host) : null;
       current = next;
-      host.replaceChildren(renderLayout(next.layout, handleButton, { windowId: next.id }));
+      if (streetRoot) streetSamuraiRenderer.disposeStreetSamuraiDashboard(streetRoot);
+      host.replaceChildren(
+        renderLayout(next.layout, handleButton, {
+          windowId: next.id,
+          instanceOwnedStreetSamurai: true,
+        }),
+      );
+      streetRoot = host.querySelector<HTMLElement>(".ss-dashboard");
+      if (streetRoot && next.streetSamurai && next.streetSamuraiRevision) {
+        streetSamuraiRenderer.updateStreetSamuraiDashboard(streetRoot, next.streetSamurai);
+      }
       updateElements(host, next.updates);
       appliedUpdates = next.updates.length;
       if (saved) restoreFormValues(host, saved);
@@ -113,6 +126,13 @@
         }
         updateElements(host, next.updates.slice(appliedUpdates));
         appliedUpdates = next.updates.length;
+        if (
+          streetRoot &&
+          next.streetSamurai &&
+          next.streetSamuraiRevision !== current.streetSamuraiRevision
+        ) {
+          streetSamuraiRenderer.updateStreetSamuraiDashboard(streetRoot, next.streetSamurai);
+        }
         current = next;
       },
       destroy() {
@@ -138,6 +158,8 @@
             // Video windows still close when storage is unavailable.
           }
         }
+        if (streetRoot) streetSamuraiRenderer.disposeStreetSamuraiDashboard(streetRoot);
+        streetRoot = null;
         host.replaceChildren();
       },
     };

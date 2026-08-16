@@ -8,6 +8,7 @@
   import { createWorkspace } from "./dockview-workspace";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
+  import CombatPanel from "./CombatPanel.svelte";
   import FishingPanel from "./FishingPanel.svelte";
   import IdePanel from "./IdePanel.svelte";
   import MapPanel from "./MapPanel.svelte";
@@ -29,8 +30,13 @@
 
   let {
     characterProfileId,
+    presentationAllowed,
     session,
-  }: { characterProfileId: CharacterProfileId; session: Session } = $props();
+  }: {
+    characterProfileId: CharacterProfileId;
+    presentationAllowed: boolean;
+    session: Session;
+  } = $props();
 
   const terminal: WorkspacePanelSpec = {
     id: "terminal",
@@ -101,6 +107,13 @@
     state: { mapZoom: 1 },
     placement: { kind: "floating", bounds: { left: 40, top: 40, width: 520, height: 420 } },
   };
+  const combatPanel: WorkspacePanelSpec = {
+    id: "enemy",
+    kind: "enemy",
+    title: "Enemy",
+    state: {},
+    placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
+  };
 
   let host: HTMLElement;
   let workspace: Workspace | undefined;
@@ -112,6 +125,7 @@
   let sheetOpen = $state(false);
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
+  let combatPanelOpen = $state(false);
 
   function openPlaceholder(): void {
     workspace?.addOrUpdatePanel(placeholder);
@@ -177,6 +191,15 @@
     workspace.activatePanel(terminal.id);
     if (!terminalLineNavigator(lineId)) return false;
     focusTerminalIsland(terminal.id);
+    return true;
+  }
+
+  export function draftTerminalCommand(command: string): boolean {
+    const input = host.querySelector<HTMLInputElement>('[data-tutorial-target="command-input"]');
+    if (!input) return false;
+    input.value = command;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.focus();
     return true;
   }
 
@@ -258,12 +281,20 @@
   }
 
   onMount(() => {
+    // Lifecycle-only correlation; never rendered directly.
+    // eslint-disable-next-line svelte/prefer-svelte-reactivity
+    const serverPanelIds = new Map<string, string>();
     let ideCloseGuard = (): boolean => true;
     const registerIdeCloseGuard = (guard: () => boolean): (() => void) => {
       ideCloseGuard = guard;
       return () => {
         if (ideCloseGuard === guard) ideCloseGuard = () => true;
       };
+    };
+    const canCloseServerPanel = (panelId: string): boolean => {
+      const entry = [...serverPanelIds].find(([, currentPanelId]) => currentPanelId === panelId);
+      const window = entry ? session.interactions.getSnapshot().windows[entry[0]] : undefined;
+      return !!window && window.closable !== false && window.closable !== 0;
     };
     const rendererRegistry: WorkspaceRendererRegistry = {
       placeholder: { component: PlaceholderPanel },
@@ -273,7 +304,21 @@
         preserveDomWhenHidden: true,
         session,
       },
-      "server-window": { component: ServerWindowPanel, session },
+      "server-window": {
+        canClose: canCloseServerPanel,
+        component: ServerWindowPanel,
+        session,
+        showCloseButton: canCloseServerPanel,
+      },
+      enemy: {
+        canClose: () => {
+          combatPanelOpen = false;
+          session.combat.dismissEncounter();
+          return true;
+        },
+        component: CombatPanel,
+        session,
+      },
       fishing: { component: FishingPanel, session },
       ide: {
         canClose: () => ideCloseGuard(),
@@ -341,21 +386,24 @@
 
     let pending: WorkspaceSnapshot | undefined;
     let timer: number | undefined;
-    // This lifecycle-only lookup is never rendered, so it needs no reactive wrapper.
-    // eslint-disable-next-line svelte/prefer-svelte-reactivity
-    const serverPanelIds = new Map<string, string>();
     let fishingPanelOpen = false;
     let areaMapPanelOpen = false;
     let interactionSnapshot = session.interactions.getSnapshot();
     let ideSnapshot = session.ide.getSnapshot();
     let worldSnapshot = session.world.getSnapshot();
+    let combatSnapshot = session.combat.getSnapshot();
+    let seenCombatEncounter = "";
     let seenBrowseOpenVersion = 0;
     let seenPlaylistOpenVersion = 0;
     let dismissedFishingEnd: typeof interactionSnapshot.fishing.end = null;
     let idePanelOpen = false;
     let seenIdeOpenVersion = 0;
     const hasTransientPanels = () =>
-      serverPanelIds.size > 0 || fishingPanelOpen || areaMapPanelOpen || idePanelOpen;
+      serverPanelIds.size > 0 ||
+      fishingPanelOpen ||
+      areaMapPanelOpen ||
+      idePanelOpen ||
+      combatPanelOpen;
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -384,6 +432,11 @@
       const transientPanelIds = [...serverPanelIds.values()];
       const hadFishingPanel = fishingPanelOpen;
       const hadAreaMapPanel = areaMapPanelOpen;
+      const hadCombatPanel = combatPanelOpen;
+      if (hadCombatPanel) {
+        combatPanelOpen = false;
+        session.combat.dismissEncounter();
+      }
       for (const windowId of serverPanelIds.keys()) session.interactions.closeWindow(windowId);
       if (interactionSnapshot.fishing.open) {
         session.interactions.cancelFishing(interactionSnapshot.fishing.open.session);
@@ -392,6 +445,7 @@
         ...transientPanelIds.map((panelId) => currentWorkspace.removePanel(panelId)),
         ...(hadFishingPanel ? [currentWorkspace.removePanel("fishing")] : []),
         ...(hadAreaMapPanel ? [currentWorkspace.removePanel(areaMap.id)] : []),
+        ...(hadCombatPanel ? [currentWorkspace.removePanel(combatPanel.id)] : []),
       ]);
       serverPanelIds.clear();
       fishingPanelOpen = false;
@@ -527,7 +581,36 @@
       }
       if (hasTransientPanels()) cancelPendingSave();
     };
+    const syncCombatPanel = (next: typeof combatSnapshot) => {
+      combatSnapshot = next;
+      if (presentationAllowed && next.shouldPresent) {
+        const exists = currentWorkspace.hasPanel(combatPanel.id);
+        const encounter = `${next.model.epoch}\u0000${next.model.encounterId}`;
+        const reveal = encounter !== seenCombatEncounter;
+        seenCombatEncounter = encounter;
+        if (reveal) {
+          const focused = document.activeElement;
+          if (exists) currentWorkspace.activatePanel(combatPanel.id);
+          else currentWorkspace.addOrUpdatePanel(combatPanel);
+          const restoreFocus = () => {
+            if (focused instanceof HTMLElement && focused.isConnected) {
+              focused.focus({ preventScroll: true });
+            }
+          };
+          restoreFocus();
+          queueMicrotask(restoreFocus);
+          requestAnimationFrame(restoreFocus);
+        }
+        combatPanelOpen = true;
+      } else if (combatPanelOpen) {
+        combatPanelOpen = false;
+        void currentWorkspace.removePanel(combatPanel.id);
+      }
+      if (!next.model.active || !next.model.visualEnabled) seenCombatEncounter = "";
+      if (hasTransientPanels()) cancelPendingSave();
+    };
     const unsubscribe = currentWorkspace.subscribeLayout((next) => {
+      window.dispatchEvent(new Event("darkflow:workspace-layout-changed"));
       for (const [windowId, panelId] of serverPanelIds) {
         if (!currentWorkspace.hasPanel(panelId) && interactionSnapshot.windows[windowId]) {
           session.interactions.closeWindow(windowId);
@@ -553,6 +636,7 @@
     const unsubscribeInteractions = session.interactions.subscribe(syncInteractionPanels);
     const unsubscribeIde = session.ide.subscribe(syncIdePanel);
     const unsubscribeWorld = session.world.subscribe(syncWorldPanels);
+    const unsubscribeCombat = session.combat.subscribe(syncCombatPanel);
     const saveMapPanelState = (event: Event) => {
       const detail = (event as CustomEvent<{ mapZoom?: unknown; panelId?: unknown }>).detail;
       const panel = [...worldPanels, areaMap].find(({ id }) => id === detail?.panelId);
@@ -577,6 +661,7 @@
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       host.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
+      unsubscribeCombat();
       unsubscribeIde();
       unsubscribeInteractions();
       unsubscribe();
@@ -596,7 +681,7 @@
 />
 
 <section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
-  <div class="workspace-controls" aria-label="Panels">
+  <div class="workspace-controls" aria-label="Panels" data-tutorial-target="panels-menu">
     <strong>Panels</strong>
     <button type="button" onclick={focusTerminal}>Focus terminal</button>
     {#if placeholderOpen}
@@ -622,10 +707,14 @@
         {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
       </button>
     {/each}
+    {#if combatPanelOpen}
+      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
+    {/if}
   </div>
   <button
     bind:this={sheetTrigger}
     class="mobile-panels-trigger"
+    data-tutorial-target="panels-menu"
     type="button"
     aria-controls="phase2-workspace-host"
     aria-expanded={sheetOpen}
@@ -676,6 +765,17 @@
           {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
         </button>
       {/each}
+      {#if combatPanelOpen}
+        <button
+          type="button"
+          onclick={() => selectPanel(() => workspace?.activatePanel(combatPanel.id))}>Enemy</button
+        >
+        <button
+          type="button"
+          onclick={() => selectPanel(() => void workspace?.requestClosePanel(combatPanel.id))}
+          >Close Enemy</button
+        >
+      {/if}
     </div>
     <div class="mobile-sheet-controls">
       <button type="button" onclick={focusTerminal}>Focus terminal</button>

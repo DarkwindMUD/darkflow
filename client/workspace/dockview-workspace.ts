@@ -63,11 +63,13 @@ export interface WorkspaceInspector {
 class WorkspaceTabRenderer implements ITabRenderer {
   readonly element = document.createElement("div");
   readonly #label = document.createElement("span");
+  readonly #closeButton: HTMLButtonElement | undefined = undefined;
   #titleSubscription: { dispose(): void } | undefined;
 
   constructor(
     private readonly panelId: string,
     private readonly closePanel?: () => void,
+    private readonly onDispose?: () => void,
   ) {
     this.element.className = "dv-default-tab";
     this.element.dataset.panelDragHandle = "true";
@@ -77,6 +79,7 @@ class WorkspaceTabRenderer implements ITabRenderer {
 
     if (closePanel) {
       const closeButton = document.createElement("button");
+      this.#closeButton = closeButton;
       closeButton.type = "button";
       closeButton.className = "dv-default-tab-action";
       closeButton.textContent = "×";
@@ -114,7 +117,15 @@ class WorkspaceTabRenderer implements ITabRenderer {
   dispose(): void {
     this.#titleSubscription?.dispose();
     this.#titleSubscription = undefined;
+    this.onDispose?.();
     this.element.remove();
+  }
+
+  setCloseButtonVisible(visible: boolean): void {
+    if (!this.#closeButton) return;
+    this.#closeButton.hidden = !visible;
+    this.#closeButton.disabled = !visible;
+    this.#closeButton.style.display = visible ? "" : "none";
   }
 
   #setTitle(title: string | undefined): void {
@@ -213,6 +224,7 @@ export function createWorkspace(
 ): Workspace & WorkspaceInspector {
   const records = new Map<string, PanelRecord>();
   const renderers = new Map<string, SvelteDockviewRenderer>();
+  const tabRenderers = new Map<string, WorkspaceTabRenderer>();
   const pendingUnmounts = new Set<Promise<void>>();
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
   let disposed = false;
@@ -224,10 +236,16 @@ export function createWorkspace(
     createTabComponent: ({ id }) => {
       const record = records.get(id);
       const definition = record ? registry[record.kind] : undefined;
-      return new WorkspaceTabRenderer(
+      const tab = new WorkspaceTabRenderer(
         id,
         definition?.canClose ? () => void requestClosePanel(id) : undefined,
+        () => tabRenderers.delete(id),
       );
+      tab.setCloseButtonVisible(
+        definition?.showCloseButton?.(id) ?? definition?.canClose !== undefined,
+      );
+      tabRenderers.set(id, tab);
+      return tab;
     },
     createComponent: ({ id, name }) => {
       const record = records.get(id);
@@ -526,7 +544,7 @@ export function createWorkspace(
   requestClosePanel = async (id: string): Promise<boolean> => {
     const record = records.get(id);
     const definition = record ? registry[record.kind] : undefined;
-    if (definition?.canClose && !definition.canClose()) return false;
+    if (definition?.canClose && !definition.canClose(id)) return false;
     await removePanel(id);
     return true;
   };
@@ -537,6 +555,12 @@ export function createWorkspace(
       const existingRecord = records.get(spec.id);
       if (existingRecord) {
         updateRecord(existingRecord, spec);
+        const definition = registry[spec.kind];
+        tabRenderers
+          .get(spec.id)
+          ?.setCloseButtonVisible(
+            definition?.showCloseButton?.(spec.id) ?? definition?.canClose !== undefined,
+          );
         const panel = api.getPanel(spec.id);
         if (!panel) {
           addPanel(spec);

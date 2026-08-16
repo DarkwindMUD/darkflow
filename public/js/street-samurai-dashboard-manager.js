@@ -14,7 +14,10 @@ export const streetSamuraiDashboardManager = {
       scopedGmcp.on(STREET_SAMURAI_PACKAGE, (payload) => {
         streetSamuraiDashboardView.update(payload);
       });
-    }, () => { this.initialized = false; });
+    }, () => {
+      this.initialized = false;
+      streetSamuraiDashboardView.reset();
+    });
   },
 
   dispose() {

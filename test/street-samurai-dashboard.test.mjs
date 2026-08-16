@@ -7,6 +7,69 @@ globalThis.localStorage = {
   removeItem() {},
 };
 
+class FakeElement {
+  constructor(tagName) {
+    this.tagName = tagName.toUpperCase();
+    this.children = [];
+    this.attributes = new Map();
+    this.dataset = {};
+    this.listeners = new Map();
+    this.style = { setProperty() {} };
+    this.classList = { add: (...names) => {
+      this.className = [this.className, ...names].filter(Boolean).join(' ');
+    } };
+    this.isConnected = true;
+    this._textContent = '';
+  }
+
+  set textContent(value) {
+    this._textContent = String(value);
+    this.children = [];
+  }
+
+  get textContent() {
+    return this._textContent + this.children.map((child) => child.textContent).join('');
+  }
+
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+
+  replaceChildren(...children) {
+    this._textContent = '';
+    this.children = children;
+  }
+
+  setAttribute(name, value) {
+    this.attributes.set(name, String(value));
+  }
+
+  getAttribute(name) {
+    return this.attributes.get(name) ?? null;
+  }
+
+  addEventListener(name, listener) {
+    this.listeners.set(name, listener);
+  }
+
+  click() {
+    this.listeners.get('click')?.({});
+  }
+
+  focus() {}
+
+  querySelector(selector) {
+    const tab = selector.match(/^\[data-tab="([^"]+)"\]$/)?.[1];
+    if (tab && this.dataset.tab === tab) return this;
+    for (const child of this.children) {
+      const match = child.querySelector(selector);
+      if (match) return match;
+    }
+    return null;
+  }
+}
+
 globalThis.document = {
   hidden: false,
   visibilityState: 'visible',
@@ -14,6 +77,7 @@ globalThis.document = {
   removeEventListener() {},
   getElementById() { return null; },
   querySelector() { return null; },
+  createElement(tagName) { return new FakeElement(tagName); },
   body: {
     classList: { add() {}, remove() {}, toggle() {} },
     appendChild() {},
@@ -28,9 +92,14 @@ globalThis.window = {
 
 const {
   clampPercent,
+  createStreetSamuraiDashboard,
   dashboardSeverity,
   normalizeStreetSamuraiState,
+  disposeStreetSamuraiDashboard,
+  renderStreetSamuraiDashboard,
   STREET_SAMURAI_PACKAGE,
+  streetSamuraiDashboardView,
+  updateStreetSamuraiDashboard,
   worstAlertSeverity,
 } = await import('../public/js/street-samurai-dashboard.js');
 const { DISPLAY_TYPES } = await import('../public/js/window-types.js');
@@ -155,4 +224,72 @@ test('alert rail uses the highest active severity', () => {
     { severity: 'warning' },
     { severity: 'danger' },
   ]), 'danger');
+});
+
+test('instance updates stay root-local, preserve the active tab, and render literal text', () => {
+  streetSamuraiDashboardView.reset();
+  const first = createStreetSamuraiDashboard({
+    active_tab: 'overview',
+    state: { firmware_version: 'First firmware' },
+  });
+  const second = createStreetSamuraiDashboard({
+    active_tab: 'implants',
+    state: { firmware_version: 'Second firmware' },
+  });
+  assert.equal(streetSamuraiDashboardView.roots.size, 0);
+
+  first.querySelector('[data-tab="diagnostics"]').click();
+  const literal = '<img src=x onerror=alert(1)>';
+  assert.equal(updateStreetSamuraiDashboard(first, {
+    alerts: [{ message: literal }],
+  }), true);
+
+  assert.equal(first.__ssActiveTab, 'diagnostics');
+  assert.equal(first.querySelector('[data-tab="diagnostics"]').getAttribute('aria-selected'), 'true');
+  assert.match(first.textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(second.textContent, /<img src=x onerror=alert\(1\)>/);
+  assert.match(second.textContent, /SECOND FIRMWARE/);
+  assert.equal(streetSamuraiDashboardView.getSnapshot(), null);
+
+  const firstSnapshot = first.textContent;
+  const secondSnapshot = second.textContent;
+  streetSamuraiDashboardView.update({ firmware_version: 'Legacy broadcast' });
+  assert.equal(first.textContent, firstSnapshot);
+  assert.equal(second.textContent, secondSnapshot);
+
+  streetSamuraiDashboardView.reset();
+  assert.equal(updateStreetSamuraiDashboard(second, {
+    firmware_version: 'Still instance owned',
+  }), true);
+  assert.match(second.textContent, /STILL INSTANCE OWNED/);
+});
+
+test('explicit unregister and reset prevent retained global updates', () => {
+  streetSamuraiDashboardView.reset();
+  const disposed = createStreetSamuraiDashboard({
+    state: { firmware_version: 'Disposed firmware' },
+  });
+  const retained = renderStreetSamuraiDashboard({
+    state: { firmware_version: 'Retained firmware' },
+  });
+
+  assert.equal(disposeStreetSamuraiDashboard(disposed), true);
+  assert.equal(disposeStreetSamuraiDashboard(disposed), false);
+  assert.equal(streetSamuraiDashboardView.roots.size, 1);
+  assert.equal(updateStreetSamuraiDashboard(disposed, {
+    firmware_version: 'Should not render',
+  }), false);
+
+  streetSamuraiDashboardView.update({
+    firmware_version: 'Legacy broadcast',
+  });
+  assert.match(disposed.textContent, /DISPOSED FIRMWARE/);
+  assert.doesNotMatch(disposed.textContent, /LEGACY BROADCAST/);
+  assert.match(retained.textContent, /LEGACY BROADCAST/);
+  assert.equal(streetSamuraiDashboardView.getSnapshot().firmwareVersion, 'Legacy broadcast');
+
+  streetSamuraiDashboardView.reset();
+  assert.equal(streetSamuraiDashboardView.roots.size, 0);
+  assert.equal(streetSamuraiDashboardView.getSnapshot(), null);
+  assert.equal(updateStreetSamuraiDashboard(retained, {}), false);
 });

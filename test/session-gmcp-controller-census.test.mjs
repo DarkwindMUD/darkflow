@@ -37,6 +37,32 @@ const STEP_6_OWNERS = Object.freeze({
     "Darkwind.Cyberware.Image",
   ],
 });
+const STEP_11_OWNERS = Object.freeze({
+  "client/runtime/combat.ts": {
+    legacy: ["combat-visual-manager.js"],
+    packages: ["Darkwind.Combat.State", "Darkwind.Combat.Events", "Darkwind.Combat.Event"],
+  },
+  "client/runtime/tutorial.ts": {
+    legacy: ["tutorial-manager.js"],
+    packages: ["Darkwind.Tutorial.State", "Darkwind.Tutorial.Control", "Darkwind.Session.Recovered"],
+  },
+  "client/runtime/visual-effects.ts": {
+    legacy: ["visual-effects-manager.js"],
+    packages: [
+      "Darkwind.Visual.State",
+      "Darkwind.Visual.Events",
+      "Darkwind.Visual.Event",
+      "Darkwind.Visual.Preview",
+      "Room.Info",
+      "Char.Vitals",
+      "Darkwind.Session.Recovered",
+    ],
+  },
+  "client/runtime/interactions.ts": {
+    legacy: ["street-samurai-dashboard-manager.js", "street-samurai-dashboard.js"],
+    packages: ["Darkwind.StreetSamurai"],
+  },
+});
 const EXPECTED_REGISTRATIONS = Object.freeze({
   "announcements-manager.js": 4,
   "app.js": 2,
@@ -100,4 +126,22 @@ test("Step 6 families have Phase 2 owners while legacy rollback stays registered
       assert.match(legacy, new RegExp(`\\.on\\(["']${packageName.replaceAll(".", "\\.")}["']`));
     }
   }
+});
+
+test("Step 11 families have Phase 2 owners while all 14 legacy registrations remain", async () => {
+  let legacyRegistrationCount = 0;
+  for (const [owner, definition] of Object.entries(STEP_11_OWNERS)) {
+    const ownerSource = await readFile(path.resolve(owner), "utf8");
+    const legacySources = await Promise.all(
+      definition.legacy.map((file) => readFile(path.join(PUBLIC_JS, file), "utf8")),
+    );
+    const legacySource = legacySources.join("\n");
+    for (const packageName of definition.packages) {
+      const pattern = new RegExp(`["']${packageName.replaceAll(".", "\\.")}["']`);
+      assert.match(ownerSource, pattern, `${packageName} Phase 2 owner`);
+      assert.match(legacySource, pattern, `${packageName} legacy rollback owner`);
+      legacyRegistrationCount += 1;
+    }
+  }
+  assert.equal(legacyRegistrationCount, 14);
 });

@@ -98,6 +98,35 @@ import type {
   DarkwindRoomPlaylistState,
 } from "./world.ts";
 import { normalizeDarkwindSound, type DarkwindSound } from "./sound";
+import {
+  normalizeDarkwindCombatEvent,
+  normalizeDarkwindCombatEvents,
+  normalizeDarkwindCombatState,
+  type DarkwindCombatEventMessage,
+  type DarkwindCombatEvents,
+  type DarkwindCombatState,
+} from "./combat.ts";
+import {
+  normalizeDarkwindTutorialAction,
+  normalizeDarkwindTutorialControl,
+  normalizeDarkwindTutorialResync,
+  normalizeDarkwindTutorialState,
+  type DarkwindTutorialAction,
+  type DarkwindTutorialControl,
+  type DarkwindTutorialResync,
+  type DarkwindTutorialState,
+} from "./tutorial.ts";
+import {
+  normalizeDarkwindVisualEvent,
+  normalizeDarkwindVisualEvents,
+  normalizeDarkwindVisualPreview,
+  normalizeDarkwindVisualState,
+  type DarkwindVisualEvent,
+  type DarkwindVisualEvents,
+  type DarkwindVisualPreview,
+  type DarkwindVisualState,
+} from "./visual-effects.ts";
+import { normalizeDarkwindStreetSamurai, type DarkwindStreetSamurai } from "./street-samurai.ts";
 
 export const validateCoreSupports = typia.createValidate<CoreSupportsPayload>();
 export const validateCharVitals = typia.createValidate<CharVitals>();
@@ -191,15 +220,107 @@ export const validateDarkwindFishingCaught = typia.createValidate<DarkwindFishin
 export const validateDarkwindFishingEscaped = typia.createValidate<DarkwindFishingEscaped>();
 export const validateDarkwindFishingArt = typia.createValidate<DarkwindFishingArt>();
 export const validateDarkwindFishingEnd = typia.createValidate<DarkwindFishingEnd>();
-export function validateDarkwindSound(input: unknown): typia.IValidation<DarkwindSound> {
-  const data = normalizeDarkwindSound(input);
+function validateNormalized<T>(
+  input: unknown,
+  expected: string,
+  normalize: (value: unknown) => T | null,
+): typia.IValidation<T> {
+  const data = normalize(input);
   return data
     ? { success: true, data }
     : {
         success: false,
         data: input,
-        errors: [{ path: "$input", expected: "Darkwind.Sound payload", value: input }],
+        errors: [{ path: "$input", expected, value: input }],
       };
+}
+
+export function validateDarkwindSound(input: unknown): typia.IValidation<DarkwindSound> {
+  return validateNormalized(input, "Darkwind.Sound payload", normalizeDarkwindSound);
+}
+export function validateDarkwindCombatState(
+  input: unknown,
+): typia.IValidation<DarkwindCombatState> {
+  return validateNormalized(input, "Darkwind.Combat.State payload", normalizeDarkwindCombatState);
+}
+export function validateDarkwindCombatEvents(
+  input: unknown,
+): typia.IValidation<DarkwindCombatEvents> {
+  return validateNormalized(input, "Darkwind.Combat.Events payload", normalizeDarkwindCombatEvents);
+}
+export function validateDarkwindCombatEvent(
+  input: unknown,
+): typia.IValidation<DarkwindCombatEventMessage> {
+  return validateNormalized(input, "Darkwind.Combat.Event payload", normalizeDarkwindCombatEvent);
+}
+export function validateDarkwindTutorialState(
+  input: unknown,
+): typia.IValidation<DarkwindTutorialState> {
+  return validateNormalized(
+    input,
+    "Darkwind.Tutorial.State payload",
+    normalizeDarkwindTutorialState,
+  );
+}
+export function validateDarkwindTutorialControl(
+  input: unknown,
+): typia.IValidation<DarkwindTutorialControl> {
+  return validateNormalized(
+    input,
+    "Darkwind.Tutorial.Control payload",
+    normalizeDarkwindTutorialControl,
+  );
+}
+export function validateDarkwindTutorialAction(
+  input: unknown,
+): typia.IValidation<DarkwindTutorialAction> {
+  return validateNormalized(
+    input,
+    "Darkwind.Tutorial.Action payload",
+    normalizeDarkwindTutorialAction,
+  );
+}
+export function validateDarkwindTutorialResync(
+  input: unknown,
+): typia.IValidation<DarkwindTutorialResync> {
+  return validateNormalized(
+    input,
+    "Darkwind.Tutorial.Resync payload",
+    normalizeDarkwindTutorialResync,
+  );
+}
+export function validateDarkwindVisualState(
+  input: unknown,
+): typia.IValidation<DarkwindVisualState> {
+  return validateNormalized(input, "Darkwind.Visual.State payload", normalizeDarkwindVisualState);
+}
+export function validateDarkwindVisualEvents(
+  input: unknown,
+): typia.IValidation<DarkwindVisualEvents> {
+  return validateNormalized(input, "Darkwind.Visual.Events payload", normalizeDarkwindVisualEvents);
+}
+export function validateDarkwindVisualEvent(
+  input: unknown,
+): typia.IValidation<DarkwindVisualEvent> {
+  return validateNormalized(input, "Darkwind.Visual.Event payload", normalizeDarkwindVisualEvent);
+}
+export function validateDarkwindVisualPreview(
+  input: unknown,
+): typia.IValidation<DarkwindVisualPreview> {
+  return validateNormalized(
+    input,
+    "Darkwind.Visual.Preview payload",
+    normalizeDarkwindVisualPreview,
+  );
+}
+export function validateDarkwindStreetSamurai(
+  input: unknown,
+): typia.IValidation<DarkwindStreetSamurai> {
+  return validateNormalized(
+    input,
+    "Darkwind.StreetSamurai payload",
+    normalizeDarkwindStreetSamurai,
+  );
 }
 
 /** Typia validator invoked by canonical inbound package name. */
@@ -286,6 +407,16 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Fishing.Art")]: validateDarkwindFishingArt,
   [canonicalPackageName("Darkwind.Fishing.End")]: validateDarkwindFishingEnd,
   [canonicalPackageName("Darkwind.Sound")]: validateDarkwindSound,
+  [canonicalPackageName("Darkwind.Combat.State")]: validateDarkwindCombatState,
+  [canonicalPackageName("Darkwind.Combat.Events")]: validateDarkwindCombatEvents,
+  [canonicalPackageName("Darkwind.Combat.Event")]: validateDarkwindCombatEvent,
+  [canonicalPackageName("Darkwind.Tutorial.State")]: validateDarkwindTutorialState,
+  [canonicalPackageName("Darkwind.Tutorial.Control")]: validateDarkwindTutorialControl,
+  [canonicalPackageName("Darkwind.Visual.State")]: validateDarkwindVisualState,
+  [canonicalPackageName("Darkwind.Visual.Events")]: validateDarkwindVisualEvents,
+  [canonicalPackageName("Darkwind.Visual.Event")]: validateDarkwindVisualEvent,
+  [canonicalPackageName("Darkwind.Visual.Preview")]: validateDarkwindVisualPreview,
+  [canonicalPackageName("Darkwind.StreetSamurai")]: validateDarkwindStreetSamurai,
   [canonicalPackageName("Core.Ping")]: validateCorePing,
   [canonicalPackageName("Darkwind.Lag.Status")]: validateDarkwindLagStatus,
 };
@@ -302,17 +433,5 @@ export const modeledGmcpPackageNames = Object.keys(PACKAGE_VALIDATORS);
 export const unmodeledGmcpPackageNames: readonly string[] = [
   "Core.Hello",
   "Game",
-  "Darkwind.Combat.State",
-  "Darkwind.Combat.Events",
-  "Darkwind.Combat.Event",
-  "Darkwind.Tutorial.State",
-  "Darkwind.Tutorial.Control",
-  "Darkwind.Tutorial.Action",
-  "Darkwind.Tutorial.Resync",
-  "Darkwind.Visual.State",
-  "Darkwind.Visual.Events",
-  "Darkwind.Visual.Event",
-  "Darkwind.Visual.Preview",
   "Darkwind.Lag.Get",
-  "Darkwind.StreetSamurai",
 ];

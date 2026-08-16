@@ -288,6 +288,86 @@ test("malformed frames remain advisory but cannot mutate interaction state", asy
   });
 });
 
+test("Street Samurai replacements stay correlated to an open session window", async (t) => {
+  const modules = await loadModules(t);
+  const first = createInteractions(modules, t);
+  const second = createInteractions(modules, t);
+
+  first.bus.dispatch("Darkwind.Window.Open", {
+    id: "street-dashboard",
+    type: "panel",
+    layout: {
+      type: "street_samurai_dashboard",
+      id: "street-samurai-dashboard-root",
+      active_tab: "diagnostics",
+      state: { protocol_version: 1, firmware_version: "Ronin" },
+    },
+  });
+  second.bus.dispatch("Darkwind.Window.Open", {
+    id: "street-dashboard",
+    type: "panel",
+    layout: {
+      type: "street_samurai_dashboard",
+      state: { protocol_version: 1, firmware_version: "Ghost" },
+    },
+  });
+  const unknown = { text: "x".repeat(10_000) };
+  let cursor = unknown;
+  for (let depth = 0; depth < 64; depth += 1) {
+    cursor.next = {};
+    cursor = cursor.next;
+  }
+  first.bus.dispatch("Darkwind.Window.Open", {
+    id: "invalid-dashboard",
+    layout: {
+      type: "street_samurai_dashboard",
+      state: { protocol_version: 2 },
+    },
+  });
+  first.bus.dispatch("Darkwind.Window.Open", {
+    id: "bounded-dashboard",
+    type: "panel",
+    unknown,
+    layout: {
+      type: "street_samurai_dashboard",
+      state: { protocol_version: 1, firmware_version: "Bounded" },
+      unknown,
+    },
+  });
+
+  let firstWindow = first.interactions.getSnapshot().windows["street-dashboard"];
+  const secondWindow = second.interactions.getSnapshot().windows["street-dashboard"];
+  const boundedWindow = first.interactions.getSnapshot().windows["bounded-dashboard"];
+  assert.equal(first.interactions.getSnapshot().windows["invalid-dashboard"], undefined);
+  assert.equal("unknown" in boundedWindow, false);
+  assert.equal("unknown" in boundedWindow.layout, false);
+  assert.equal(firstWindow.streetSamurai.firmware_version, "Ronin");
+  assert.equal(firstWindow.streetSamuraiRevision, 0);
+  assert.equal(firstWindow.layout.state, firstWindow.streetSamurai);
+  assert.equal(secondWindow.streetSamurai.firmware_version, "Ghost");
+  assert.equal(Object.isFrozen(firstWindow.streetSamurai), true);
+  first.bus.dispatch("Darkwind.Window.Close", { id: "bounded-dashboard" });
+
+  first.bus.dispatch("Darkwind.StreetSamurai", {
+    protocol_version: 1,
+    firmware_version: "Ronin II",
+  });
+  firstWindow = first.interactions.getSnapshot().windows["street-dashboard"];
+  assert.equal(firstWindow.streetSamurai.firmware_version, "Ronin II");
+  assert.equal(firstWindow.streetSamuraiRevision, 1);
+  assert.equal(
+    second.interactions.getSnapshot().windows["street-dashboard"].streetSamurai.firmware_version,
+    "Ghost",
+  );
+
+  first.bus.dispatch("Darkwind.Window.Close", { id: "street-dashboard" });
+  first.bus.dispatch("Darkwind.StreetSamurai", {
+    protocol_version: 1,
+    firmware_version: "Late",
+  });
+  assert.equal(first.interactions.getSnapshot().windows["street-dashboard"], undefined);
+});
+
 test("named interaction actions send exact outbound packages and payloads", async (t) => {
   const modules = await loadModules(t);
   const { bus, interactions, sent } = createInteractions(modules, t);

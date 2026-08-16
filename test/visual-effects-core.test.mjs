@@ -227,6 +227,14 @@ test('Room.Info fallback and map rendering share compound terrain priority', () 
     ['city', 'road', 'forest', 'outside'],
   );
   assert.equal(getPrimaryTerrain('arctic mountain and forest'), 'forest');
+  assert.deepEqual(
+    deriveRoomVisualContext({ environment: ['open water', 'rocky coast'] }).terrains,
+    ['water', 'coast'],
+  );
+  assert.deepEqual(
+    deriveRoomVisualContext({ environment: ['rocky coast', 'open water', 'city road'] }).terrains,
+    ['city', 'road', 'water'],
+  );
 
   assert.deepEqual(deriveRoomVisualContext({
     num: 42,

@@ -1,3 +1,7 @@
+import type { SessionVisualEffectPreferences } from "../runtime/visual-effects.ts";
+// @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
+import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
+
 const STORAGE_KEY = "darkwind-client-settings";
 
 export interface Phase2ClientSettings {
@@ -5,6 +9,8 @@ export interface Phase2ClientSettings {
   aliasTabCompletionEnabled: boolean;
   historyTabCompletionEnabled: boolean;
   lagMonitorEnabled: boolean;
+  visualEffectsEnabled: boolean;
+  visualEffectPreferences: SessionVisualEffectPreferences;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -12,6 +18,8 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   aliasTabCompletionEnabled: true,
   historyTabCompletionEnabled: false,
   lagMonitorEnabled: true,
+  visualEffectsEnabled: false,
+  visualEffectPreferences: visualEffectSettings.createDefaultVisualEffectPreferences(),
 };
 
 export type ClientSettingsResult =
@@ -34,6 +42,10 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
     historyTabCompletionEnabled: settings.historyTabCompletionEnabled === true,
     lagMonitorEnabled: settings.lagMonitorEnabled !== false,
+    visualEffectsEnabled: settings.visualEffectsEnabled === true,
+    visualEffectPreferences: visualEffectSettings.normalizeVisualEffectPreferences(
+      settings.visualEffectPreferences,
+    ),
   };
 }
 
@@ -44,7 +56,7 @@ export function loadClientSettings(storage: Pick<Storage, "getItem">): ClientSet
     return {
       success: false,
       message: "Saved client settings are invalid. Fix or replace them before saving.",
-      settings: { ...DEFAULT_PHASE2_CLIENT_SETTINGS },
+      settings: normalize({}),
     };
   }
 }

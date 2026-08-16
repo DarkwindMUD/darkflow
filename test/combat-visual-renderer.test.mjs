@@ -36,6 +36,7 @@ globalThis.window = {
 };
 
 const { panelRenderers } = await import('../public/js/panel-renderers.js');
+const { createCombatVisualRenderer } = await import('../public/js/combat-visual-renderer.mjs');
 const {
   createCombatVisualState,
   reduceCombatEvents,
@@ -68,6 +69,48 @@ function combatModel(overrides = {}) {
     outcome: '',
     ...overrides,
   });
+}
+
+function combatData(model = combatModel()) {
+  return {
+    combatVisual: true,
+    model,
+    vitals: { hp: 78, maxhp: 100 },
+    avatar: {},
+    enemy: {
+      enemy_name: 'an ash drake',
+      enemy_curhp: 41,
+      enemy_maxhp: 100,
+      enemy_is_npc: 1,
+    },
+  };
+}
+
+function trackedImage() {
+  const listeners = new Map();
+  const attributes = new Map([
+    ['data-combat-image', '/assets/generic-monster.png'],
+    ['data-combat-fallback', '/assets/generic-monster.png'],
+  ]);
+  return {
+    complete: false,
+    naturalWidth: 0,
+    src: '/assets/generic-monster.png',
+    parentElement: { classList: { add() {}, remove() {} } },
+    addEventListener(type, listener) {
+      const current = listeners.get(type) || new Set();
+      current.add(listener);
+      listeners.set(type, current);
+    },
+    removeEventListener(type, listener) {
+      listeners.get(type)?.delete(listener);
+    },
+    getAttribute(name) { return attributes.get(name) || ''; },
+    setAttribute(name, value) { attributes.set(name, value); },
+    listenerCount() {
+      return [...listeners.values()].reduce((total, current) => total + current.size, 0);
+    },
+  };
 }
 
 test('visual Enemy renderer escapes server text and exposes accessible health bars', () => {
@@ -319,4 +362,53 @@ test('own-combat target health remains synchronizing before Char.Enemy arrives',
   });
 
   assert.match(body.innerHTML, /aria-valuetext="Synchronizing"/);
+});
+
+test('renderer instances isolate announcements and dispose every image listener', () => {
+  const image = trackedImage();
+  const firstBody = {
+    innerHTML: '',
+    querySelectorAll() { return [image]; },
+  };
+  const secondBody = bodyElement();
+  const first = createCombatVisualRenderer(firstBody);
+  const second = createCombatVisualRenderer(secondBody);
+  const data = combatData();
+
+  assert.equal(first.render(data), true);
+  assert.equal(second.render(data), true);
+  assert.match(firstBody.innerHTML, />Combat begins\.<\/div>/);
+  assert.match(secondBody.innerHTML, />Combat begins\.<\/div>/);
+  assert.equal(image.listenerCount(), 2);
+
+  first.render(data);
+  assert.doesNotMatch(firstBody.innerHTML, />Combat begins\.<\/div>/);
+  assert.equal(image.listenerCount(), 2, 'rerender replaces rather than accumulates listeners');
+
+  first.dispose();
+  first.dispose();
+  assert.equal(image.listenerCount(), 0);
+  const disposedHtml = firstBody.innerHTML;
+  assert.equal(first.render(data), false);
+  assert.equal(firstBody.innerHTML, disposedHtml);
+  second.dispose();
+});
+
+test('legacy Enemy wrapper disposes its renderer when compact rendering resumes', () => {
+  const image = trackedImage();
+  const body = {
+    innerHTML: '',
+    querySelectorAll(selector) {
+      return selector === '.combat-art img' ? [image] : [];
+    },
+  };
+
+  panelRenderers.enemy(body, combatData());
+  assert.equal(image.listenerCount(), 2);
+  assert.ok(body._combatVisualRenderer);
+
+  panelRenderers.enemy(body, { enemy_name: 'None' });
+  assert.equal(image.listenerCount(), 0);
+  assert.equal(body._combatVisualRenderer, undefined);
+  assert.match(body.innerHTML, /No target/);
 });

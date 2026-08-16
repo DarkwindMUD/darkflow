@@ -114,6 +114,7 @@
   class="phase0-terminal-panel"
   data-panel-id={panelId}
   data-workspace-owned="true"
+  data-tutorial-target="terminal"
 >
   {#if session}
     <div class="terminal-output-shell">
@@ -137,6 +138,7 @@
           autocorrect="off"
           placeholder="Enter command..."
           spellcheck="false"
+          data-tutorial-target="command-input"
         />
         <button bind:this={sendButton} type="button">Send</button>
       </div>

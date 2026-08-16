@@ -15,12 +15,11 @@
   output owners, live mudlib producers, current public `Session` seams, focused
   Node tests, browser paths, and packaged audio assets.
 - Adversarial review: focused — completed for live duplicate frames, terminal
-  line ownership, audio persistence, and Step 12 packaging boundaries.
+  line ownership, audio persistence, and Step 13 packaging boundaries.
 
 ## Status and baseline
 
-- Status: `COMPLETE` on 2026-08-16 at committed Step 9 revision `dd67231` plus
-  the uncommitted Step 10 worktree; commit is pending user approval.
+- Status: `COMPLETE` on 2026-08-16 at Step 10 commit `5856d44`.
 - Retained Step 10 baseline: `PASS` — 74/74 under Node v22.15.0.
 - Step 9 exit: committed, clean worktree, and all dependency gates passed.
 - Step 10 exit: full Node `PASS` 651/651; development and built
@@ -62,7 +61,7 @@ playback.
 4. **“Room media” means ambience audio only.** Room image and Jukebox ownership
    completed in Step 8. Step 10 does not reopen `Session.world` or those panels.
 5. **Step 10 owns targeted packaged audio execution.** The packaged smoke must
-   exercise the Svelte audio path and a local sound asset. Step 12 still owns
+   exercise the Svelte audio path and a local sound asset. Step 13 still owns
    default-root cutover, complete Electron/release certification, and legacy
    deletion.
 6. **Login audio belongs wholly to Step 10.** The already-replaced Step 2 row
@@ -132,7 +131,7 @@ playback.
 - `Comm.Channel.Enable` — the live mudlib leaves it unsupported; mention input
   only requests the roster.
 - Default-root cutover, signed installers, hosted CI, release certification, or
-  legacy deletion — Step 12.
+  legacy deletion — Step 13.
 
 ## Assumptions
 
@@ -372,7 +371,7 @@ Observed before implementation: `PASS` — 74/74.
       exposed `🔊 Ready` and `Toggle audio`, the user confirmed audible login
       theme, and exact `@Malraux` notification/navigation passed. No live
       mute/volume/category action is claimed.
-- [x] All four `P2-10-*` rows are replaced; Step 12 retains release/cutover
+- [x] All four `P2-10-*` rows are replaced; Step 13 retains release/cutover
       ownership.
 
 ## Rollback
@@ -406,4 +405,4 @@ main CSS/toolbar markup, `/vendor/howler.core.min.js`, sound assets, and
 
 `PASS` — 9/10. The plan removes two speculative requirements (OS notifications
 and reduced-motion audio policy), preserves the existing storage/runtime owners,
-and leaves Phase 3 and Step 12 boundaries explicit.
+and leaves Phase 3 and Step 13 boundaries explicit.

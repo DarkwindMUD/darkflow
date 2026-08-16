@@ -36,11 +36,12 @@ export interface WorkspaceRendererProps {
 }
 
 export interface WorkspaceRendererDefinition {
-  canClose?: () => boolean;
+  canClose?: (panelId: string) => boolean;
   component: Component<WorkspaceRendererProps>;
   componentProps?: Record<string, unknown>;
   preserveDomWhenHidden?: boolean;
   session?: Session;
+  showCloseButton?: (panelId: string) => boolean;
 }
 
 export type WorkspaceRendererRegistry = Readonly<Record<string, WorkspaceRendererDefinition>>;

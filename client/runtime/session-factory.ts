@@ -25,6 +25,9 @@ import { createSessionWorld } from "./world.ts";
 import { createSessionIde } from "./ide.ts";
 import { createSessionNotifications } from "./notifications.ts";
 import { createSessionAudio, type RetainedSoundManager } from "./audio.ts";
+import { createSessionCombat } from "./combat.ts";
+import { createSessionTutorial } from "./tutorial.ts";
+import { createSessionVisualEffects } from "./visual-effects.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -196,6 +199,11 @@ export function createSessionFromState(
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
   const information = createSessionInformation(gmcp, scope, eventBus);
   const interactions = createSessionInteractions(gmcp, scope, eventBus, transport);
+  const combat = createSessionCombat(gmcp, scope, eventBus, information);
+  const tutorial = createSessionTutorial(gmcp, scope, eventBus);
+  const visualEffects = createSessionVisualEffects(gmcp, scope, eventBus, {
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
   const world = createSessionWorld(
     gmcp,
     scope,
@@ -262,6 +270,9 @@ export function createSessionFromState(
     ide,
     notifications,
     audio,
+    combat,
+    tutorial,
+    visualEffects,
   });
 
   return {

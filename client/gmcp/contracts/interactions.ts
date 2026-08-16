@@ -4,6 +4,7 @@ import type {
   DarkwindWindowOpen,
   DarkwindWindowSubmit,
 } from "./darkwind-window.ts";
+import type { DarkwindStreetSamurai } from "./street-samurai.ts";
 
 export interface DarkwindSnoopOpen {
   id: string;
@@ -203,6 +204,8 @@ export interface InteractionWindow extends DarkwindWindowOpen {
   sourceId: string;
   updates: readonly DarkwindWindowLayoutNode[];
   revision: number;
+  streetSamurai?: DarkwindStreetSamurai;
+  streetSamuraiRevision?: number;
 }
 
 export interface InteractionSnoop extends DarkwindSnoopOpen {

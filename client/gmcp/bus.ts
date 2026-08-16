@@ -28,6 +28,7 @@ import type {
   DarkwindWindowSubmit,
 } from "./contracts/darkwind-window.ts";
 import type { DarkwindRoomPlaylistAction, DarkwindRoomPlaylistReport } from "./contracts/world.ts";
+import type { DarkwindTutorialAction, DarkwindTutorialResync } from "./contracts/tutorial.ts";
 import {
   validateDarkwindRoomPlaylistAction,
   validateDarkwindRoomPlaylistReport,
@@ -42,6 +43,8 @@ import {
   validateDarkwindIdeSaveStart,
   validateMapData2Browse,
   validateMapData2Sync,
+  validateDarkwindTutorialAction,
+  validateDarkwindTutorialResync,
 } from "./contracts/validators.ts";
 
 const GMCP_MEDIA_REFRESH_PACKAGE = "Darkwind.Client.RefreshMedia";
@@ -149,6 +152,9 @@ export interface SessionGmcpBus {
   sendFishingHook(payload: DarkwindFishingHook): boolean;
   sendFishingResult(payload: DarkwindFishingResult): boolean;
   sendFishingCancel(payload: DarkwindFishingCancel): boolean;
+  sendCombatResync(): boolean;
+  sendTutorialAction(payload: DarkwindTutorialAction): boolean;
+  sendTutorialResync(payload: DarkwindTutorialResync): boolean;
   sendPing(): boolean;
   requestLagStatus(): boolean;
   onCompletionResult(handler: CompletionResultHandler): void;
@@ -526,6 +532,20 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
 
   sendFishingCancel(payload: DarkwindFishingCancel): boolean {
     return this.send("Darkwind.Fishing.Cancel", payload);
+  }
+
+  sendCombatResync(): boolean {
+    return this.send("Darkwind.Combat.Resync");
+  }
+
+  sendTutorialAction(payload: DarkwindTutorialAction): boolean {
+    const result = validateDarkwindTutorialAction(payload);
+    return result.success ? this.send("Darkwind.Tutorial.Action", result.data) : false;
+  }
+
+  sendTutorialResync(payload: DarkwindTutorialResync): boolean {
+    const result = validateDarkwindTutorialResync(payload);
+    return result.success ? this.send("Darkwind.Tutorial.Resync", result.data) : false;
   }
 
   sendPing(): boolean {

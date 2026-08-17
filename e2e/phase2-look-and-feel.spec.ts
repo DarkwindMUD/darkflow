@@ -54,9 +54,9 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     await openPhase2(page);
 
-    // Durable invariants (survive the Green PR 2 shell rewrite).
+    // Durable invariants (survive the shell rewrite).
     await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Focus terminal" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Panels", exact: true })).toBeVisible();
 
     await expect(page).toHaveScreenshot(`phase2-shell-${viewport.name}.png`, {
       fullPage: true,

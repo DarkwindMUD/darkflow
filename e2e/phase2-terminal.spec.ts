@@ -263,7 +263,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await page.setViewportSize({ width: 1_100, height: 720 });
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
   expect(await output.textContent()).toBe(beforeLayout);
-  await page.getByRole("button", { name: "Focus terminal", exact: true }).click();
+  await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
+  await output.click();
   await expect(output).toBeFocused();
 
   const terminalHandle = page.locator('[data-panel-drag-handle][data-panel-id="terminal"]');
@@ -304,7 +305,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'),
   );
   await expect(floatingHandle).toHaveCount(0);
-  await page.getByRole("button", { name: "Focus terminal", exact: true }).click();
+  await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
+  await output.click();
   await expect(output).toBeFocused();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
   expect(await output.textContent()).toBe(beforeLayout);
@@ -319,7 +321,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
 
   await page.getByRole("button", { name: "Clear", exact: true }).click({ force: true });
   await expect(output).toBeEmpty();
-  await page.getByRole("button", { name: "Focus terminal", exact: true }).click();
+  await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
+  await output.click();
   await expect(output).toBeFocused();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
 

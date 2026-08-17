@@ -24,10 +24,16 @@ async function connect(page: Page): Promise<TransportEndpoint> {
 }
 
 async function togglePanel(page: Page, title: string): Promise<void> {
-  if ((page.viewportSize()?.width ?? Infinity) <= 700) {
-    await page.getByRole("button", { name: "Panels", exact: true }).click();
+  const onMobile = (page.viewportSize()?.width ?? Infinity) <= 700;
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (onMobile) {
+    // Mobile sheet uses Open/Close buttons and closes on selection.
+    await page.getByRole("button", { name: new RegExp(`^(?:Open|Close) ${title}$`) }).click();
+  } else {
+    // Desktop launcher is a checkbox list that stays open while toggling.
+    await page.getByRole("checkbox", { name: title, exact: true }).click();
+    await page.keyboard.press("Escape");
   }
-  await page.getByRole("button", { name: new RegExp(`^(?:Open|Close) ${title}$`) }).click();
 }
 
 function panelDragHandle(page: Page, panelId: string): Locator {

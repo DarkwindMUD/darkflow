@@ -26,14 +26,18 @@ async function connect(page: Page): Promise<void> {
  * hidden in both. Idempotent.
  */
 async function ensurePanelOpen(page: Page, title: string, id: string): Promise<void> {
-  if ((page.viewportSize()?.width ?? Infinity) <= 700) {
-    await page.getByRole("button", { name: "Panels", exact: true }).click();
+  const onMobile = (page.viewportSize()?.width ?? Infinity) <= 700;
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (onMobile) {
+    const openButton = page.getByRole("button", { name: `Open ${title}`, exact: true });
+    if (await openButton.count()) await openButton.click();
+    else await page.keyboard.press("Escape");
+  } else {
+    const checkbox = page.getByRole("checkbox", { name: title, exact: true });
+    await expect(checkbox).toBeVisible();
+    await checkbox.check();
+    await page.keyboard.press("Escape");
   }
-  // Wait for the launcher toggle to settle, then open only if currently closed.
-  const openButton = page.getByRole("button", { name: `Open ${title}`, exact: true });
-  const closeButton = page.getByRole("button", { name: `Close ${title}`, exact: true });
-  await expect(openButton.or(closeButton)).toBeVisible();
-  if (await openButton.isVisible()) await openButton.click();
   await expect(page.locator(`.information-panel[data-panel-id="${id}"]`)).toHaveCount(1);
 }
 
@@ -55,11 +59,15 @@ test("character information panels present, restore, and close from the active c
   const terminal = page.getByLabel("Terminal output");
   const identity = await terminal.getAttribute("data-terminal-identity");
 
-  if (onMobile) await page.getByRole("button", { name: "Panels", exact: true }).click();
-  await page.getByRole("button", { name: "Close Omens", exact: true }).click();
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (onMobile) {
+    await page.getByRole("button", { name: "Close Omens", exact: true }).click();
+  } else {
+    await page.getByRole("checkbox", { name: "Omens", exact: true }).uncheck();
+    await page.keyboard.press("Escape");
+  }
   await expect(page.locator('.information-panel[data-panel-id="omens"]')).toHaveCount(0);
-  if (onMobile) await page.getByRole("button", { name: "Panels", exact: true }).click();
-  await page.getByRole("button", { name: "Focus terminal", exact: true }).click();
+  await terminal.click();
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
 });
 

@@ -35,7 +35,9 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
     hb_processed_pct: 100,
     obj_processed_pct: 100,
   });
-  await page.getByRole("button", { name: "Open Connection health", exact: true }).click();
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Connection health", exact: true }).check();
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
 
   const health = page.locator('.connection-health-panel[data-panel-id="connection-health"]');
   await expect(health).toContainText("Collecting samples");

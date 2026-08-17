@@ -25,6 +25,13 @@ function panelDragHandle(page: Page, panelId: string): Locator {
   return page.locator(`[data-panel-drag-handle][data-panel-id="${panelId}"]`);
 }
 
+/** Open the Panels menu and toggle Avatar (dirties the layout to trigger a save). */
+async function toggleAvatar(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Avatar", exact: true }).click();
+  await page.keyboard.press("Escape");
+}
+
 async function center(locator: Locator): Promise<{ x: number; y: number }> {
   const box = await locator.boundingBox();
   expect(box).not.toBeNull();
@@ -64,7 +71,7 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   const terminal = page.locator("[data-terminal-identity]");
   const terminalIdentity = await terminal.getAttribute("data-terminal-identity");
   await terminal.focus();
-  await page.getByRole("button", { name: "Focus terminal" }).click();
+  await page.locator("[data-terminal-identity]").click();
   await expect(terminal).toBeFocused();
 
   // One real output island keeps its identity and focus across layout work.
@@ -76,8 +83,8 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
   expect(await terminalState(page)).toEqual(seeded);
 
-  await page.getByRole("button", { name: "Close Avatar", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Open Avatar", exact: true })).toBeVisible();
+  await toggleAvatar(page);
+  await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   expect(await terminalState(page)).toEqual(seeded);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(terminalIdentity);
@@ -96,7 +103,7 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await expect(page.getByTestId("workspace-host")).toBeVisible();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
-  await expect(page.getByRole("button", { name: "Open Avatar", exact: true })).toBeVisible();
+  await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
 
   await disposeSession(page);
   await expect(page.getByTestId("phase2-shell")).toHaveCount(0);
@@ -108,7 +115,7 @@ test("Phase 2 recovers from a malformed layout and reports a storage failure", a
 }, testInfo) => {
   test.skip(testInfo.project.name === "mobile-chromium", "desktop controls only");
   await openWorkspace(page);
-  await page.getByRole("button", { name: "Close Avatar", exact: true }).click();
+  await toggleAvatar(page);
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.evaluate(() => {
     const runtime = (
@@ -126,7 +133,7 @@ test("Phase 2 recovers from a malformed layout and reports a storage failure", a
   await expect(page.getByTestId("workspace-status")).toContainText("using the default layout");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Close Avatar", exact: true }).click();
+  await toggleAvatar(page);
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.evaluate(() => {
     const runtime = (
@@ -148,7 +155,7 @@ test("Phase 2 recovers from a malformed layout and reports a storage failure", a
       return original.call(this, key, value);
     };
   });
-  await page.getByRole("button", { name: "Close Avatar", exact: true }).click();
+  await toggleAvatar(page);
   await expect(page.getByTestId("workspace-status")).toContainText("storage fixture failure");
 });
 

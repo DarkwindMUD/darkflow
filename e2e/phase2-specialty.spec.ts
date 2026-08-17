@@ -320,7 +320,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   if ((page.viewportSize()?.width ?? 0) > 700) {
     await dockPanelAsTab(page, "enemy", "terminal");
     const hiddenStart = endpoint.gmcpMessages.length;
-    await page.getByRole("button", { name: "Focus terminal", exact: true }).first().click();
+    await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
     await expect(combat).toHaveCount(0);
     await expect
       .poll(() =>
@@ -349,7 +349,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
       )
       .toBe(true);
 
-    await page.getByRole("button", { name: "Focus terminal", exact: true }).first().click();
+    await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
     await expect(combat).toHaveCount(0);
     activeEncounter = "encounter-b";
     endpoint.sendGmcp(

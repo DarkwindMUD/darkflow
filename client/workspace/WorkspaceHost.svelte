@@ -184,6 +184,14 @@
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
   let combatPanelOpen = $state(false);
+  let launcherOpen = $state(false);
+
+  function handleLauncherFocusOut(event: FocusEvent): void {
+    const next = event.relatedTarget;
+    if (!(next instanceof Node) || !(event.currentTarget as HTMLElement).contains(next)) {
+      launcherOpen = false;
+    }
+  }
 
   function syncVisiblePanels(): void {
     const visible = informationPanels.filter((panel) => workspace?.hasPanel(panel.id));
@@ -200,13 +208,13 @@
     return openInformationPanelIds.includes(panel.id);
   }
 
-  async function toggleInformationPanel(panel: WorkspacePanelSpec): Promise<void> {
+  async function toggleInformationPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
     if (!workspace) return;
     if (workspace.hasPanel(panel.id)) {
       await workspace.removePanel(panel.id);
     } else {
       workspace.addOrUpdatePanel(panel);
-      workspace.activatePanel(panel.id);
+      if (activate) workspace.activatePanel(panel.id);
     }
     syncVisiblePanels();
   }
@@ -215,13 +223,13 @@
     return openWorldPanelIds.includes(panel.id);
   }
 
-  async function toggleWorldPanel(panel: WorkspacePanelSpec): Promise<void> {
+  async function toggleWorldPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
     if (!workspace) return;
     if (workspace.hasPanel(panel.id)) {
       await workspace.removePanel(panel.id);
     } else {
       workspace.addOrUpdatePanel(panel);
-      workspace.activatePanel(panel.id);
+      if (activate) workspace.activatePanel(panel.id);
     }
     syncVisiblePanels();
   }
@@ -763,37 +771,50 @@
 
 <svelte:window
   onkeydown={(event) => {
-    if (sheetOpen && event.key === "Escape") closeSheet();
+    if (event.key !== "Escape") return;
+    if (sheetOpen) closeSheet();
+    if (launcherOpen) launcherOpen = false;
   }}
 />
 
 <section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
   <div class="workspace-controls" aria-label="Panels" data-tutorial-target="panels-menu">
-    <button type="button" onclick={focusTerminal}>Focus terminal</button>
-    <div class="panel-launcher" aria-label="Open panels">
-      {#each informationPanels as panel (panel.id)}
-        <button
-          type="button"
-          aria-pressed={informationPanelOpen(panel)}
-          onclick={() => toggleInformationPanel(panel)}
-        >
-          {informationPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
-        </button>
-      {/each}
-      {#each worldPanels as panel (panel.id)}
-        <button
-          type="button"
-          aria-pressed={worldPanelOpen(panel)}
-          onclick={() => toggleWorldPanel(panel)}
-        >
-          {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
-        </button>
-      {/each}
-      {#if combatPanelOpen}
-        <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button
-        >
+    <div class="df-panels-menu" onfocusout={handleLauncherFocusOut}>
+      <button
+        type="button"
+        class="df-panels-menu-trigger"
+        aria-haspopup="true"
+        aria-expanded={launcherOpen}
+        onclick={() => (launcherOpen = !launcherOpen)}>Panels</button
+      >
+      {#if launcherOpen}
+        <div class="df-panels-menu-list" aria-label="Panels">
+          {#each informationPanels as panel (panel.id)}
+            <label>
+              <input
+                type="checkbox"
+                checked={informationPanelOpen(panel)}
+                onchange={() => void toggleInformationPanel(panel, false)}
+              />
+              {panel.title}
+            </label>
+          {/each}
+          {#each worldPanels as panel (panel.id)}
+            <label>
+              <input
+                type="checkbox"
+                checked={worldPanelOpen(panel)}
+                onchange={() => void toggleWorldPanel(panel, false)}
+              />
+              {panel.title}
+            </label>
+          {/each}
+        </div>
       {/if}
     </div>
+    {#if combatPanelOpen}
+      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
+    {/if}
   </div>
   <button
     bind:this={sheetTrigger}
@@ -860,9 +881,6 @@
         >
       {/if}
     </div>
-    <div class="mobile-sheet-controls">
-      <button type="button" onclick={focusTerminal}>Focus terminal</button>
-    </div>
   </div>
 </div>
 
@@ -883,22 +901,43 @@
     min-width: 0;
   }
 
-  /* Compact single-row launcher: it scrolls horizontally instead of wrapping
-     into a tall button rack, so it stays a thin strip in the full-height shell. */
-  .panel-launcher {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 0.375rem;
-    align-items: center;
-    min-width: 0;
-    padding-bottom: 0.25rem;
-    overflow-x: auto;
-    overscroll-behavior-x: contain;
+  /* Compact launcher: a single "Panels" button that opens a checklist menu,
+     instead of a wall of per-panel toggles. */
+  .df-panels-menu {
+    position: relative;
   }
 
-  .panel-launcher button {
-    flex: 0 0 auto;
+  .df-panels-menu-list {
+    position: absolute;
+    z-index: 30;
+    top: calc(100% + 0.25rem);
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.125rem;
+    align-items: stretch;
+    width: max-content;
+    max-height: min(60vh, 30rem);
+    padding: 0.375rem;
+    overflow-y: auto;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 0.5rem;
+    background: var(--df-panel, #161b22);
+    box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+  }
+
+  .df-panels-menu-list label {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.25rem 0.5rem;
     white-space: nowrap;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .df-panels-menu-list label:hover {
+    background: var(--df-btn-secondary, rgb(255 255 255 / 6%));
   }
 
   .workspace-status {
@@ -967,8 +1006,7 @@
     }
 
     .mobile-sheet-header,
-    .mobile-panel-tabs,
-    .mobile-sheet-controls {
+    .mobile-panel-tabs {
       display: flex;
       gap: 0.5rem;
       align-items: center;

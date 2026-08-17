@@ -263,3 +263,37 @@ test("collapses rails off the desktop zone and restores them on return", async (
   await expect(terminal).toHaveCount(1);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
 });
+
+test("persistent panes expose accessible collapse, float, and dock controls", async ({
+  page,
+}, testInfo) => {
+  test.skip(isMobileProject(testInfo), "pane controls are a desktop affordance");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPhase2(page);
+
+  const terminal = page.locator("[data-terminal-identity]");
+  const identity = await terminal.getAttribute("data-terminal-identity");
+  const avatarTab = page.locator('.dv-default-tab[data-panel-id="avatar"]');
+  const avatarBody = page.locator('.information-panel[data-panel-id="avatar"]');
+  const avatarFloating = page.locator('[data-floating-drag-handle][data-panel-id="avatar"]');
+
+  // Collapse hides the body, keeps the header, and never remounts the terminal.
+  await avatarTab.getByRole("button", { name: "Collapse Avatar" }).click();
+  await expect(avatarTab.getByRole("button", { name: "Expand Avatar" })).toBeVisible();
+  await expect(avatarBody).toBeHidden();
+  expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
+
+  await avatarTab.getByRole("button", { name: "Expand Avatar" }).click();
+  await expect(avatarBody).toBeVisible();
+
+  // Float via keyboard, then dock back; the terminal island survives both.
+  await avatarTab.getByRole("button", { name: "Float Avatar" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(avatarFloating).toBeVisible();
+  await page
+    .locator('.dv-default-tab[data-panel-id="avatar"]')
+    .getByRole("button", { name: "Dock Avatar" })
+    .click();
+  await expect(avatarFloating).toHaveCount(0);
+  expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
+});

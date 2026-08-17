@@ -1,0 +1,112 @@
+/*
+ * Darkflow pane chrome for the Phase 2 workspace. Scoped to `.df-workspace`
+ * (the Phase 2 Dockview host) so the /phase0/ test harness and any other
+ * Dockview instance keep the stock look. Reuses the existing `--df-*` theme
+ * variables; terminal ANSI/game colors live inside the terminal island and are
+ * never touched here.
+ */
+
+.df-workspace .dv-dockview {
+  --dv-group-view-background-color: var(--df-panel, #161b22);
+  --dv-tabs-and-actions-container-background-color: var(--df-elevated, #1c2333);
+  --dv-tabs-and-actions-container-height: 30px;
+  --dv-tab-font-size: 0.72rem;
+  --dv-tab-border-radius: 4px;
+
+  --dv-activegroup-visiblepanel-tab-background-color: var(--df-panel, #161b22);
+  --dv-activegroup-visiblepanel-tab-color: var(--df-text-strong, #e6edf3);
+  --dv-activegroup-hiddenpanel-tab-background-color: var(--df-elevated, #1c2333);
+  --dv-activegroup-hiddenpanel-tab-color: var(--df-muted, #8b949e);
+  --dv-inactivegroup-visiblepanel-tab-background-color: var(--df-elevated, #1c2333);
+  --dv-inactivegroup-visiblepanel-tab-color: var(--df-muted, #8b949e);
+  --dv-inactivegroup-hiddenpanel-tab-background-color: var(--df-elevated, #1c2333);
+  --dv-inactivegroup-hiddenpanel-tab-color: var(--df-faint, #6e7681);
+
+  --dv-separator-border: var(--df-border, #30363d);
+  --dv-paneview-header-border-color: var(--df-border, #30363d);
+  --dv-tab-divider-color: var(--df-border, #30363d);
+
+  --dv-sash-color: transparent;
+  --dv-active-sash-color: var(--df-accent-blue, #58a6ff);
+  --dv-scrollbar-background-color: var(--df-scrollbar-thumb, #484f58);
+
+  --dv-floating-titlebar-background-color: var(--df-elevated, #1c2333);
+  --dv-floating-group-border: 1px solid var(--df-border, #30363d);
+  --dv-floating-box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+
+  --dv-drag-over-background-color: color-mix(
+    in srgb,
+    var(--df-accent-blue, #58a6ff) 20%,
+    transparent
+  );
+  --dv-drag-over-border-color: var(--df-accent-blue, #58a6ff);
+}
+
+/* 1px themed border + 6px radius around every pane. */
+.df-workspace .dv-groupview {
+  border: 1px solid var(--df-border, #30363d);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.df-workspace .dv-groupview.dv-active-group {
+  border-color: color-mix(in srgb, var(--df-accent-blue, #58a6ff) 55%, var(--df-border, #30363d));
+}
+
+/* Compact uppercase pane titles. */
+.df-workspace .dv-default-tab-content {
+  font-family: var(--df-font-ui, var(--df-font-sans, inherit));
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.df-workspace .dv-tabs-and-actions-container {
+  border-bottom: 1px solid var(--df-border, #30363d);
+}
+
+/* Small accessible pane controls (collapse, float/dock, close). */
+.df-workspace .dv-default-tab-action {
+  min-width: 1.35rem;
+  border-radius: 4px;
+  opacity: 0.7;
+}
+
+.df-workspace .dv-default-tab-action:hover {
+  background: var(--df-btn-hover, rgb(255 255 255 / 10%));
+  opacity: 1;
+}
+
+/* Collapsed pane keeps its header; the body is hidden but stays mounted. */
+.df-workspace .dv-groupview[data-collapsed="true"] .dv-content-container {
+  display: none;
+}
+
+/* Clear keyboard focus treatment on panes and their controls. */
+.df-workspace .dv-groupview:focus-within {
+  outline: none;
+}
+
+.df-workspace :is(.dv-default-tab, .dv-default-tab-action, button):focus-visible {
+  outline: 2px solid var(--df-accent-blue, #58a6ff);
+  outline-offset: -2px;
+}
+
+/* Themed pane body scrollbars. */
+.df-workspace .dv-content-container {
+  scrollbar-color: var(--df-scrollbar-thumb, #484f58) var(--df-scrollbar-track, transparent);
+}
+
+.df-workspace .dv-content-container ::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+.df-workspace .dv-content-container ::-webkit-scrollbar-track {
+  background: var(--df-scrollbar-track, transparent);
+}
+
+.df-workspace .dv-content-container ::-webkit-scrollbar-thumb {
+  border-radius: 6px;
+  background: var(--df-scrollbar-thumb, #484f58);
+}

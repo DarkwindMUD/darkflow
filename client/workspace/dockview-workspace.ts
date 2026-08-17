@@ -38,9 +38,18 @@ interface DockviewPanelLike {
     setTitle(title: string): void;
     setActive(): void;
     updateParameters(parameters: PanelState): void;
+    readonly location: { readonly type: "grid" | "floating" | "popout" };
   };
   group: {
-    api: { setConstraints(value: { minimumWidth?: number; maximumWidth?: number }): void };
+    element: HTMLElement;
+    api: {
+      setConstraints(value: {
+        minimumWidth?: number;
+        maximumWidth?: number;
+        minimumHeight?: number;
+        maximumHeight?: number;
+      }): void;
+    };
   };
 }
 
@@ -62,45 +71,74 @@ export interface WorkspaceInspector {
   inspectPanel(id: string): WorkspacePanelInspection | null;
 }
 
+interface TabActions {
+  close?: (() => void) | undefined;
+  collapse?: (() => boolean) | undefined;
+  floatDock?: (() => boolean) | undefined;
+}
+
 class WorkspaceTabRenderer implements ITabRenderer {
   readonly element = document.createElement("div");
   readonly #label = document.createElement("span");
   readonly #closeButton: HTMLButtonElement | undefined = undefined;
+  readonly #collapseButton: HTMLButtonElement | undefined = undefined;
+  readonly #floatButton: HTMLButtonElement | undefined = undefined;
   #titleSubscription: { dispose(): void } | undefined;
+  #title = "";
+  #collapsed = false;
+  #floating: boolean;
 
   constructor(
     private readonly panelId: string,
-    private readonly closePanel?: () => void,
+    actions: TabActions,
+    floating: boolean,
     private readonly onDispose?: () => void,
   ) {
+    this.#floating = floating;
     this.element.className = "dv-default-tab";
     this.element.dataset.panelDragHandle = "true";
     this.element.dataset.panelId = panelId;
     this.#label.className = "dv-default-tab-content";
     this.element.appendChild(this.#label);
 
-    if (closePanel) {
-      const closeButton = document.createElement("button");
-      this.#closeButton = closeButton;
-      closeButton.type = "button";
-      closeButton.className = "dv-default-tab-action";
-      closeButton.textContent = "×";
-      closeButton.style.background = "none";
-      closeButton.style.border = "0";
-      closeButton.style.color = "inherit";
-      closeButton.style.cursor = "pointer";
-      closeButton.style.font = "inherit";
-      closeButton.addEventListener("pointerdown", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
+    if (actions.collapse) {
+      this.#collapseButton = this.#createAction("–", () => {
+        this.#collapsed = actions.collapse!();
+        this.#refreshLabels();
       });
-      closeButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        this.closePanel?.();
-      });
-      this.element.appendChild(closeButton);
     }
+    if (actions.floatDock) {
+      this.#floatButton = this.#createAction("❐", () => {
+        this.#floating = actions.floatDock!();
+        this.#refreshLabels();
+      });
+    }
+    if (actions.close) {
+      this.#closeButton = this.#createAction("×", actions.close);
+    }
+  }
+
+  #createAction(glyph: string, handler: () => void): HTMLButtonElement {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "dv-default-tab-action df-tab-action";
+    button.textContent = glyph;
+    button.style.background = "none";
+    button.style.border = "0";
+    button.style.color = "inherit";
+    button.style.cursor = "pointer";
+    button.style.font = "inherit";
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      handler();
+    });
+    this.element.appendChild(button);
+    return button;
   }
 
   init(parameters: TabPartInitParameters): void {
@@ -131,9 +169,21 @@ class WorkspaceTabRenderer implements ITabRenderer {
   }
 
   #setTitle(title: string | undefined): void {
+    this.#title = title ?? this.panelId;
     this.#label.textContent = title ?? "";
-    const closeButton = this.element.querySelector<HTMLButtonElement>("button");
-    if (closeButton) closeButton.setAttribute("aria-label", `Close ${title ?? this.panelId}`);
+    this.#refreshLabels();
+  }
+
+  #refreshLabels(): void {
+    this.#closeButton?.setAttribute("aria-label", `Close ${this.#title}`);
+    this.#collapseButton?.setAttribute(
+      "aria-label",
+      `${this.#collapsed ? "Expand" : "Collapse"} ${this.#title}`,
+    );
+    this.#floatButton?.setAttribute(
+      "aria-label",
+      `${this.#floating ? "Dock" : "Float"} ${this.#title}`,
+    );
   }
 }
 
@@ -227,6 +277,11 @@ export function createWorkspace(
   const records = new Map<string, PanelRecord>();
   const renderers = new Map<string, SvelteDockviewRenderer>();
   const tabRenderers = new Map<string, WorkspaceTabRenderer>();
+  const paneConstraints = new Map<
+    string,
+    { minimumWidth?: number; maximumWidth?: number; minimumHeight?: number }
+  >();
+  const collapsedPanes = new Set<string>();
   const pendingUnmounts = new Set<Promise<void>>();
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
   let disposed = false;
@@ -238,9 +293,16 @@ export function createWorkspace(
     createTabComponent: ({ id }) => {
       const record = records.get(id);
       const definition = record ? registry[record.kind] : undefined;
+      const floating =
+        (api.getPanel(id) as DockviewPanelLike | undefined)?.api.location.type === "floating";
       const tab = new WorkspaceTabRenderer(
         id,
-        definition?.canClose ? () => void requestClosePanel(id) : undefined,
+        {
+          close: definition?.canClose ? () => void requestClosePanel(id) : undefined,
+          collapse: definition?.collapsible ? () => toggleCollapse(id) : undefined,
+          floatDock: definition?.floatable ? () => toggleFloatDock(id) : undefined,
+        },
+        floating,
         () => tabRenderers.delete(id),
       );
       tab.setCloseButtonVisible(
@@ -408,17 +470,106 @@ export function createWorkspace(
     title: spec.title,
   });
 
-  // A fixed grid width (rails) survives Dockview's proportional rebalancing only
-  // as a constraint; initialWidth/setSize alone get rebalanced away by later
-  // splits. Floating panels size via bounds, so they are left unconstrained.
-  const pinGridWidth = (panel: unknown, spec: WorkspacePanelSpec): void => {
-    if (spec.placement?.kind !== "grid" || spec.size?.width === undefined) return;
-    // The column width is the group's gridview constraint, not the panel's own
-    // splitview constraint, so pin it on the group api.
-    (panel as DockviewPanelLike).group.api.setConstraints({
-      minimumWidth: spec.size.width,
-      maximumWidth: spec.size.width,
+  // A fixed grid width (rails) or a resize minimum survives Dockview's
+  // proportional rebalancing only as a group constraint; initialWidth/setSize
+  // alone get rebalanced away. Floating panels size via bounds, so they are
+  // left unconstrained here and clamped to the host instead.
+  const applyPaneConstraints = (panel: unknown, spec: WorkspacePanelSpec): void => {
+    if (spec.placement?.kind === "floating") return;
+    const constraints: {
+      minimumWidth?: number;
+      maximumWidth?: number;
+      minimumHeight?: number;
+    } = {};
+    if (spec.size?.width !== undefined) {
+      constraints.minimumWidth = spec.size.width;
+      constraints.maximumWidth = spec.size.width;
+    } else if (spec.minSize?.width !== undefined) {
+      constraints.minimumWidth = spec.minSize.width;
+    }
+    if (spec.minSize?.height !== undefined) constraints.minimumHeight = spec.minSize.height;
+    if (Object.keys(constraints).length === 0) return;
+    paneConstraints.set(spec.id, constraints);
+    // Constrain the group (gridview) rather than the panel (splitview) axis.
+    (panel as DockviewPanelLike).group.api.setConstraints(constraints);
+  };
+
+  const COLLAPSED_HEIGHT = 30;
+
+  /** Collapse hides the pane body but keeps the header and the mounted content. */
+  const toggleCollapse = (id: string): boolean => {
+    const panel = api.getPanel(id) as DockviewPanelLike | undefined;
+    if (!panel) return false;
+    const stored = paneConstraints.get(id) ?? {};
+    if (collapsedPanes.has(id)) {
+      collapsedPanes.delete(id);
+      panel.group.element.removeAttribute("data-collapsed");
+      panel.group.api.setConstraints({
+        ...stored,
+        minimumHeight: stored.minimumHeight ?? 0,
+        maximumHeight: 100_000,
+      });
+    } else {
+      collapsedPanes.add(id);
+      panel.group.element.setAttribute("data-collapsed", "true");
+      panel.group.api.setConstraints({
+        ...stored,
+        minimumHeight: COLLAPSED_HEIGHT,
+        maximumHeight: COLLAPSED_HEIGHT,
+      });
+      panel.api.setSize({ height: COLLAPSED_HEIGHT });
+    }
+    return collapsedPanes.has(id);
+  };
+
+  /** Float a docked pane (centered, clamped) or dock a floating pane back to the grid. */
+  const toggleFloatDock = (id: string): boolean => {
+    const panel = api.getPanel(id) as DockviewPanelLike | undefined;
+    if (!panel) return false;
+    if (panel.api.location.type === "floating") {
+      const anchor = api.panels.find(
+        (candidate) =>
+          candidate.id !== id &&
+          (candidate as unknown as DockviewPanelLike).api.location.type === "grid",
+      );
+      if (anchor) {
+        applyPlacement(panel, { kind: "grid", direction: "right", referencePanelId: anchor.id });
+      }
+      return false;
+    }
+    const hostWidth = host.clientWidth || window.innerWidth;
+    const hostHeight = host.clientHeight || window.innerHeight;
+    const width = Math.min(440, Math.max(280, Math.round(hostWidth * 0.4)));
+    const height = Math.min(420, Math.max(220, Math.round(hostHeight * 0.5)));
+    applyPlacement(panel, {
+      kind: "floating",
+      bounds: {
+        left: Math.max(0, Math.round((hostWidth - width) / 2)),
+        top: Math.max(0, Math.round((hostHeight - height) / 3)),
+        width,
+        height,
+      },
     });
+    return true;
+  };
+
+  // Keep a floating pane within the host so a grab handle stays reachable.
+  const clampFloatingBounds = (bounds: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }): { x: number; y: number; width: number; height: number } => {
+    const hostWidth = host.clientWidth || window.innerWidth;
+    const hostHeight = host.clientHeight || window.innerHeight;
+    const width = Math.max(160, Math.min(bounds.width, hostWidth));
+    const height = Math.max(80, Math.min(bounds.height, hostHeight));
+    return {
+      width,
+      height,
+      x: Math.max(0, Math.min(bounds.left, Math.max(0, hostWidth - 48))),
+      y: Math.max(0, Math.min(bounds.top, Math.max(0, hostHeight - 24))),
+    };
   };
 
   const addPanel = (spec: WorkspacePanelSpec): void => {
@@ -426,21 +577,13 @@ export function createWorkspace(
     const placement = spec.placement;
 
     if (placement?.kind === "floating") {
-      api.addPanel({
-        ...options,
-        floating: {
-          height: placement.bounds.height,
-          width: placement.bounds.width,
-          x: placement.bounds.left,
-          y: placement.bounds.top,
-        },
-      });
+      api.addPanel({ ...options, floating: clampFloatingBounds(placement.bounds) });
       queueMicrotask(annotateFloatingTitlebars);
       return;
     }
 
     if (placement?.kind === "grid" && placement.referencePanelId) {
-      pinGridWidth(
+      applyPaneConstraints(
         api.addPanel({
           ...options,
           position: {
@@ -455,7 +598,7 @@ export function createWorkspace(
     }
 
     if (placement?.kind === "grid" && placement.direction && placement.direction !== "within") {
-      pinGridWidth(
+      applyPaneConstraints(
         api.addPanel({ ...options, position: { direction: placement.direction } }),
         spec,
       );
@@ -463,18 +606,13 @@ export function createWorkspace(
       return;
     }
 
-    pinGridWidth(api.addPanel(options), spec);
+    applyPaneConstraints(api.addPanel(options), spec);
     queueMicrotask(annotateFloatingTitlebars);
   };
 
   const applyPlacement = (panel: DockviewPanelLike, placement: PanelPlacement): void => {
     if (placement.kind === "floating") {
-      api.addFloatingGroup(panel as never, {
-        height: placement.bounds.height,
-        width: placement.bounds.width,
-        x: placement.bounds.left,
-        y: placement.bounds.top,
-      });
+      api.addFloatingGroup(panel as never, clampFloatingBounds(placement.bounds));
       panel.api.setActive();
       return;
     }

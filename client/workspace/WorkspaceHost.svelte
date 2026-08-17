@@ -6,6 +6,7 @@
   import type { Session } from "../runtime/session.ts";
   import type { WorldPanelId } from "../runtime/world.ts";
   import { createWorkspace } from "./dockview-workspace";
+  import "./dockview-theme.css";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import CombatPanel from "./CombatPanel.svelte";
@@ -42,6 +43,10 @@
     kind: "terminal",
     title: "Terminal",
     state: {},
+    // The >=940px rail-collapse breakpoint (260+260+420) already floors the
+    // terminal at 420px wide on desktop; a hard width constraint would only
+    // overflow narrower zones, so enforce the height minimum here.
+    minSize: { height: 260 },
   };
   const informationPanelLabels: readonly [InformationPanelId, string][] = [
     ["avatar", "Avatar"],
@@ -67,6 +72,7 @@
       kind: id,
       title,
       state: {},
+      minSize: { width: 200, height: 80 },
       placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
     }));
   const worldPanels: readonly (WorkspacePanelSpec & { id: WorldPanelId })[] = [
@@ -339,6 +345,7 @@
       terminal: {
         component: TerminalPanel,
         componentProps: { registerLineNavigator: registerTerminalLineNavigator },
+        floatable: true,
         preserveDomWhenHidden: true,
         session,
       },
@@ -368,15 +375,23 @@
         preserveDomWhenHidden: true,
         session,
       },
-      map: { component: MapPanel, session },
+      map: { collapsible: true, component: MapPanel, floatable: true, session },
       areaMap: { component: MapPanel, session },
-      roomImage: { component: RoomImagePanel, session },
-      roomPlaylist: { component: RoomPlaylistPanel, preserveDomWhenHidden: true, session },
+      roomImage: { collapsible: true, component: RoomImagePanel, floatable: true, session },
+      roomPlaylist: {
+        collapsible: true,
+        component: RoomPlaylistPanel,
+        floatable: true,
+        preserveDomWhenHidden: true,
+        session,
+      },
       ...Object.fromEntries(
         informationPanels.map((panel) => [
           panel.kind,
           {
+            collapsible: true,
             component: panel.id === "connection-health" ? ConnectionHealthPanel : InformationPanel,
+            floatable: true,
             session,
           },
         ]),
@@ -794,7 +809,7 @@
   <div
     bind:this={host}
     id="phase2-workspace-host"
-    class="workspace-host"
+    class="workspace-host df-workspace"
     data-testid="workspace-host"
   ></div>
 </section>

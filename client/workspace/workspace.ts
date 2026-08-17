@@ -21,7 +21,10 @@ export interface WorkspacePanelSpec {
   title: string;
   state: PanelState;
   placement?: PanelPlacement;
+  /** Fixed grid width (pins a rail column). */
   size?: { width?: number; height?: number };
+  /** Minimum resizable size enforced as a group constraint. */
+  minSize?: { width?: number; height?: number };
 }
 
 export interface WorkspaceSnapshot {
@@ -37,8 +40,12 @@ export interface WorkspaceRendererProps {
 
 export interface WorkspaceRendererDefinition {
   canClose?: (panelId: string) => boolean;
+  /** Show an accessible collapse control that hides the body but keeps the header. */
+  collapsible?: boolean;
   component: Component<WorkspaceRendererProps>;
   componentProps?: Record<string, unknown>;
+  /** Show an accessible float/dock control. */
+  floatable?: boolean;
   preserveDomWhenHidden?: boolean;
   session?: Session;
   showCloseButton?: (panelId: string) => boolean;

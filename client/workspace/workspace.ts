@@ -32,6 +32,23 @@ export interface WorkspaceSnapshot {
   layout: unknown;
 }
 
+/**
+ * What actually gets persisted: one Dockview tree plus the ordered panel ids of
+ * every scrolling rail root. Rail keys stay opaque strings -- which rails exist
+ * is a layout decision, and this contract stays vendor- and layout-neutral.
+ * Version 1 payloads remain readable as a bare Dockview tree.
+ */
+export interface CompositeWorkspaceSnapshot {
+  version: 2;
+  layout: {
+    collapsed: Record<string, string[]>;
+    dockview: unknown;
+    scrollviews: Record<string, string[]>;
+  };
+}
+
+export type PersistedWorkspaceSnapshot = WorkspaceSnapshot | CompositeWorkspaceSnapshot;
+
 export interface WorkspaceRendererProps {
   panelId: string;
   state: Readable<PanelState>;

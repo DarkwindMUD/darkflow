@@ -1878,7 +1878,8 @@ html[data-background-active="true"] #output-shell {
   display: flex;
 }
 
-#avatar-meter {
+#avatar-meter,
+.avatar-meter {
   position: relative;
   display: none;
   flex: 0 0 24px;
@@ -1892,7 +1893,13 @@ html[data-background-active="true"] #output-shell {
   font-family: var(--df-font-mono);
 }
 
-#avatar-meter.visible {
+#avatar-meter.visible,
+.avatar-meter.visible {
+  display: flex;
+}
+
+/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip. */
+.avatar-meter {
   display: flex;
 }
 
@@ -1905,82 +1912,100 @@ html[data-background-active="true"] #output-shell {
   transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
-#avatar-meter.full .avatar-meter-fill {
+#avatar-meter.full .avatar-meter-fill,
+.avatar-meter.full .avatar-meter-fill {
   background: linear-gradient(90deg, #b62335, #ff7b72);
   box-shadow: 0 0 18px rgba(255, 123, 114, 0.68);
 }
 
-#avatar-meter.patron-mitra {
+#avatar-meter.patron-mitra,
+.avatar-meter.patron-mitra {
   border-top-color: #9e6a03;
   background:
     linear-gradient(180deg, rgba(242, 204, 96, 0.16), rgba(13, 17, 23, 0.2)),
     #140f05;
 }
 
-#avatar-meter.patron-mitra .avatar-meter-fill {
+#avatar-meter.patron-mitra .avatar-meter-fill,
+.avatar-meter.patron-mitra .avatar-meter-fill {
   background: linear-gradient(90deg, #8f6b18, #f2cc60);
   box-shadow: 0 0 14px rgba(242, 204, 96, 0.44);
 }
 
 #avatar-meter.patron-mitra.full .avatar-meter-fill,
-#avatar-meter.patron-mitra.active .avatar-meter-fill {
+.avatar-meter.patron-mitra.full .avatar-meter-fill,
+#avatar-meter.patron-mitra.active .avatar-meter-fill,
+.avatar-meter.patron-mitra.active .avatar-meter-fill {
   background: linear-gradient(90deg, #f2cc60, #fff2a8, #f2cc60);
   box-shadow: 0 0 20px rgba(242, 204, 96, 0.72);
 }
 
-#avatar-meter.patron-mitra.active {
+#avatar-meter.patron-mitra.active,
+.avatar-meter.patron-mitra.active {
   border-top-color: #f2cc60;
 }
 
-#avatar-meter.patron-gaea {
+#avatar-meter.patron-gaea,
+.avatar-meter.patron-gaea {
   border-top-color: var(--df-btn-bg);
   background:
     linear-gradient(180deg, rgba(126, 231, 135, 0.14), rgba(13, 17, 23, 0.2)),
     #07140a;
 }
 
-#avatar-meter.patron-gaea .avatar-meter-fill {
+#avatar-meter.patron-gaea .avatar-meter-fill,
+.avatar-meter.patron-gaea .avatar-meter-fill {
   background: linear-gradient(90deg, #1f7a3b, #7ee787);
   box-shadow: 0 0 14px rgba(126, 231, 135, 0.42);
 }
 
 #avatar-meter.patron-gaea.full .avatar-meter-fill,
-#avatar-meter.patron-gaea.active .avatar-meter-fill {
+.avatar-meter.patron-gaea.full .avatar-meter-fill,
+#avatar-meter.patron-gaea.active .avatar-meter-fill,
+.avatar-meter.patron-gaea.active .avatar-meter-fill {
   background: linear-gradient(90deg, #56d364, #aff5b4, #56d364);
   box-shadow: 0 0 20px rgba(126, 231, 135, 0.68);
 }
 
-#avatar-meter.patron-gaea.active {
+#avatar-meter.patron-gaea.active,
+.avatar-meter.patron-gaea.active {
   border-top-color: #7ee787;
 }
 
-#avatar-meter.patron-set {
+#avatar-meter.patron-set,
+.avatar-meter.patron-set {
   border-top-color: #8957e5;
   background:
     linear-gradient(180deg, rgba(210, 168, 255, 0.16), rgba(13, 17, 23, 0.2)),
     #10091a;
 }
 
-#avatar-meter.patron-set .avatar-meter-fill {
+#avatar-meter.patron-set .avatar-meter-fill,
+.avatar-meter.patron-set .avatar-meter-fill {
   background: linear-gradient(90deg, #5f2c82, #d2a8ff);
   box-shadow: 0 0 14px rgba(210, 168, 255, 0.46);
 }
 
 #avatar-meter.patron-set.full .avatar-meter-fill,
-#avatar-meter.patron-set.active .avatar-meter-fill {
+.avatar-meter.patron-set.full .avatar-meter-fill,
+#avatar-meter.patron-set.active .avatar-meter-fill,
+.avatar-meter.patron-set.active .avatar-meter-fill {
   background: linear-gradient(90deg, #a371f7, #e2c5ff, #a371f7);
   box-shadow: 0 0 20px rgba(210, 168, 255, 0.72);
 }
 
-#avatar-meter.patron-set.active {
+#avatar-meter.patron-set.active,
+.avatar-meter.patron-set.active {
   border-top-color: #d2a8ff;
 }
 
-#avatar-meter.active {
+#avatar-meter.active,
+.avatar-meter.active {
   border-top-color: #ff7b72;
 }
 
-#avatar-meter.active .avatar-meter-fill {
+#avatar-meter.active .avatar-meter-fill,
+.avatar-meter.active .avatar-meter-fill {
   width: 100%;
   background: linear-gradient(90deg, var(--df-err), #ffb3ad, var(--df-err));
   background-size: 200% 100%;

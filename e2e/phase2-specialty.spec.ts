@@ -42,8 +42,18 @@ function panelDragHandle(page: Page, panelId: string): Locator {
 }
 
 async function dockPanelAsTab(page: Page, panelId: string, targetPanelId: string): Promise<void> {
-  const source = await panelDragHandle(page, panelId).boundingBox();
-  const target = await panelDragHandle(page, targetPanelId).boundingBox();
+  // Use the visible label rect, not the drag handle rect. Vendor CSS gives
+  // `.dv-tab .dv-default-tab { width: 100% }` inside a `.dv-tab` that has
+  // `flex-shrink: 0` but no explicit width -- both resolve to 0. The label
+  // stays visible via `overflow: visible`, so it is the only reliable
+  // click target across browsers; Firefox and WebKit dispatch pointerdown to
+  // whatever their hit-test returns, and a 0-width parent is not it.
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const target = await panelDragHandle(page, targetPanelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
   expect(source).not.toBeNull();
   expect(target).not.toBeNull();
   await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);

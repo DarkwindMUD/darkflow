@@ -6,7 +6,7 @@ import type {
 } from "../model/profiles.ts";
 import { commit, readState, type StorageLike } from "../storage/repository.ts";
 
-import type { WorkspaceSnapshot as DockviewWorkspaceSnapshot } from "./workspace.ts";
+import type { PersistedWorkspaceSnapshot as DockviewWorkspaceSnapshot } from "./workspace.ts";
 
 export type LoadCharacterWorkspaceResult =
   | { success: true; snapshot: DockviewWorkspaceSnapshot; recovered: false }
@@ -34,7 +34,33 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function isDockviewSnapshot(
   value: unknown,
 ): value is DockviewWorkspaceSnapshot & { layout: JsonObject } {
-  return isObject(value) && value.version === 1 && isObject(value.layout);
+  // Version 1 is a bare Dockview tree; version 2 wraps that tree alongside the
+  // ordered ids of each rail root. Both stay readable so a rollback degrades to
+  // the default layout rather than losing the character profile.
+  if (!isObject(value) || !isObject(value.layout)) return false;
+  if (value.version === 1) return true;
+  if (value.version !== 2) return false;
+
+  const { collapsed, dockview, scrollviews } = value.layout;
+  if (!isObject(collapsed) || !isObject(dockview) || !isObject(scrollviews)) return false;
+  if (!["left", "right"].every((side) => Array.isArray(scrollviews[side]))) return false;
+  if (!["left", "right"].every((side) => Array.isArray(collapsed[side]))) return false;
+
+  const orders = Object.values(scrollviews);
+  const collapsedIds = Object.values(collapsed);
+  if (
+    ![...orders, ...collapsedIds].every(
+      (ids) => Array.isArray(ids) && ids.every((id) => typeof id === "string"),
+    )
+  ) {
+    return false;
+  }
+
+  const panelIds = orders.flat();
+  return (
+    new Set(panelIds).size === panelIds.length &&
+    collapsedIds.flat().every((id) => panelIds.includes(id))
+  );
 }
 
 function isCharacterWorkspaceSnapshot(value: unknown): value is CharacterWorkspaceSnapshot {

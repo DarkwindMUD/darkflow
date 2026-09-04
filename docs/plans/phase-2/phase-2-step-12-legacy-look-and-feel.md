@@ -508,3 +508,131 @@ Plan self-review: **PASS (9/10)**
 
 Room/Chat and optional all-floating/per-pane customization are deliberately not
 hidden inside the implementation plan. Their expansion gates are explicit.
+
+## Rail-group spike findings (2026-08-17)
+
+**Verdict: use option 3 (`RailPanel`).** The subclass can render a scrolling
+rail and retains native drag-out, but Dockview cannot natively derive a vertical
+card insertion index when a panel returns to the rail. Adding that gesture to
+the subclass would duplicate the custom drop work option 3 already requires.
+
+### Probe results
+
+- **S1 passed for the public injection seam.** `DockviewComponent` was
+  constructible and `createGroup` was overridable; marker attributes reached
+  every group, the focused workspace serialization/recovery tests passed, and
+  check, lint, format, build/artifact, and the 681-test Node suite passed. One
+  plan detail was stale: `dockview` does not export `GroupOptions` by name, so
+  the spike derived the public parameter type from
+  `DockviewComponent["createGroup"]` instead of importing a private declaration.
+- **S2 passed, but required two public event interceptions plus DOM takeover.**
+  Tagged groups were created through public `api.addGroup` calls with
+  `rail-left` and `rail-right` ids. The subclass listened to
+  `group.model.onDidAddPanel` and `onDidActivePanelChange`, then re-appended every
+  public `panel.view.content.element` in panel order. It made the public content
+  container a vertical overflow scroller, overrode Dockview's active-panel
+  height, hid the stock strip, and reparented each existing `.dv-tab` wrapper as
+  the corresponding card header. All ten left-rail panels rendered in document
+  order inside one scrolling group without patching a private field.
+- **S3 failed at return-drop ordering.** Native pointer drag moved a reparented
+  card out of the rail into the main grid. A generic center-zone drop could also
+  put it into the opposite tagged group and stock serialization restored that
+  membership. However, dropping on a particular vertical card header did not
+  resolve, and dropping on the group supplied no pointer-derived vertical index.
+  Dockview's tab reorder listener remains on the original tabs-list element and
+  computes insertion from horizontal `clientX`; reparenting the tab wrappers
+  does not move that listener or change its axis. Passing S3 would therefore
+  require a custom vertical hit test and explicit indexed move.
+
+### Option 3 drag consequence
+
+Keep each rail as one ordinary Dockview `RailPanel` and its cards as Svelte
+content. Float-out and return must use one bounded custom pointer/keyboard
+gesture: hit-test the vertical card headers, preserve the panel id, destroy and
+recreate the panel at the requested Dockview location, and insert it at the
+pointer-derived rail index. Do not retain the `DockviewComponent` subclass; it
+adds private-DOM coupling without removing this custom gesture.
+
+## Standalone Scrollview spike findings (2026-08-17)
+
+**Technical verdict: viable, but not yet an adoption pass.** A standalone root
+kept content-height rails and completed rail-to-main, main-to-rail, and
+rail-to-rail transfers with the terminal island unchanged. The throwaway also
+showed that adoption changes the coordinate, persistence, mobile, and pane-chrome
+boundaries broadly enough that it must be a planned Green PR rather than a rail
+component swap. The strict spike gate remains open because the scrolled-column
+case was not explicitly driven and the full browser matrix was red.
+
+### Probe results
+
+- **S0 passed through native HTML5 data, not Dockview's private transfer writer.**
+  `dockview-core/dist/esm/dnd/dataTransfer` is blocked by the package `exports`
+  map (`ERR_PACKAGE_PATH_NOT_EXPORTED`). A custom
+  `application/x-darkflow-scrollview-panel` payload reached the public
+  `api.onUnhandledDragOver` event; calling `accept()` rendered Dockview's native
+  overlay, and `api.onDidDrop` exposed the same payload through
+  `nativeEvent.dataTransfer`. No package patch or private import was required.
+- **S1's rendering question passed.** The left root rendered all ten frozen rail
+  panels in document order as `flex: 0 0 auto` cards under one `overflow-y: auto`
+  scroller, including cards below 100px, while reusing the existing Svelte
+  renderer rather than copying it. The production regression half of S1 did not
+  pass; see the integration result below.
+- **S2 passed.** An HTML5 rail card activated Dockview's native overlay and was
+  recreated in the selected Dockview group with the same product panel id, kind,
+  title, and state owner. The Svelte content remounted; the terminal did not.
+- **S3 passed all three transfer directions and the unscrolled vertical index.**
+  The Scrollview root read Dockview's public `getPanelData()` during the pointer
+  drag, calculated the index from its own card rectangles, and handled the drop
+  before Dockview cleared the process-wide payload. The explicit
+  non-zero-`scrollTop` case was missed, so this is not the plan's complete S3
+  pass even though the owned-DOM algorithm is scroll-coordinate independent.
+- **S4 passed focused persistence and recovery.** Reload restored a panel moved
+  into the non-default opposite rail, and the existing two malformed-layout
+  scenarios stayed green. The spike required `WorkspaceSnapshot` to change; all
+  runtime and test changes were then removed as required.
+
+### Required public surfaces and snapshot shape
+
+The working path depended on public `dockview` exports/events only:
+`getPanelData`, `DockviewApi.onUnhandledDragOver`,
+`DockviewUnhandledDragOverEvent.accept`, `DockviewApi.onDidDrop`,
+`DockviewApi.addPanel`/`removePanel`, and ordinary panel/group accessors. Outbound
+rail drags used HTML5 `DataTransfer`; inbound Dockview drags used a capture-phase
+`pointermove`/`pointerup` listener owned by Scrollview. Production work must add a
+keyboard-equivalent transfer before claiming accessibility parity.
+
+The minimum composite contract was:
+
+```ts
+{
+  version: 2,
+  layout: {
+    dockview: unknown,
+    scrollviews: Record<"left" | "right", string[]>,
+  },
+}
+```
+
+Version 1 remained readable as one legacy Dockview tree. Version 2 stored one
+Dockview tree plus ordered panel-id trees for the left and right roots. This is a
+real vendor-neutral contract change, not an adapter-only detail.
+
+### Integration result
+
+Focused Scrollview, save/reload, and malformed-recovery tests passed. `npm run
+check`, lint, format check, production build/artifact verification, and all
+681 Node tests passed. The full Chromium/mobile matrix finished **89 passed, 13
+skipped, 9 failed**. Failures exposed four adoption tasks:
+
+1. Floating/default bounds must use the center Dockview host rather than the old
+   full workspace host; IDE and restored server-window geometry shifted.
+2. Existing persistent-pane collapse/float/dock controls need a Scrollview card
+   owner instead of disappearing with Dockview tabs.
+3. Compact/mobile must remove or inert the rail roots; empty 260px roots
+   intercepted mobile pointer input.
+4. The four intentional shell screenshot changes need new baselines only after
+   the geometry and mobile regressions are fixed.
+
+Do not merge the spike. If Scrollview is selected, implement those four items,
+add the explicit scrolled-index and keyboard-transfer checks, then require the
+full browser matrix before replacing option 3 in the main plan.

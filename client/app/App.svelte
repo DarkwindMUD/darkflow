@@ -51,6 +51,7 @@
   let everConnected = $state(false);
   let now = $state(Date.now());
   let shellRoot = $state<HTMLElement>();
+  let workspaceToolbar = $state<HTMLElement>();
   let workspaceHost = $state<{
     navigateTerminalLine(lineId: number): boolean;
     draftTerminalCommand(command: string): boolean;
@@ -367,9 +368,57 @@
 >
   <header class="app-chrome">
     <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
-    <div>
-      <h1>{gameTitle(shell.gameName)}</h1>
-    </div>
+    <h1>{gameTitle(shell.gameName)}</h1>
+
+    <form class="connection-form" aria-label="Connection" onsubmit={connect}>
+      {#if !shell.zorkOnly}
+        <label>
+          Host
+          <input aria-label="Host" bind:value={host} autocomplete="url" />
+        </label>
+        <label>
+          Port
+          <input
+            aria-label="Port"
+            type="number"
+            min="1"
+            max="65535"
+            value={port}
+            oninput={(event) => (port = event.currentTarget.value)}
+          />
+        </label>
+        <label>
+          Protocol
+          <select
+            aria-label="Connection protocol"
+            bind:value={protocol}
+            onchange={(event) => persistProtocol(event.currentTarget.value as TransportName)}
+          >
+            <option value="ws">WebSocket</option>
+            <option value="wss">Secure WebSocket</option>
+            <option value="telnet">Telnet proxy</option>
+            <option value="telnets">Secure telnet proxy</option>
+          </select>
+        </label>
+      {:else}
+        <p>Darkwind connection</p>
+      {/if}
+
+      {#if snapshot.state === "connected"}
+        <button type="button" onclick={() => session.disconnect()}>Disconnect</button>
+      {:else}
+        <button type="submit" disabled={snapshot.state === "connecting"}>
+          {snapshot.state === "connecting" ? "Connecting..." : "Connect"}
+        </button>
+      {/if}
+    </form>
+
+    <p data-testid="connection-status" role="status" aria-live="polite" class="app-chrome-status">
+      {connectionStatus}
+    </p>
+
+    <div class="app-workspace-slot" bind:this={workspaceToolbar}></div>
+
     <div class="app-actions">
       <AudioControls {session} />
       <NotificationsMenu {session} onactivate={activateNotification} />
@@ -391,55 +440,12 @@
     </div>
   </header>
 
-  <form class="connection-form" aria-label="Connection" onsubmit={connect}>
-    {#if !shell.zorkOnly}
-      <label>
-        Host
-        <input aria-label="Host" bind:value={host} autocomplete="url" />
-      </label>
-      <label>
-        Port
-        <input
-          aria-label="Port"
-          type="number"
-          min="1"
-          max="65535"
-          value={port}
-          oninput={(event) => (port = event.currentTarget.value)}
-        />
-      </label>
-      <label>
-        Protocol
-        <select
-          aria-label="Connection protocol"
-          bind:value={protocol}
-          onchange={(event) => persistProtocol(event.currentTarget.value as TransportName)}
-        >
-          <option value="ws">WebSocket</option>
-          <option value="wss">Secure WebSocket</option>
-          <option value="telnet">Telnet proxy</option>
-          <option value="telnets">Secure telnet proxy</option>
-        </select>
-      </label>
-    {:else}
-      <p>Darkwind connection</p>
-    {/if}
-
-    {#if snapshot.state === "connected"}
-      <button type="button" onclick={() => session.disconnect()}>Disconnect</button>
-    {:else}
-      <button type="submit" disabled={snapshot.state === "connecting"}>
-        {snapshot.state === "connecting" ? "Connecting..." : "Connect"}
-      </button>
-    {/if}
-  </form>
-
-  <p data-testid="connection-status" role="status" aria-live="polite">{connectionStatus}</p>
   <WorkspaceHost
     bind:this={workspaceHost}
     characterProfileId={session.characterProfileId}
     presentationAllowed={!shell.zorkOnly}
     {session}
+    {workspaceToolbar}
   />
 </main>
 
@@ -560,18 +566,88 @@
     display: flex;
     gap: 0.75rem;
     align-items: center;
-    margin-bottom: 0.75rem;
+    /* Wide screens use one stable row; narrower screens move the intact
+       connection form to a deliberate second row below. */
+    flex-wrap: nowrap;
+    min-width: 0;
+    margin-bottom: 0.5rem;
   }
 
   .app-chrome img {
-    width: 2.5rem;
-    height: 2.5rem;
+    width: 2rem;
+    height: 2rem;
+  }
+
+  .app-chrome h1 {
+    /* Compact title -- the toolbar is a working row, not a hero. */
+    font-size: 1.25rem;
+    margin-right: 0.5rem;
   }
 
   .app-actions {
     display: flex;
+    flex: 0 0 auto;
     gap: 0.5rem;
     margin-left: auto;
+    align-items: center;
+  }
+
+  /*
+   * The connection-status paragraph and the workspace toolbar (Panels button
+   * plus workspace-status) sit on the header row. Compact them so a full row
+   * still fits on desktop.
+   */
+  .app-chrome-status,
+  .app-workspace-slot {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.85rem;
+    color: var(--df-muted, #8b949e);
+  }
+  .app-workspace-slot {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+  }
+  /*
+   * Cap the connection status width so a text change from `Disconnected` to
+   * `Connected via ws` (and back) doesn't shift the header enough to flip
+   * between one and two wrapped rows. When the row wraps or unwraps mid-test,
+   * Dockview's tab drop targets sit at moving coordinates and drag helpers
+   * hit the wrong element.
+   */
+  .app-chrome-status {
+    flex: 0 0 auto;
+    min-width: 12ch;
+    max-width: 12ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /*
+   * Svelte prunes CSS whose left-hand match doesn't appear in this component's
+   * template; the portalled children arrive at runtime, so the whole rule must
+   * be `:global` -- otherwise Svelte strips it and the paragraph inflates back
+   * to full row width, pushing the actions block onto its own line.
+   */
+  :global(.app-workspace-slot > *) {
+    margin: 0;
+    flex: 0 0 auto;
+    width: auto;
+  }
+  /*
+   * Cap the workspace status width so long transient messages (`Saved
+   * workspace is incompatible; using the default layout.`) don't inflate the
+   * header. Both min- and max-width pinned so the width stays constant across
+   * transitions.
+   */
+  :global(.app-workspace-slot .workspace-status) {
+    min-width: 18ch;
+    max-width: 18ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .app-actions button {
@@ -586,14 +662,84 @@
   .connection-form,
   .reconnect-actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-    align-items: end;
+    gap: 0.5rem;
+    align-items: center;
   }
 
-  label {
-    display: grid;
-    gap: 0.25rem;
+  .connection-form {
+    flex: 0 0 auto;
+    flex-wrap: nowrap;
+  }
+
+  .reconnect-actions {
+    flex-wrap: wrap;
+  }
+
+  /* Inline label + input pairs so host/port/protocol/connect fit on one row. */
+  .connection-form label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.85rem;
+    color: var(--df-muted, #8b949e);
+  }
+
+  @media (max-width: 1200px) {
+    .app-chrome {
+      flex-wrap: wrap;
+    }
+
+    .app-chrome .connection-form {
+      flex: 1 0 100%;
+      order: 2;
+    }
+  }
+
+  /*
+   * At mobile widths the toolbar can't fit; stack the three sections instead.
+   * `.app-actions` stays right-aligned so its overlay-anchored expanded panel
+   * (audio widget) has room to open to the left inside the viewport.
+   */
+  @media (max-width: 700px) {
+    /*
+     * Mobile viewports cannot fit the desktop single-row toolbar; allow
+     * wrapping and split into two rows: [logo + title + actions] on row 1,
+     * connection form on row 2. Desktop stays `nowrap` so layout is stable
+     * for Dockview.
+     */
+    .app-chrome {
+      flex-wrap: wrap;
+    }
+    .app-chrome .connection-form {
+      flex-wrap: wrap;
+    }
+    .app-actions {
+      flex-shrink: 0;
+    }
+    /*
+     * The audio widget expanded panel is anchored to `#audio-widget-root` and
+     * opens leftward via `right: -36; width: 300`, so the widget needs enough
+     * space to its left inside the viewport. Reorder it to the end of the
+     * actions row so it sits against the right edge on mobile.
+     */
+    /*
+     * Svelte scopes `.app-actions`; audio-widget-root and its expanded panel
+     * live in AudioControls, a different scope. Use :global so the reorder
+     * and expanded-panel alignment actually reach them.
+     */
+    .app-actions :global(#audio-widget-root) {
+      order: 99;
+    }
+    /*
+     * Legacy CSS anchors the expanded panel with `right: -36px`, tuned to a
+     * layout where the widget sat further from the viewport's right edge.
+     * On the reordered mobile row the widget is now against the right edge,
+     * so anchor the panel to `right: 0` -- it opens fully leftward inside
+     * the viewport without spilling off the right.
+     */
+    .app-actions :global(.sound-widget-expanded) {
+      right: 0;
+    }
   }
 
   input,

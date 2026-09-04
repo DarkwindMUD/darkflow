@@ -41,8 +41,13 @@ function panelDragHandle(page: Page, panelId: string): Locator {
 }
 
 async function dockPanelAsTab(page: Page, panelId: string, targetPanelId: string): Promise<void> {
-  const source = await panelDragHandle(page, panelId).boundingBox();
-  const target = await panelDragHandle(page, targetPanelId).boundingBox();
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const target = await panelDragHandle(page, targetPanelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+
   expect(source).not.toBeNull();
   expect(target).not.toBeNull();
   await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);

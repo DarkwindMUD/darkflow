@@ -182,15 +182,6 @@ async function center(locator: Locator): Promise<{ x: number; y: number }> {
   return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
 }
 
-async function drag(page: Page, source: Locator, target: Locator): Promise<void> {
-  const start = await center(source);
-  const end = await center(target);
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  await page.mouse.move(end.x, end.y, { steps: 6 });
-  await page.mouse.up();
-}
-
 async function dragBy(page: Page, source: Locator, x: number, y: number): Promise<void> {
   const start = await center(source);
   await page.mouse.move(start.x, start.y);
@@ -254,11 +245,12 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(page.getByTestId("terminal-announcer")).toContainText("phase two ANSI");
 
   const beforeLayout = await output.textContent();
-  await drag(
-    page,
-    page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'),
-    page.locator('[data-panel-drag-handle][data-panel-id="terminal"]'),
-  );
+  // A rail-local reorder is the layout edit here. Rails are their own root now,
+  // so dragging Avatar onto the terminal tab is a separate transfer feature; the
+  // point of this step is that a persisted layout edit leaves the island intact.
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="status"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'));
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.setViewportSize({ width: 1_100, height: 720 });
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
@@ -299,11 +291,10 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
   expect(await output.textContent()).toBe(beforeLayout);
 
-  await drag(
-    page,
-    floatingHandle,
-    page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'),
-  );
+  // Dock back through the pane control. This used to drag onto the Avatar tab,
+  // which is a rail card now rather than a Dockview drop target -- and the
+  // control is the affordance a keyboard user actually has.
+  await page.getByRole("button", { name: "Dock Terminal", exact: true }).click();
   await expect(floatingHandle).toHaveCount(0);
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();

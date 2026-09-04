@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
+  import { SvelteMap } from "svelte/reactivity";
   import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
   import type { Session } from "../runtime/session.ts";
   import type { WorldPanelId } from "../runtime/world.ts";
-  import { createWorkspace } from "./dockview-workspace";
+  import { createWorkspace, type WorkspaceInspector } from "./dockview-workspace";
+  import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
+  import { RAIL_DRAG_TYPE, Scrollview } from "./scrollview";
   import "./dockview-theme.css";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
@@ -20,10 +23,11 @@
   import ServerWindowPanel from "./ServerWindowPanel.svelte";
   import { focusTerminalIsland } from "./terminal-island";
   import type {
+    CompositeWorkspaceSnapshot,
+    PersistedWorkspaceSnapshot,
     Workspace,
     WorkspacePanelSpec,
     WorkspaceRendererRegistry,
-    WorkspaceSnapshot,
   } from "./workspace";
 
   const SHARED_VIDEO_GEOMETRY_KEY = "darkwind-shared-video-window-geometry";
@@ -32,10 +36,12 @@
     characterProfileId,
     presentationAllowed,
     session,
+    workspaceToolbar,
   }: {
     characterProfileId: CharacterProfileId;
     presentationAllowed: boolean;
     session: Session;
+    workspaceToolbar?: HTMLElement | undefined;
   } = $props();
 
   const terminal: WorkspacePanelSpec = {
@@ -113,9 +119,10 @@
     placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
 
-  // Legacy "classic hybrid" default: terminal center, two ordered 260px rails.
+  // Legacy "classic hybrid" default: terminal center, two ordered rails. Each
+  // rail is its own Scrollview root, so cards size to their content under one
+  // scrollbar instead of competing for a fixed grid extent.
   // Cyberware and Connection health stay launcher-only (available, not default).
-  const RAIL_WIDTH = 260;
   const leftRailOrder: readonly InformationPanelId[] = [
     "avatar",
     "status",
@@ -135,47 +142,121 @@
     "achievements",
   ];
 
-  function railPanelSpec(
-    id: InformationPanelId,
-    side: "left" | "right",
-    previousId: string | null,
-  ): WorkspacePanelSpec {
+  function railPanelSpec(id: InformationPanelId): WorkspacePanelSpec {
     const title = informationPanelLabels.find(([panelId]) => panelId === id)?.[1] ?? id;
-    return {
-      id,
-      kind: id,
-      title,
-      state: {},
-      size: { width: RAIL_WIDTH },
-      placement: previousId
-        ? { kind: "grid", direction: "below", referencePanelId: previousId }
-        : { kind: "grid", direction: side, referencePanelId: terminal.id },
-    };
+    return { id, kind: id, title, state: {} };
   }
 
-  /** Build one rail: stack panels top-to-bottom; each carries the 260px width. */
-  function buildRail(
-    ws: Workspace,
-    order: readonly InformationPanelId[],
-    side: "left" | "right",
-  ): void {
-    let previous: string | null = null;
-    for (const id of order) {
-      ws.addOrUpdatePanel(railPanelSpec(id, side, previous));
-      previous = id;
+  /**
+   * Compact and mobile zones have no rails, so rail panels route to the Dockview
+   * grid instead. Without this a panel opened from the mobile sheet lands in a
+   * hidden rail: present in the DOM, but invisible and unclickable.
+   */
+  let railsEnabled = true;
+
+  /** Which rail a panel belongs to by configuration, open or not. */
+  function railHomeFor(id: string): Scrollview | undefined {
+    if (!railsEnabled) return undefined;
+    if (leftRailOrder.includes(id as InformationPanelId)) return leftRail;
+    if (rightRailOrder.includes(id as InformationPanelId)) return rightRail;
+    return undefined;
+  }
+
+  /** Which rail currently holds a panel. A floated-out card has no rail. */
+  function railFor(id: string): Scrollview | undefined {
+    if (!railsEnabled) return undefined;
+    if (leftRail?.hasPanel(id)) return leftRail;
+    if (rightRail?.hasPanel(id)) return rightRail;
+    return undefined;
+  }
+
+  /**
+   * Resolve a panel to whichever root owns it, so the launcher and the
+   * visibility sync do not have to branch on rail membership. A panel that is
+   * open somewhere resolves to that root; one that is closed resolves to the
+   * root it would open into.
+   */
+  function ownerOf(
+    id: string,
+  ): Pick<Workspace, "addOrUpdatePanel" | "hasPanel" | "removePanel"> | undefined {
+    return railFor(id) ?? (workspace?.hasPanel(id) ? workspace : (railHomeFor(id) ?? workspace));
+  }
+
+  /** Where a floated-out card came from, so docking can put it back exactly. */
+  const railOrigins = new SvelteMap<string, { rail: Scrollview; index: number }>();
+  const RAIL_FLOAT_BOUNDS = { left: 40, top: 40, width: 320, height: 240 };
+  /** Reclaiming moves panels, which fires the layout event that calls it again. */
+  let reclaiming = false;
+
+  /**
+   * A rail panel may sit in the Dockview tree only while it is floating. The
+   * moment it is docked it returns to its rail, because a content-height card
+   * docked into the grid stretches to full height -- the very layout the rails
+   * exist to escape. This also repairs a version 1 snapshot, which restores
+   * every rail panel into the grid.
+   */
+  function reclaimDockedRailPanels(ws: Workspace & WorkspaceInspector): void {
+    if (reclaiming || !railsEnabled) return;
+    reclaiming = true;
+    for (const id of [...leftRailOrder, ...rightRailOrder]) {
+      if (!ws.hasPanel(id) || ws.inspectPanel(id)?.floating) continue;
+      const origin = railOrigins.get(id);
+      railOrigins.delete(id);
+      void ws.removePanel(id);
+      const rail = origin?.rail ?? railHomeFor(id);
+      rail?.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), origin?.index);
+      // Bring the returned card into view; without this a long rail scrolled
+      // past the origin index makes the reclaim look like a disappearance.
+      rail?.scrollCardIntoView(id);
+    }
+    reclaiming = false;
+  }
+
+  /** Lift a card out of its rail into a floating Dockview pane, remembering its slot. */
+  function floatFromRail(ws: Workspace, id: string): void {
+    const rail = railFor(id);
+    if (!rail) return;
+    railOrigins.set(id, { rail, index: rail.indexOf(id) });
+    void rail.removePanel(id).then(() => {
+      ws.addOrUpdatePanel({
+        ...railPanelSpec(id as InformationPanelId),
+        placement: { kind: "floating", bounds: RAIL_FLOAT_BOUNDS },
+      });
+      requestSave?.();
+    });
+  }
+
+  /** The frozen rail membership, used for a fresh layout and for version 1 payloads. */
+  function fillRailsWithDefaults(): void {
+    for (const [order, rail] of [
+      [leftRailOrder, leftRail],
+      [rightRailOrder, rightRail],
+    ] as const) {
+      if (!rail) continue;
+      for (const id of order) {
+        if (!rail.hasPanel(id)) rail.addOrUpdatePanel(railPanelSpec(id));
+      }
     }
   }
 
   /** Fresh classic-hybrid layout: terminal center plus the two frozen rails. */
-  function applyDefaultLayout(ws: Workspace): void {
+  function applyDefaultLayout(ws: Workspace & WorkspaceInspector): void {
     ws.addOrUpdatePanel(terminal);
-    buildRail(ws, leftRailOrder, "left");
-    buildRail(ws, rightRailOrder, "right");
+    reclaimDockedRailPanels(ws);
+    fillRailsWithDefaults();
     ws.activatePanel(terminal.id);
   }
 
   let host: HTMLElement;
+  let workspaceControlsEl: HTMLElement | undefined = $state();
+  let workspaceStatusEl: HTMLElement | undefined = $state();
+  let leftRailHost: HTMLElement;
+  let rightRailHost: HTMLElement;
+  let leftRail: Scrollview | undefined;
+  let rightRail: Scrollview | undefined;
   let workspace: Workspace | undefined;
+  /** Set once the save pipeline exists; rail edits are not Dockview layout events. */
+  let requestSave: (() => void) | undefined;
   let terminalLineNavigator: ((lineId: number) => boolean) | undefined;
   let status = $state("Loading workspace...");
   let openInformationPanelIds = $state<string[]>([]);
@@ -194,7 +275,7 @@
   }
 
   function syncVisiblePanels(): void {
-    const visible = informationPanels.filter((panel) => workspace?.hasPanel(panel.id));
+    const visible = informationPanels.filter((panel) => ownerOf(panel.id)?.hasPanel(panel.id));
     openInformationPanelIds = visible.map((panel) => panel.id);
     session.information.setVisiblePanels(visible.map((panel) => panel.id));
     const visibleWorldPanels = [...worldPanels, areaMap].filter((panel) =>
@@ -209,13 +290,16 @@
   }
 
   async function toggleInformationPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
-    if (!workspace) return;
-    if (workspace.hasPanel(panel.id)) {
-      await workspace.removePanel(panel.id);
+    const owner = ownerOf(panel.id);
+    if (!owner) return;
+    if (owner.hasPanel(panel.id)) {
+      await owner.removePanel(panel.id);
     } else {
-      workspace.addOrUpdatePanel(panel);
-      if (activate) workspace.activatePanel(panel.id);
+      owner.addOrUpdatePanel(panel);
+      // A rail card is always in view; only the Dockview grid has hidden tabs.
+      if (activate && !railFor(panel.id)) workspace?.activatePanel(panel.id);
     }
+    if (railHomeFor(panel.id)) requestSave?.();
     syncVisiblePanels();
   }
 
@@ -333,6 +417,22 @@
     };
   }
 
+  $effect(() => {
+    // Portal Panels button + status paragraph up to the App shell's toolbar
+    // slot so they sit on the header row instead of in their own strip. The slot
+    // is dedicated to these two nodes; replacing its children also removes stale
+    // portal nodes left by a WorkspaceHost refresh.
+    if (!workspaceToolbar || !workspaceControlsEl || !workspaceStatusEl) return;
+    const toolbar = workspaceToolbar;
+    const controls = workspaceControlsEl;
+    const statusElement = workspaceStatusEl;
+    toolbar.replaceChildren(controls, statusElement);
+    return () => {
+      if (controls.parentElement === toolbar) controls.remove();
+      if (statusElement.parentElement === toolbar) statusElement.remove();
+    };
+  });
+
   onMount(() => {
     // Lifecycle-only correlation; never rendered directly.
     // eslint-disable-next-line svelte/prefer-svelte-reactivity
@@ -397,6 +497,7 @@
         informationPanels.map((panel) => [
           panel.kind,
           {
+            canClose: () => true,
             collapsible: true,
             component: panel.id === "connection-health" ? ConnectionHealthPanel : InformationPanel,
             floatable: true,
@@ -405,10 +506,166 @@
         ]),
       ),
     };
-    const currentWorkspace = createWorkspace(host, {
-      ...rendererRegistry,
-    });
+    const registry = { ...rendererRegistry };
+    const diagnostics = new LifecycleDiagnostics();
+    const currentWorkspace = createWorkspace(host, registry, diagnostics);
     workspace = currentWorkspace;
+    // Grid-host DnD: accept a rail card dropped anywhere in the Dockview host
+    // and promote it to a floating pane. The rail's own drop handler covers
+    // rail-to-rail moves; this covers rail-to-grid drags without relying on
+    // `dragend`'s dropEffect (Dockview HTML5 targets set dropEffect="move"
+    // even when they refuse the drop, so that signal is unreliable).
+    const onRailDragOver = (event: DragEvent) => {
+      if (!event.dataTransfer?.types.includes(RAIL_DRAG_TYPE)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    };
+    const onRailDrop = (event: DragEvent) => {
+      const id = event.dataTransfer?.getData(RAIL_DRAG_TYPE);
+      if (!id || !railFor(id)) return;
+      event.preventDefault();
+      floatFromRail(currentWorkspace, id);
+    };
+    host.addEventListener("dragover", onRailDragOver);
+    host.addEventListener("drop", onRailDrop);
+
+    /**
+     * Dockview uses PointerEvents for its drag (dndStrategy: "pointer"), so
+     * HTML5 dragover/drop never fire on the rails during a floating-panel
+     * drag. Watch pointer input at document level: while a Dockview overlay is
+     * being dragged and the pointer is inside a rail, show that rail's drop
+     * indicator; on pointerup, dock the floated panel back into the rail at
+     * the pointer-derived index.
+     */
+    const railAt = (x: number, y: number): Scrollview | undefined => {
+      if (!railsEnabled) return undefined;
+      const el = document.elementFromPoint(x, y);
+      const railEl = el?.closest("[data-rail]") as HTMLElement | null;
+      if (railEl?.dataset.rail === "left") return leftRail;
+      if (railEl?.dataset.rail === "right") return rightRail;
+      return undefined;
+    };
+    const draggingFloatingPanelId = (): string | undefined => {
+      const el = document.querySelector<HTMLElement>(
+        ".dv-resize-container-dragging .dv-floating-titlebar[data-panel-id]",
+      );
+      return el?.dataset.panelId;
+    };
+    const onDocPointerMove = (event: PointerEvent) => {
+      const id = draggingFloatingPanelId();
+      if (!id || !railHomeFor(id)) return;
+      const rail = railAt(event.clientX, event.clientY);
+      for (const other of [leftRail, rightRail]) {
+        if (other && other !== rail) other.clearDropIndicator();
+      }
+      rail?.markDropIndicatorAt(event.clientY);
+    };
+    const onDocPointerUp = (event: PointerEvent) => {
+      const id = draggingFloatingPanelId();
+      leftRail?.clearDropIndicator();
+      rightRail?.clearDropIndicator();
+      if (!id || !railHomeFor(id)) return;
+      const rail = railAt(event.clientX, event.clientY);
+      if (!rail) return;
+      // Beat Dockview's own pointerup that finalises the floating position.
+      const index = rail.dropIndexAt(event.clientY);
+      railOrigins.delete(id);
+      void currentWorkspace.removePanel(id).then(() => {
+        rail.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), index);
+        rail.scrollCardIntoView(id);
+        requestSave?.();
+      });
+    };
+    document.addEventListener("pointermove", onDocPointerMove);
+    document.addEventListener("pointerup", onDocPointerUp);
+    // One diagnostics instance across all three roots keeps the exactly-once
+    // disposal accounting whole.
+    const railCallbacksFor = (self: () => Scrollview | undefined) => ({
+      onAcceptForeign: (id: string, index: number) => {
+        const receiver = self();
+        const source = railFor(id);
+        if (!receiver || !source || source === receiver) return;
+        railOrigins.delete(id);
+        void source.removePanel(id).then(() => {
+          receiver.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), index);
+          requestSave?.();
+        });
+      },
+      onChange: () => requestSave?.(),
+      onFloat: (id: string) => floatFromRail(currentWorkspace, id),
+      requestClose: (id: string) => currentWorkspace.requestClosePanel(id),
+    });
+    leftRail = new Scrollview(
+      leftRailHost,
+      registry,
+      diagnostics,
+      railCallbacksFor(() => leftRail),
+    );
+    rightRail = new Scrollview(
+      rightRailHost,
+      registry,
+      diagnostics,
+      railCallbacksFor(() => rightRail),
+    );
+
+    /** Dockview tree plus each rail's ordered ids. Rails are not Dockview panels. */
+    const composeSnapshot = (): CompositeWorkspaceSnapshot => ({
+      version: 2,
+      layout: {
+        collapsed: {
+          left: leftRail?.collapsedIds() ?? [],
+          right: rightRail?.collapsedIds() ?? [],
+        },
+        dockview: currentWorkspace.save().layout,
+        scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
+      },
+    });
+
+    /**
+     * Apply a persisted snapshot. A version 1 payload predates the rails, so its
+     * rail membership is whatever `fillRailsWithDefaults` rebuilds.
+     */
+    const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
+      const panels = [terminal, ...informationPanels, ...worldPanels];
+      if (next.version === 1) {
+        if (!currentWorkspace.restore(next, panels)) return false;
+        reclaimDockedRailPanels(currentWorkspace);
+        fillRailsWithDefaults();
+        return true;
+      }
+      if (
+        !["left", "right"].every(
+          (side) =>
+            Array.isArray(next.layout.scrollviews[side]) &&
+            Array.isArray(next.layout.collapsed[side]),
+        )
+      ) {
+        return false;
+      }
+      if (!currentWorkspace.restore({ version: 1, layout: next.layout.dockview }, panels)) {
+        return false;
+      }
+      reclaimDockedRailPanels(currentWorkspace);
+      for (const [side, rail] of [
+        ["left", leftRail],
+        ["right", rightRail],
+      ] as const) {
+        const order = next.layout.scrollviews[side];
+        const collapsed = next.layout.collapsed[side];
+        if (!rail || !order || !collapsed) continue;
+        for (const id of order) {
+          if (informationPanels.some((panel) => panel.id === id)) {
+            rail.addOrUpdatePanel(railPanelSpec(id as InformationPanelId));
+          }
+        }
+        // Anything absent from the saved order was closed or floated out.
+        for (const id of rail.ids()) {
+          if (!order.includes(id)) void rail.removePanel(id);
+        }
+        for (const id of order) rail.setCollapsed(id, collapsed.includes(id));
+      }
+      return true;
+    };
 
     const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
     const snapshot = loaded.success ? loaded.snapshot : null;
@@ -417,9 +674,7 @@
       : loaded.snapshot === null
         ? loaded.message
         : "";
-    const restored =
-      snapshot !== null &&
-      currentWorkspace.restore(snapshot, [terminal, ...informationPanels, ...worldPanels]);
+    const restored = snapshot !== null && restoreSnapshot(snapshot);
     if (!restored) {
       applyDefaultLayout(currentWorkspace);
       status =
@@ -434,9 +689,10 @@
       currentWorkspace.addOrUpdatePanel(terminal);
       status = "Restored workspace was missing the terminal; it has been re-added.";
     }
+    reclaimDockedRailPanels(currentWorkspace);
     syncVisiblePanels();
 
-    let pending: WorkspaceSnapshot | undefined;
+    let pending: CompositeWorkspaceSnapshot | undefined;
     let timer: number | undefined;
     // Responsive presentation: below 940px the fixed 260px rails cannot coexist
     // with a >=420px terminal, so leaving the desktop zone captures the desktop
@@ -444,7 +700,7 @@
     // restores the captured layout. Reload in a narrow zone loads the last
     // persisted desktop layout. Rigorous stored-byte isolation lands in PR4.
     let responsiveZone: "desktop" | "compact" | "mobile" = "desktop";
-    let capturedDesktop: WorkspaceSnapshot | undefined;
+    let capturedDesktop: CompositeWorkspaceSnapshot | undefined;
     let suppressPersistence = false;
     let fishingPanelOpen = false;
     let areaMapPanelOpen = false;
@@ -474,7 +730,7 @@
       pending = undefined;
       status = result.success ? "Workspace saved" : result.message;
     };
-    const scheduleSave = (next: WorkspaceSnapshot) => {
+    const scheduleSave = (next: CompositeWorkspaceSnapshot) => {
       pending = next;
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(flush, 75);
@@ -483,6 +739,13 @@
       if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
       pending = undefined;
+    };
+    requestSave = () => {
+      if (suppressPersistence || hasTransientPanels()) {
+        cancelPendingSave();
+        return;
+      }
+      scheduleSave(composeSnapshot());
     };
     const resetWorkspace = async (): Promise<void> => {
       if (idePanelOpen && !(await currentWorkspace.requestClosePanel("ide"))) return;
@@ -510,16 +773,24 @@
       serverPanelIds.clear();
       fishingPanelOpen = false;
       areaMapPanelOpen = false;
+      await Promise.all(
+        [leftRail, rightRail].flatMap((rail) =>
+          (rail?.ids() ?? []).map((panelId) => rail!.removePanel(panelId)),
+        ),
+      );
+      railOrigins.clear();
       await currentWorkspace.removePanel(terminal.id);
       await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       await Promise.all(worldPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       applyDefaultLayout(currentWorkspace);
       syncVisiblePanels();
-      const result = saveCharacterWorkspace(
-        localStorage,
-        characterProfileId,
-        currentWorkspace.save(),
-      );
+      const resetSnapshot = composeSnapshot();
+      if (!railsEnabled) {
+        capturedDesktop = resetSnapshot;
+        presentTerminalCentric();
+        syncVisiblePanels();
+      }
+      const result = saveCharacterWorkspace(localStorage, characterProfileId, resetSnapshot);
       status = result.success ? "Workspace reset" : result.message;
       focusTerminal();
     };
@@ -686,8 +957,9 @@
         idePanelOpen = false;
         session.ide.close();
       }
+      reclaimDockedRailPanels(currentWorkspace);
       if (suppressPersistence || hasTransientPanels()) cancelPendingSave();
-      else scheduleSave(next);
+      else scheduleSave(composeSnapshot());
       syncVisiblePanels();
     });
     const unsubscribeInteractions = session.interactions.subscribe(syncInteractionPanels);
@@ -704,14 +976,19 @@
         title: panel.title,
         state: { ...panel.state, mapZoom: detail.mapZoom },
       });
-      if (panel.id === "map" && !suppressPersistence) scheduleSave(currentWorkspace.save());
+      if (panel.id === "map") requestSave?.();
     };
     const zoneForWidth = (width: number): typeof responsiveZone =>
       width <= 700 ? "mobile" : width < 940 ? "compact" : "desktop";
     const presentTerminalCentric = (): void => {
-      // Drop the fixed-width rail panels so the terminal reclaims the width.
-      for (const id of [...leftRailOrder, ...rightRailOrder]) {
-        if (currentWorkspace.hasPanel(id)) void currentWorkspace.removePanel(id);
+      // Empty the rails so the terminal reclaims the width, then make the roots
+      // inert so they cannot intercept touch input. Emptying matters as much as
+      // hiding: a card left mounted in a hidden rail would double-mount its
+      // panel when the sheet opens the same id into the grid.
+      railsEnabled = false;
+      for (const rail of [leftRail, rightRail]) {
+        for (const id of rail?.ids() ?? []) void rail?.removePanel(id);
+        rail?.setInert(true);
       }
     };
     const applyResponsiveZone = (): void => {
@@ -721,18 +998,17 @@
       const enteringDesktop = responsiveZone !== "desktop" && next === "desktop";
       responsiveZone = next;
       if (leavingDesktop) {
-        capturedDesktop = currentWorkspace.save();
+        capturedDesktop = composeSnapshot();
         suppressPersistence = true;
         cancelPendingSave();
         presentTerminalCentric();
         syncVisiblePanels();
       } else if (enteringDesktop) {
+        railsEnabled = true;
+        leftRail?.setInert(false);
+        rightRail?.setInert(false);
         if (capturedDesktop) {
-          currentWorkspace.restore(capturedDesktop, [
-            terminal,
-            ...informationPanels,
-            ...worldPanels,
-          ]);
+          restoreSnapshot(capturedDesktop);
           capturedDesktop = undefined;
         }
         suppressPersistence = false;
@@ -763,7 +1039,15 @@
       session.information.setVisiblePanels([]);
       session.world.setVisiblePanels([]);
       flush();
+      host.removeEventListener("dragover", onRailDragOver);
+      host.removeEventListener("drop", onRailDrop);
+      document.removeEventListener("pointermove", onDocPointerMove);
+      document.removeEventListener("pointerup", onDocPointerUp);
       workspace = undefined;
+      const rails = [leftRail, rightRail];
+      leftRail = undefined;
+      rightRail = undefined;
+      for (const rail of rails) void rail?.dispose();
       void currentWorkspace.dispose();
     };
   });
@@ -778,7 +1062,12 @@
 />
 
 <section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
-  <div class="workspace-controls" aria-label="Panels" data-tutorial-target="panels-menu">
+  <div
+    bind:this={workspaceControlsEl}
+    class="workspace-controls"
+    aria-label="Panels"
+    data-tutorial-target="panels-menu"
+  >
     <div class="df-panels-menu" onfocusout={handleLauncherFocusOut}>
       <button
         type="button"
@@ -826,13 +1115,19 @@
     aria-haspopup="dialog"
     onclick={openSheet}>Panels</button
   >
-  <p class="workspace-status" data-testid="workspace-status">{status}</p>
-  <div
-    bind:this={host}
-    id="phase2-workspace-host"
-    class="workspace-host df-workspace"
-    data-testid="workspace-host"
-  ></div>
+  <p bind:this={workspaceStatusEl} class="workspace-status" data-testid="workspace-status">
+    {status}
+  </p>
+  <div class="workspace-rails">
+    <div bind:this={leftRailHost} class="workspace-rail" data-rail="left"></div>
+    <div
+      bind:this={host}
+      id="phase2-workspace-host"
+      class="workspace-host df-workspace"
+      data-testid="workspace-host"
+    ></div>
+    <div bind:this={rightRailHost} class="workspace-rail" data-rail="right"></div>
+  </div>
 </section>
 
 <div
@@ -886,12 +1181,22 @@
 
 <style>
   .workspace-shell {
-    display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr);
+    /*
+     * `.workspace-controls` and `.workspace-status` used to sit above the rails
+     * in a 3-row grid; they are portalled up to the App header now, so a flex
+     * column with `.workspace-rails { flex: 1 }` keeps the rails filling
+     * remaining height regardless of how many portal-eligible siblings exist
+     * (only the mobile-only launcher trigger remains).
+     */
+    display: flex;
+    flex-direction: column;
     gap: 0.75rem;
     flex: 1;
     min-height: 0;
     margin-top: 0.75rem;
+  }
+  .workspace-shell .workspace-rails {
+    flex: 1;
   }
 
   .workspace-controls {
@@ -909,7 +1214,13 @@
 
   .df-panels-menu-list {
     position: absolute;
-    z-index: 30;
+    /*
+     * Higher than `.rfc2549-debug-panel` (z-index 9200 in legacy main.css) so
+     * the launcher menu can be interacted with even when RFC 2549 debug is on
+     * -- portalling Panels into the header put the dropdown over the same
+     * bottom-right region the debug panel occupies.
+     */
+    z-index: 9500;
     top: calc(100% + 0.25rem);
     left: 0;
     display: flex;
@@ -944,7 +1255,21 @@
     color: var(--df-muted, #8b949e);
   }
 
+  .workspace-rails {
+    display: flex;
+    gap: 0.75rem;
+    min-height: 0;
+  }
+
+  .workspace-rail {
+    flex: 0 0 260px;
+    min-height: 0;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 0.5rem;
+  }
+
   .workspace-host {
+    flex: 1;
     height: 100%;
     min-height: 0;
     overflow: hidden;

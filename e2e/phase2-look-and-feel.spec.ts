@@ -57,6 +57,12 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     // Durable invariants (survive the shell rewrite).
     await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
     await expect(page.getByRole("button", { name: "Panels", exact: true })).toBeVisible();
+    await expect(page.locator(".app-workspace-slot > .workspace-controls")).toHaveCount(1);
+    await expect(page.locator(".app-workspace-slot > .workspace-status")).toHaveCount(1);
+    expect(
+      (await page.getByRole("form", { name: "Connection" }).boundingBox())?.height,
+    ).toBeLessThanOrEqual(48);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBe(viewport.width);
 
     await expect(page).toHaveScreenshot(`phase2-shell-${viewport.name}.png`, {
       fullPage: true,
@@ -245,10 +251,14 @@ test("collapses rails off the desktop zone and restores them on return", async (
   // Desktop: the frozen left rail is present.
   await expect(avatar).toBeVisible();
 
-  // Compact (701-939): rails collapse so the terminal keeps its width; one
-  // terminal island survives.
+  // Compact (701-939): the rails empty out and go inert so the terminal keeps
+  // its width; one terminal island survives. Emptying matters as much as
+  // hiding -- off the desktop zone the sheet opens these panels into the grid,
+  // and a card left mounted in a hidden rail would double-mount the same id.
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(avatar).toHaveCount(0);
+  await expect(page.locator('[data-rail="left"]')).toBeHidden();
+  await expect(page.locator('[data-rail="right"]')).toBeHidden();
   await expect(terminal).toHaveCount(1);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
 
@@ -277,6 +287,8 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   const avatarBody = page.locator('.information-panel[data-panel-id="avatar"]');
   const avatarFloating = page.locator('[data-floating-drag-handle][data-panel-id="avatar"]');
 
+  await expect(avatarTab.getByRole("button", { name: "Close Avatar" })).toBeVisible();
+
   // Collapse hides the body, keeps the header, and never remounts the terminal.
   await avatarTab.getByRole("button", { name: "Collapse Avatar" }).click();
   await expect(avatarTab.getByRole("button", { name: "Expand Avatar" })).toBeVisible();
@@ -296,4 +308,97 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
     .click();
   await expect(avatarFloating).toHaveCount(0);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
+
+  await avatarTab.getByRole("button", { name: "Close Avatar" }).click();
+  await expect(avatarTab).toHaveCount(0);
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+});
+
+test("rail cards size to content under one scrollbar and reorder by drag", async ({
+  page,
+}, testInfo) => {
+  test.skip(isMobileProject(testInfo), "rails are a desktop affordance");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPhase2(page);
+
+  const rail = page.locator('[data-rail="left"]');
+  const cards = rail.locator(".df-rail-card");
+  const order = () =>
+    cards.evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.panelId));
+
+  expect(await order()).toEqual([
+    "avatar",
+    "status",
+    "vitals",
+    "guildVitals",
+    "sky",
+    "omens",
+    "buffs",
+    "worth",
+    "xpmon",
+    "stats",
+  ]);
+
+  // The defect this replaced: ten panels needed 1000px of grid slices in a
+  // ~643px rail, so the last three were clipped and unreachable. The rail is
+  // now the only scroller and every card sizes to its own content.
+  expect(await rail.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+  expect(
+    await cards.evaluateAll((nodes) =>
+      nodes.every((node) => node.scrollHeight <= node.clientHeight),
+    ),
+  ).toBe(true);
+
+  // Stats is the card the old grid clipped; it must be reachable by scrolling.
+  await cards.last().scrollIntoViewIfNeeded();
+  await expect(cards.last()).toBeVisible();
+  await rail.evaluate((element) => element.scrollTo(0, 0));
+
+  // Reordering is a rail-local drag: no Dockview involvement, no vendor leak.
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="status"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'));
+  expect((await order()).slice(0, 2)).toEqual(["status", "avatar"]);
+
+  // The same drag must land correctly with the rail scrolled: the insertion
+  // index comes from viewport-relative rects, not from offsets into the column.
+  await rail.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  await expect.poll(() => rail.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="stats"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="xpmon"]'));
+  const scrolled = await order();
+  expect(scrolled.indexOf("stats")).toBeLessThan(scrolled.indexOf("xpmon"));
+});
+
+test("rail card drags to the other rail and to the grid as a float", async ({ page }, testInfo) => {
+  test.skip(isMobileProject(testInfo), "rails are a desktop affordance");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPhase2(page);
+
+  const leftRail = page.locator('[data-rail="left"]');
+  const rightRail = page.locator('[data-rail="right"]');
+  const leftIds = () =>
+    leftRail
+      .locator(".df-rail-card")
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.panelId));
+  const rightIds = () =>
+    rightRail
+      .locator(".df-rail-card")
+      .evaluateAll((nodes) => nodes.map((node) => (node as HTMLElement).dataset.panelId));
+
+  // Rail-to-rail: drop Status onto the right rail. It leaves the left rail and
+  // appears in the right rail at the drop index.
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="status"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="group"]'));
+  expect(await leftIds()).not.toContain("status");
+  expect(await rightIds()).toContain("status");
+
+  // Rail-to-grid: drop Avatar onto the terminal area. It leaves the rail and
+  // becomes a floating pane in the Dockview host.
+  const terminalArea = page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first();
+  await page.locator('[data-panel-drag-handle][data-panel-id="avatar"]').dragTo(terminalArea);
+  expect(await leftIds()).not.toContain("avatar");
+  await expect(page.locator('.dv-floating-titlebar[data-panel-id="avatar"]')).toBeVisible();
 });

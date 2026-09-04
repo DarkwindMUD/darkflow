@@ -182,6 +182,8 @@ test("Phase 2 controls drive connection, reconnect overlay, focus, and disposal"
   await controlFakeSocket(page, "open");
   await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
   await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
+  await expect(page.locator(".app-workspace-slot > .workspace-controls")).toHaveCount(1);
+  await expect(page.locator(".app-workspace-slot > .workspace-status")).toHaveCount(1);
 
   await shell.focus();
   await controlFakeSocket(page, "drop");

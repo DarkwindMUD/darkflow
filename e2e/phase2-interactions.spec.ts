@@ -260,10 +260,16 @@ test("server panels and NPC dialogue render and send actions", async ({ page }) 
       x: Math.round(rect.left - (workspace?.left ?? 0)),
       y: Math.round(rect.top - (workspace?.top ?? 0)),
       w: Math.round(rect.width),
+      hostW: Math.round(workspace?.width ?? 0),
     };
   });
-  expect(restoredGeometry.x).toBeGreaterThanOrEqual(50);
+  // The saved origin is honoured when it fits. A host too narrow for it pulls
+  // the pane inside instead of letting it overflow -- an overflowing pane makes
+  // the host scrollable, which shifts every panel's client rect. So the saved x
+  // is an upper bound, and containment is the invariant that must always hold.
+  expect(restoredGeometry.x).toBeGreaterThanOrEqual(0);
   expect(restoredGeometry.x).toBeLessThanOrEqual(60);
+  expect(restoredGeometry.x + restoredGeometry.w).toBeLessThanOrEqual(restoredGeometry.hostW);
   expect(restoredGeometry.y).toBeGreaterThanOrEqual(60);
   expect(restoredGeometry.y).toBeLessThanOrEqual(70);
   expect(restoredGeometry.w).toBeGreaterThanOrEqual(315);

@@ -112,6 +112,14 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
   const legacyBytes = '{"layout":"classic", "spacing": 2}';
   const dockviewA = { version: 1, layout: { grid: { root: "terminal" }, panels: ["terminal"] } };
   const dockviewB = { version: 1, layout: { grid: { root: "placeholder" }, width: 640 } };
+  const compositeA = {
+    version: 2,
+    layout: {
+      collapsed: { left: ["avatar"], right: [] },
+      dockview: dockviewA.layout,
+      scrollviews: { left: ["avatar"], right: ["group"] },
+    },
+  };
 
   function createGraphStorage(graph = originalGraph) {
     return createMemoryStorage({
@@ -173,6 +181,42 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     assert.deepEqual(saved, { version: 2, payload: { dockview: dockviewA, legacy } });
     assert.equal(saved.payload.legacy.version, 1);
     assert.equal(storage.writes(), 2);
+  });
+
+  await t.test("composite layouts require complete, unique rail state", () => {
+    const validGraph = structuredClone(originalGraph);
+    validGraph.characterProfiles[characterAId].workspace = {
+      version: 2,
+      payload: {
+        dockview: compositeA,
+        legacy: originalGraph.characterProfiles[characterAId].workspace,
+      },
+    };
+    assert.deepEqual(persistence.loadCharacterWorkspace(createGraphStorage(validGraph), characterAId), {
+      success: true,
+      snapshot: compositeA,
+      recovered: false,
+    });
+
+    for (const layout of [
+      { dockview: dockviewA.layout, scrollviews: { left: ["avatar"], right: [] } },
+      {
+        collapsed: { left: [], right: [] },
+        dockview: dockviewA.layout,
+        scrollviews: { left: ["avatar"], right: ["avatar"] },
+      },
+      {
+        collapsed: { left: ["missing"], right: [] },
+        dockview: dockviewA.layout,
+        scrollviews: { left: ["avatar"], right: [] },
+      },
+    ]) {
+      const graph = structuredClone(validGraph);
+      graph.characterProfiles[characterAId].workspace.payload.dockview.layout = layout;
+      const result = persistence.loadCharacterWorkspace(createGraphStorage(graph), characterAId);
+      assert.equal(result.recovered, true);
+      assert.equal(result.snapshot, null);
+    }
   });
 
   await t.test("malformed and incompatible layouts recover without writing", () => {

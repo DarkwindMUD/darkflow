@@ -431,6 +431,10 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
   test.skip(testInfo.project.name === "mobile-chromium", "desktop controls only");
   await page.goto("/phase2/");
   await expect(page.getByTestId("workspace-host")).toBeVisible();
+  await page
+    .locator('[data-panel-drag-handle][data-panel-id="status"]')
+    .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'));
+  await page.getByRole("button", { name: "Collapse Status", exact: true }).click();
   await page.getByRole("button", { name: "Panels", exact: true }).click();
   await page.getByRole("checkbox", { name: "Avatar", exact: true }).uncheck();
   await page.keyboard.press("Escape");
@@ -442,6 +446,32 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
 
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
   await expect(page.locator('.information-panel[data-panel-id="avatar"]')).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Collapse Status", exact: true })).toBeVisible();
+  expect(
+    await page
+      .locator('[data-rail="left"] .df-rail-card')
+      .evaluateAll((cards) => cards.map((card) => (card as HTMLElement).dataset.panelId)),
+  ).toEqual([
+    "avatar",
+    "status",
+    "vitals",
+    "guildVitals",
+    "sky",
+    "omens",
+    "buffs",
+    "worth",
+    "xpmon",
+    "stats",
+  ]);
+  expect(
+    await page.evaluate(() => {
+      const runtime = (
+        window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
+      ).__darkflowPhase1Runtime;
+      const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1") ?? "{}");
+      return state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview.version;
+    }),
+  ).toBe(2);
 });
 
 test("Phase 2 settings dialog closes when the session is disposed", async ({ page }) => {

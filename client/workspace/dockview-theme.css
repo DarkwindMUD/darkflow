@@ -110,3 +110,54 @@
   border-radius: 6px;
   background: var(--df-scrollbar-thumb, #484f58);
 }
+
+/*
+ * Rail cards are not Dockview groups, so the .dv-groupview pane treatment above
+ * never reaches them. Match it here: same border, radius, and header rule, so a
+ * rail card and a docked pane read as the same object.
+ */
+.df-rail {
+  gap: 0.375rem;
+  padding: 0.375rem;
+}
+
+.df-rail-card {
+  border: 1px solid var(--df-border, #30363d);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.df-rail-card .dv-default-tab {
+  border-bottom: 1px solid var(--df-border, #30363d);
+  /* The header is the drag handle for reordering; say so. */
+  cursor: grab;
+}
+
+.df-rail-card .dv-default-tab:active {
+  cursor: grabbing;
+}
+
+
+/*
+ * Floating panes: wrap the whole pane (titlebar + content) in the same border
+ * as a docked group, and mark the titlebar visually as a drag handle. Without
+ * this the titlebar sits above the group border with no visual attachment, so
+ * it reads as detached UI rather than "the grip for this pane".
+ */
+.df-workspace .dv-resize-container-with-titlebar {
+  border: 1px solid var(--df-border, #30363d);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 30%);
+}
+
+.df-workspace .dv-resize-container-with-titlebar > .dv-floating-titlebar {
+  border-bottom: 1px solid var(--df-border, #30363d);
+  padding: 0 0.5rem;
+  background: var(--df-elevated, #1c2333);
+}
+
+.df-workspace .dv-resize-container-with-titlebar > .dv-groupview {
+  border: 0;
+  border-radius: 0;
+}

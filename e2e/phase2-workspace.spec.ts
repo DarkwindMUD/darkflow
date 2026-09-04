@@ -32,12 +32,6 @@ async function toggleAvatar(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
 }
 
-async function center(locator: Locator): Promise<{ x: number; y: number }> {
-  const box = await locator.boundingBox();
-  expect(box).not.toBeNull();
-  return { x: box!.x + box!.width / 2, y: box!.y + box!.height / 2 };
-}
-
 async function terminalState(
   page: Page,
 ): Promise<{ buffer: string; identity: string; scrollTop: number }> {
@@ -46,22 +40,6 @@ async function terminalState(
     identity: (element as HTMLElement).dataset.terminalIdentity ?? "",
     scrollTop: element.scrollTop,
   }));
-}
-
-async function mouseDrag(page: Page, source: Locator, target: Locator): Promise<void> {
-  const start = await center(source);
-  const end = await center(target);
-  await page.mouse.move(start.x, start.y);
-  await page.mouse.down();
-  for (let step = 1; step <= 6; step += 1) {
-    const progress = step / 6;
-    await page.mouse.move(
-      start.x + (end.x - start.x) * progress,
-      start.y + (end.y - start.y) * progress,
-    );
-    await page.waitForTimeout(25);
-  }
-  await page.mouse.up();
 }
 
 test("Phase 2 persists and restores one real-session workspace", async ({ page }, testInfo) => {
@@ -78,7 +56,12 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   const seeded = await terminalState(page);
   expect(seeded.buffer).toBe("");
 
-  await mouseDrag(page, panelDragHandle(page, "avatar"), panelDragHandle(page, "terminal"));
+  // Dirty the layout with a rail-local reorder. This used to drag Avatar onto
+  // the terminal tab; rails are their own root now, so a rail-to-grid transfer
+  // is a separate feature. Reordering exercises the same thing this test is
+  // about: a layout edit is persisted and the terminal island survives it.
+  await panelDragHandle(page, "status").dragTo(panelDragHandle(page, "avatar"));
+  await page.getByRole("button", { name: "Collapse Status", exact: true }).click();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
   expect(await terminalState(page)).toEqual(seeded);
@@ -97,13 +80,17 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
     return state.characterProfiles[runtime.characterProfileId].workspace;
   });
   expect(saved.version).toBe(2);
-  expect(saved.payload.dockview.version).toBe(1);
+  // Version 2 carries the Dockview tree plus each rail's ordered panel ids.
+  expect(saved.payload.dockview.version).toBe(2);
+  expect(saved.payload.dockview.layout.scrollviews.left).toContain("status");
+  expect(saved.payload.dockview.layout.collapsed.left).toContain("status");
 
   await page.reload();
   await expect(page.getByTestId("workspace-host")).toBeVisible();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
   await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
 
   await disposeSession(page);
   await expect(page.getByTestId("phase2-shell")).toHaveCount(0);
@@ -122,9 +109,8 @@ test("Phase 2 recovers from a malformed layout and reports a storage failure", a
       window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
     ).__darkflowPhase1Runtime;
     const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1") ?? "{}");
-    state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview.layout = {
-      malformed: true,
-    };
+    const saved = state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview;
+    saved.layout = { collapsed: saved.layout.collapsed, dockview: saved.layout.dockview };
     localStorage.setItem("darkflow-session-core-v1", JSON.stringify(state));
   });
 

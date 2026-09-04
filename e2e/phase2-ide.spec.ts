@@ -36,8 +36,18 @@ function panelDragHandle(page: Page, panelId: string): Locator {
 }
 
 async function dockPanelAsTab(page: Page, panelId: string, targetPanelId: string): Promise<void> {
-  const source = await panelDragHandle(page, panelId).boundingBox();
-  const target = await panelDragHandle(page, targetPanelId).boundingBox();
+  // Use the visible label rect, not the drag handle rect. Vendor CSS gives
+  // `.dv-tab .dv-default-tab { width: 100% }` inside a `.dv-tab` that has
+  // `flex-shrink: 0` but no explicit width -- both resolve to 0. The label
+  // stays visible via `overflow: visible`, so it is the only reliable
+  // click target across browsers; Firefox and WebKit dispatch pointerdown to
+  // whatever their hit-test returns, and a 0-width parent is not it.
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const target = await panelDragHandle(page, targetPanelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
   expect(source).not.toBeNull();
   expect(target).not.toBeNull();
   await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
@@ -273,7 +283,7 @@ test("IDE edits, saves, diagnoses, replaces, reconnects, and preserves its hidde
 
 test("IDE close guards, native tab, reset, repeated lifecycle, and remount stay exact", async ({
   page,
-}) => {
+}, testInfo) => {
   const endpoint = await connect(page);
   const outboundStart = endpoint.gmcpMessages.length;
   const commandInput = page.getByRole("textbox", { name: "Command input", exact: true });
@@ -342,6 +352,12 @@ test("IDE close guards, native tab, reset, repeated lifecycle, and remount stay 
 
   open("/domains/fixture/native.c", "Native dirty tab");
   await replaceEditorText(page, "native dirty\n");
+  if (testInfo.project.name !== "mobile-chromium") {
+    await page
+      .locator('[data-panel-drag-handle][data-panel-id="status"]')
+      .dragTo(page.locator('[data-panel-drag-handle][data-panel-id="avatar"]'));
+    await page.waitForTimeout(150);
+  }
   await expect
     .poll(() =>
       page.evaluate(() => {

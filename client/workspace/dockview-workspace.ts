@@ -8,15 +8,14 @@ import {
   type Parameters as DockviewParameters,
   type TabPartInitParameters,
 } from "dockview";
-import { mount, unmount } from "svelte";
 import { writable, type Writable } from "svelte/store";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
+import { PanelCardHeader, SveltePanelBody } from "./panel-parts";
 import type {
   PanelPlacement,
   PanelState,
   Workspace,
   WorkspacePanelSpec,
-  WorkspaceRendererDefinition,
   WorkspaceRendererRegistry,
   WorkspaceSnapshot,
 } from "./workspace";
@@ -53,8 +52,6 @@ interface DockviewPanelLike {
   };
 }
 
-let rootSequence = 0;
-
 export interface WorkspacePanelInspection {
   active: boolean;
   bounds: { height: number; left: number; top: number; width: number };
@@ -70,198 +67,30 @@ export interface WorkspacePanelInspection {
 export interface WorkspaceInspector {
   inspectPanel(id: string): WorkspacePanelInspection | null;
 }
-
-interface TabActions {
-  close?: (() => void) | undefined;
-  collapse?: (() => boolean) | undefined;
-  floatDock?: (() => boolean) | undefined;
-}
-
-class WorkspaceTabRenderer implements ITabRenderer {
-  readonly element = document.createElement("div");
-  readonly #label = document.createElement("span");
-  readonly #closeButton: HTMLButtonElement | undefined = undefined;
-  readonly #collapseButton: HTMLButtonElement | undefined = undefined;
-  readonly #floatButton: HTMLButtonElement | undefined = undefined;
-  #titleSubscription: { dispose(): void } | undefined;
-  #title = "";
-  #collapsed = false;
-  #floating: boolean;
-
-  constructor(
-    private readonly panelId: string,
-    actions: TabActions,
-    floating: boolean,
-    private readonly onDispose?: () => void,
-  ) {
-    this.#floating = floating;
-    this.element.className = "dv-default-tab";
-    this.element.dataset.panelDragHandle = "true";
-    this.element.dataset.panelId = panelId;
-    this.#label.className = "dv-default-tab-content";
-    this.element.appendChild(this.#label);
-
-    if (actions.collapse) {
-      this.#collapseButton = this.#createAction("–", () => {
-        this.#collapsed = actions.collapse!();
-        this.#refreshLabels();
-      });
-    }
-    if (actions.floatDock) {
-      this.#floatButton = this.#createAction("❐", () => {
-        this.#floating = actions.floatDock!();
-        this.#refreshLabels();
-      });
-    }
-    if (actions.close) {
-      this.#closeButton = this.#createAction("×", actions.close);
-    }
-  }
-
-  #createAction(glyph: string, handler: () => void): HTMLButtonElement {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "dv-default-tab-action df-tab-action";
-    button.textContent = glyph;
-    button.style.background = "none";
-    button.style.border = "0";
-    button.style.color = "inherit";
-    button.style.cursor = "pointer";
-    button.style.font = "inherit";
-    button.addEventListener("pointerdown", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-    });
-    button.addEventListener("click", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      handler();
-    });
-    this.element.appendChild(button);
-    return button;
-  }
-
+class WorkspaceTabRenderer extends PanelCardHeader implements ITabRenderer {
   init(parameters: TabPartInitParameters): void {
-    this.#setTitle(parameters.title);
-    this.#titleSubscription = parameters.api.onDidTitleChange(({ title }) => {
-      this.#setTitle(title);
+    this.setTitle(parameters.title);
+    // A pane created already floating never fires a location *change*, so seed
+    // the control from the api rather than trusting the construction-time guess.
+    this.setFloating(parameters.api.location.type === "floating");
+    this.titleSubscription = parameters.api.onDidTitleChange(({ title }) => {
+      this.setTitle(title);
+    });
+    this.locationSubscription = parameters.api.onDidLocationChange(({ location }) => {
+      this.setFloating(location.type === "floating");
     });
   }
 
   update(parameters: DockviewParameters): void {
     if (typeof parameters.title === "string") {
-      this.#setTitle(parameters.title);
+      this.setTitle(parameters.title);
     }
-  }
-
-  dispose(): void {
-    this.#titleSubscription?.dispose();
-    this.#titleSubscription = undefined;
-    this.onDispose?.();
-    this.element.remove();
-  }
-
-  setCloseButtonVisible(visible: boolean): void {
-    if (!this.#closeButton) return;
-    this.#closeButton.hidden = !visible;
-    this.#closeButton.disabled = !visible;
-    this.#closeButton.style.display = visible ? "" : "none";
-  }
-
-  #setTitle(title: string | undefined): void {
-    this.#title = title ?? this.panelId;
-    this.#label.textContent = title ?? "";
-    this.#refreshLabels();
-  }
-
-  #refreshLabels(): void {
-    this.#closeButton?.setAttribute("aria-label", `Close ${this.#title}`);
-    this.#collapseButton?.setAttribute(
-      "aria-label",
-      `${this.#collapsed ? "Expand" : "Collapse"} ${this.#title}`,
-    );
-    this.#floatButton?.setAttribute(
-      "aria-label",
-      `${this.#floating ? "Dock" : "Float"} ${this.#title}`,
-    );
   }
 }
 
-class SvelteDockviewRenderer implements IContentRenderer {
-  readonly element = document.createElement("div");
-  #disposed = false;
-  #mounted = false;
-  #root: Record<string, unknown> | undefined;
-  #unmountPromise: Promise<void> | undefined;
-
-  constructor(
-    private readonly panelId: string,
-    private readonly definition: WorkspaceRendererDefinition,
-    private readonly state: Writable<PanelState>,
-    private readonly diagnostics: LifecycleDiagnostics,
-    private readonly onDisposed: (renderer: SvelteDockviewRenderer) => void,
-  ) {
-    this.element.dataset.workspaceOwned = "true";
-    this.element.dataset.workspaceRootId = panelId;
-    this.element.style.height = "100%";
-    this.diagnostics.registerHost(this.element);
-  }
-
+class SvelteDockviewRenderer extends SveltePanelBody implements IContentRenderer {
   init(parameters: GroupPanelPartInitParameters): void {
-    if (this.#disposed || this.#root) {
-      return;
-    }
-
-    this.state.set(parameters.params as PanelState);
-    this.#root = mount(this.definition.component, {
-      target: this.element,
-      props: {
-        panelId: this.panelId,
-        state: this.state,
-        ...(this.definition.session ? { session: this.definition.session } : {}),
-        ...this.definition.componentProps,
-      },
-    });
-    this.element.dataset.workspaceRootId = `${this.panelId}-${++rootSequence}`;
-    this.#mounted = true;
-    this.diagnostics.mountRoot(this.panelId, this.element);
-  }
-
-  dispose(): void {
-    if (this.#disposed) {
-      this.diagnostics.recordDuplicateDisposal();
-      return;
-    }
-
-    this.#disposed = true;
-    if (!this.#root) {
-      this.#finishDispose();
-      this.#unmountPromise = Promise.resolve();
-      return;
-    }
-
-    this.#unmountPromise = this.diagnostics.trackUnmount(
-      unmount(this.#root).then(
-        () => this.#finishDispose(),
-        (error: unknown) => {
-          this.#finishDispose();
-          throw error;
-        },
-      ),
-    );
-  }
-
-  whenDisposed(): Promise<void> {
-    return this.#unmountPromise ?? Promise.resolve();
-  }
-
-  #finishDispose(): void {
-    if (this.#mounted) {
-      this.diagnostics.unmountRoot(this.panelId);
-    }
-    this.diagnostics.unregisterHost(this.element);
-    this.element.remove();
-    this.onDisposed(this);
+    this.initState(parameters.params as PanelState);
   }
 }
 
@@ -334,6 +163,11 @@ export function createWorkspace(
       return renderer;
     },
     dndStrategy: "pointer",
+    // Keep floating groups fully inside the overlay host. Without this, a user
+    // drag on the titlebar can push the pane so far off-centre that only its
+    // titlebar peeks in from the edge -- the rest is clipped by the host's
+    // `overflow: hidden`.
+    floatingGroupBounds: "boundedWithinViewport",
     floatingGroupDragHandle: "titlebar",
     keyboardNavigation: true,
   });
@@ -534,6 +368,12 @@ export function createWorkspace(
       );
       if (anchor) {
         applyPlacement(panel, { kind: "grid", direction: "right", referencePanelId: anchor.id });
+      } else {
+        // Nothing left in the grid to dock beside. Without this the dock control
+        // silently does nothing and a lone floated pane can never be put back --
+        // reachable now that the rails are their own roots, so the grid can hold
+        // the floating pane and nothing else.
+        panel.api.moveTo({ group: api.addGroup(), position: "center" });
       }
       return false;
     }
@@ -567,8 +407,12 @@ export function createWorkspace(
     return {
       width,
       height,
-      x: Math.max(0, Math.min(bounds.left, Math.max(0, hostWidth - 48))),
-      y: Math.max(0, Math.min(bounds.top, Math.max(0, hostHeight - 24))),
+      // Bound the origin by the remaining space, not by the host alone. Clamping
+      // origin and size independently lets `left + width` exceed the host, which
+      // makes the host scrollable; a focus then scrolls it and every panel's
+      // client rect shifts by that amount, silently breaking pointer hit-testing.
+      x: Math.max(0, Math.min(bounds.left, hostWidth - width)),
+      y: Math.max(0, Math.min(bounds.top, hostHeight - height)),
     };
   };
 

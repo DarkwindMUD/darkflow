@@ -65,6 +65,10 @@
   border-bottom: 1px solid var(--df-border, #30363d);
 }
 
+.df-workspace .dv-tabs-and-actions-container.dv-full-width-single-tab .dv-tabs-container .dv-tab {
+  padding: 0.25rem 0.5rem;
+}
+
 /* Small accessible pane controls (collapse, float/dock, close). */
 .df-workspace .dv-default-tab-action {
   min-width: 1.35rem;
@@ -128,15 +132,25 @@
 }
 
 .df-rail-card .dv-default-tab {
+  display: flex;
+  align-items: center;
+  width: 100%;
   border-bottom: 1px solid var(--df-border, #30363d);
   /* The header is the drag handle for reordering; say so. */
   cursor: grab;
 }
 
+.df-rail-card .dv-default-tab-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .df-rail-card .dv-default-tab:active {
   cursor: grabbing;
 }
-
 
 /*
  * Floating panes: wrap the whole pane (titlebar + content) in the same border
@@ -152,9 +166,10 @@
 }
 
 .df-workspace .dv-resize-container-with-titlebar > .dv-floating-titlebar {
-  border-bottom: 1px solid var(--df-border, #30363d);
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--df-accent-blue, #58a6ff) 55%, var(--df-border, #30363d));
   padding: 0 0.5rem;
-  background: var(--df-elevated, #1c2333);
+  background: color-mix(in srgb, var(--df-accent-blue, #58a6ff) 24%, var(--df-elevated, #1c2333));
 }
 
 .df-workspace .dv-resize-container-with-titlebar > .dv-groupview {

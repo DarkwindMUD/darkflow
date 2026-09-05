@@ -69,6 +69,17 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       animations: "disabled",
       mask: nondeterministicRegions(page),
     });
+
+    await page.getByRole("button", { name: "Panels", exact: true }).click();
+    expect(
+      await page.getByRole("checkbox", { name: "Avatar", exact: true }).evaluate((checkbox) => {
+        const label = checkbox.closest("label");
+        if (!label) return false;
+        const bounds = label.getBoundingClientRect();
+        const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + 2);
+        return hit !== null && label.contains(hit);
+      }),
+    ).toBe(true);
   });
 }
 
@@ -286,6 +297,24 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   const avatarTab = page.locator('.dv-default-tab[data-panel-id="avatar"]');
   const avatarBody = page.locator('.information-panel[data-panel-id="avatar"]');
   const avatarFloating = page.locator('[data-floating-drag-handle][data-panel-id="avatar"]');
+
+  expect(
+    await page.locator('.dv-tab:has(.dv-default-tab[data-panel-id="terminal"])').evaluate((tab) => {
+      const header = tab.closest(".dv-tabs-and-actions-container");
+      return header
+        ? Math.abs(header.getBoundingClientRect().width - tab.getBoundingClientRect().width)
+        : Infinity;
+    }),
+  ).toBeLessThanOrEqual(2);
+
+  expect(
+    await avatarTab.evaluate((header) => {
+      const close = header.querySelector<HTMLElement>('[aria-label="Close Avatar"]');
+      return close
+        ? Math.abs(header.getBoundingClientRect().right - close.getBoundingClientRect().right)
+        : Infinity;
+    }),
+  ).toBeLessThanOrEqual(2);
 
   await expect(avatarTab.getByRole("button", { name: "Close Avatar" })).toBeVisible();
 

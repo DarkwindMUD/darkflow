@@ -170,6 +170,7 @@ export function createWorkspace(
     floatingGroupBounds: "boundedWithinViewport",
     floatingGroupDragHandle: "titlebar",
     keyboardNavigation: true,
+    singleTabMode: "fullwidth",
   });
 
   const annotateFloatingTitlebars = () => {

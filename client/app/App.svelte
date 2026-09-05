@@ -608,7 +608,7 @@
   .app-workspace-slot {
     flex: 1 1 auto;
     min-width: 0;
-    overflow: hidden;
+    overflow: visible;
   }
   /*
    * Cap the connection status width so a text change from `Disconnected` to

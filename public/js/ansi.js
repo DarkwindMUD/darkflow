@@ -1,6 +1,6 @@
 import { FG_NAMES, BRIGHT_FG_NAMES, DEFAULT_FG, DEFAULT_BG, COLOR_256 } from './constants.js';
 
-function createAnsiState() {
+export function createAnsiState() {
   return {
     buffer: '',
     bold: false,

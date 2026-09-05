@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createTerminalOutputCore } from "../public/js/terminal-output-core.mjs";
+import { createTerminalOutputModel } from "../public/js/terminal-output-model.mjs";
 
 class FakeClassList {
   constructor(element) {
@@ -86,7 +87,7 @@ class FakeElement {
   append(...nodes) {
     for (const node of nodes) {
       if (node?.fragment) {
-        this.append(...node.children.splice(0));
+        for (const child of node.children.splice(0)) this.append(child);
         continue;
       }
       if (!node) continue;
@@ -251,17 +252,17 @@ test("completed non-gagged lines receive stable IDs and rendered text", (t) => {
   assert.deepEqual(harness.lines, [
     { id: 1, text: "partial" },
     { id: 2, text: "rendered" },
-    { id: 3, text: "last" },
+    { id: 4, text: "last" },
   ]);
   assert.deepEqual(
     harness.output.children.map((line) => line.dataset.lineId).filter(Boolean),
-    ["1", "2", "3"],
+    ["1", "2", "4"],
   );
   assert.equal(harness.output.children[1].textContent, "rendered");
   harness.core.dispose();
 });
 
-test("clear invalidates IDs, resets numbering, and reports clear", (t) => {
+test("clear invalidates IDs without reusing them and reports clear", (t) => {
   const harness = createHarness(t);
   harness.core.appendOutput("first\n");
   harness.scheduler.flushFrames();
@@ -273,11 +274,11 @@ test("clear invalidates IDs, resets numbering, and reports clear", (t) => {
   assert.equal(harness.clears, 1);
 
   harness.core.appendOutput("replacement\n");
-  assert.equal(harness.lines.at(-1).id, 1);
+  assert.equal(harness.lines.at(-1).id, 2);
   harness.core.dispose();
-  assert.equal(harness.clears, 2);
+  assert.equal(harness.clears, 1);
   harness.core.clear();
-  assert.equal(harness.clears, 2);
+  assert.equal(harness.clears, 1);
 });
 
 test("navigation renders pending output, locks near 35 percent, and returns live", (t) => {
@@ -286,7 +287,7 @@ test("navigation renders pending output, locks near 35 percent, and returns live
   assert.equal(harness.output.children.length, 0);
 
   assert.equal(harness.core.navigateToLine(9), true);
-  assert.equal(harness.output.children.length, 11);
+  assert.equal(harness.output.children.length, 10);
   assert.equal(harness.output.children[8].classList.contains("output-line-mention-target"), true);
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "true");
   assert.equal(harness.output.scrollTop, 125);
@@ -322,4 +323,27 @@ test("dispose cancels pending work, clears targets, and removes listeners", (t) 
   assert.equal(harness.clearButton.listeners.size, 0);
   harness.scheduler.flushFrames();
   assert.equal(harness.output.children.length, 0);
+});
+
+test("hydrates large retained histories without spreading the line collection", (t) => {
+  const scheduler = installDom(t);
+  const model = createTerminalOutputModel();
+  model.appendOutput(`${Array.from({ length: 150_000 }, (_, index) => `line ${index}`).join("\n")}\n`);
+  const shell = new FakeElement("section");
+  const output = new FakeElement("div");
+  const core = createTerminalOutputCore({
+    shell,
+    output,
+    pauseButton: new FakeElement("button"),
+    liveButton: new FakeElement("button"),
+    clearButton: new FakeElement("button"),
+    announcer: new FakeElement("div"),
+    subscribeOutput: model.subscribe,
+    clearOutput: model.clear,
+  });
+
+  scheduler.flushFrames();
+  assert.equal(output.children.length, 150_000);
+  assert.equal(output.children.at(-1).textContent, "line 149999");
+  core.dispose();
 });

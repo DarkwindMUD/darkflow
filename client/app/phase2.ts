@@ -22,6 +22,11 @@ declare global {
     __darkflowPhase1Bootstrap?: import("./bootstrap-transaction.ts").BootstrapDiagnostic;
     __darkflowPhase1Session?: SessionBootstrapDiagnostic;
     __darkflowPhase1Runtime?: Phase1RuntimeRecord;
+    __darkflowTerminalViewTest?: {
+      remove(): Promise<void>;
+      restore(): Promise<void>;
+    };
+    __darkflowTerminalViewTestEnabled?: boolean;
   }
 }
 
@@ -100,6 +105,7 @@ try {
     },
     importModule: importPublicModule,
     loadClient: async (record) => {
+      await record.session.terminal.startProcessing();
       const endpoint = resolvePhase2Endpoint(
         record.session.getConnectionSnapshot().endpoint,
         config,
@@ -111,7 +117,16 @@ try {
         target,
         props: { endpoint, session: record.session, shell: record.shell },
       });
-      record.session.onDispose(() => unmount(root));
+      if (window.__darkflowTerminalViewTestEnabled === true) {
+        window.__darkflowTerminalViewTest = {
+          remove: root.removeTerminalViewForTest,
+          restore: root.restoreTerminalViewForTest,
+        };
+      }
+      record.session.onDispose(() => {
+        delete window.__darkflowTerminalViewTest;
+        unmount(root);
+      });
       publishBootstrapPhase(window, "client-loaded");
     },
     setBootstrapPhase: (phase) => publishBootstrapPhase(window, phase),

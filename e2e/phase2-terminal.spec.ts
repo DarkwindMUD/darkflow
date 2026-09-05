@@ -115,6 +115,17 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
         gag: true,
         steps: [{ type: "show_message", template: "trigger fired" }],
       },
+      {
+        id: "trigger-zero-view",
+        enabled: true,
+        pattern: "zero view trigger",
+        description: "Zero-view execution",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "zero-view-command" }],
+      },
     ];
     character.localDefinitions.highlights = [
       {
@@ -193,6 +204,7 @@ async function dragBy(page: Page, source: Locator, x: number, y: number): Promis
 test("Phase 2 renders one session terminal output island", async ({ page }) => {
   const endpoint = fixtures.endpoints.ws;
   await connect(page);
+  expect(await page.evaluate(() => typeof window.__darkflowTerminalViewTest)).toBe("undefined");
 
   // This exercises desktop dock/float/redock; the mobile terminal island is
   // covered by phase2-workspace.
@@ -387,6 +399,55 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   await expect(output).toContainText("trigger fired");
   await expect(output).not.toContainText("danger");
   await expect(output.locator(".ansi-fg-red")).toContainText("glow");
+});
+
+test("Phase 2 processes output without Terminal and hydrates remount silently", async ({
+  page,
+}, testInfo) => {
+  const endpoint = fixtures.endpoints.ws;
+  await page.addInitScript(() => {
+    window.__darkflowTerminalViewTestEnabled = true;
+  });
+  await installAutomationDefinitions(page);
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await page.waitForTimeout(100);
+  const persistedWorkspaceBefore = await page.evaluate(() =>
+    localStorage.getItem("darkflow-session-core-v1"),
+  );
+
+  await page.evaluate(() => window.__darkflowTerminalViewTest!.remove());
+  await expect(page.getByLabel("Terminal output", { exact: true })).toHaveCount(0);
+  endpoint.sendText("\n\x1b[31mzero view trigger\x1b[0m\npending prompt");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "zero-view-command").length)
+    .toBe(1);
+  await expect.poll(() => endpoint.commands.filter((command) => command === "tick").length).toBe(1);
+
+  await page.evaluate(() => window.__darkflowTerminalViewTest!.restore());
+  const output = page.getByLabel("Terminal output", { exact: true });
+  await expect(output).toContainText("zero view trigger");
+  await expect(output).toContainText("pending prompt");
+  await expect(output.locator(".ansi-fg-red")).toContainText("zero view trigger");
+  await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
+
+  endpoint.sendText(" announced live\n");
+  await expect(output).toContainText("pending prompt announced live");
+  await expect(page.getByTestId("terminal-announcer")).toContainText("announced live");
+  expect(endpoint.commands.filter((command) => command === "zero-view-command")).toHaveLength(1);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1"))).toBe(
+    persistedWorkspaceBefore,
+  );
+  if (["chromium", "mobile-chromium"].includes(testInfo.project.name)) {
+    await page.screenshot({
+      path: `/private/tmp/darkflow-terminal-remount-${testInfo.project.name}.png`,
+      fullPage: true,
+    });
+  }
 });
 
 test("Phase 2 disposal cancels pending terminal work and rejects late events", async ({ page }) => {

@@ -1,11 +1,9 @@
-import { parseAnsi, styleToElement } from './ansi.js';
+import { styleToElement } from './ansi.js';
+import { createTerminalOutputModel } from './terminal-output-model.mjs';
 
 const SCREEN_READER_DELAY_MS = 180;
 
-/**
- * One DOM-owned terminal output instance. It deliberately owns no session or
- * transport state: callers provide text and own the subscription lifecycle.
- */
+/** One DOM-owned renderer for a terminal output model. */
 export function createTerminalOutputCore({
   shell,
   output,
@@ -13,22 +11,27 @@ export function createTerminalOutputCore({
   liveButton,
   clearButton,
   announcer,
+  subscribeOutput,
+  clearOutput,
   processLine,
   onOutputLine,
   onClear,
 }) {
-  const lines = [];
+  const ownedModel = subscribeOutput
+    ? null
+    : createTerminalOutputModel({ processLine, onOutputLine, onClear });
+  const model = ownedModel ?? {
+    subscribe: subscribeOutput,
+    clear: clearOutput,
+  };
+  const pendingLines = [];
   const lineElements = new Map();
-  let activeLine = null;
-  let activeText = '';
-  let activeFragments = [];
   let animationFrame = 0;
   let announceTimer = 0;
   let disposed = false;
   let paused = false;
   let navigationLocked = false;
   let targetLine = null;
-  let nextLineId = 1;
   let announceText = '';
 
   const isAtBottom = () => output.scrollTop + output.clientHeight >= output.scrollHeight - 5;
@@ -42,9 +45,9 @@ export function createTerminalOutputCore({
       cancelAnimationFrame(animationFrame);
       animationFrame = 0;
     }
-    if (lines.length) {
+    if (pendingLines.length) {
       const fragment = document.createDocumentFragment();
-      fragment.append(...lines.splice(0));
+      for (const line of pendingLines.splice(0)) fragment.append(line);
       output.append(fragment);
     }
     if (!paused) output.scrollTop = output.scrollHeight;
@@ -65,19 +68,13 @@ export function createTerminalOutputCore({
       announceText = '';
     }, SCREEN_READER_DELAY_MS);
   };
-  const createLine = (cssClass) => {
-    const line = document.createElement('div');
-    line.className = `output-line${cssClass ? ` ${cssClass}` : ''}`;
-    lines.push(line);
-    return line;
-  };
-  const appendFragment = (line, text, style, href) => {
-    if (!text) return;
-    const rendered = styleToElement(text, style);
+  const appendFragment = (line, fragment) => {
+    if (!fragment.text) return;
+    const rendered = styleToElement(fragment.text, fragment.style);
     if (!rendered) return;
-    if (href) {
+    if (fragment.href) {
       const link = document.createElement('a');
-      link.href = href;
+      link.href = fragment.href;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       link.append(rendered);
@@ -86,67 +83,53 @@ export function createTerminalOutputCore({
       line.append(rendered);
     }
   };
-  const completeLine = () => {
-    const line = activeLine;
-    const text = activeText.replace(/\r/g, '');
-    const fragments = activeFragments.map((fragment) => ({
-      ...fragment,
-      text: fragment.text.replace(/\r/g, ''),
-    }));
-    activeLine = null;
-    activeText = '';
-    activeFragments = [];
-    if (!line || typeof processLine !== 'function') return;
-    const result = processLine(text, fragments);
-    if (result.gag) {
-      const pendingIndex = lines.indexOf(line);
-      if (pendingIndex >= 0) lines.splice(pendingIndex, 1);
-      line.remove();
-      return;
+  const renderRecord = (record) => {
+    let line = lineElements.get(record.id);
+    if (!line) {
+      line = document.createElement('div');
+      lineElements.set(record.id, line);
+      pendingLines.push(line);
     }
+    line.className = `output-line${record.cssClass ? ` ${record.cssClass}` : ''}`;
+    if (record.complete) line.dataset.lineId = String(record.id);
+    else delete line.dataset.lineId;
     line.replaceChildren();
-    for (const fragment of result.fragments) {
-      appendFragment(line, fragment.text, fragment.style, fragment.href);
-    }
-    const renderedText = result.fragments.map((fragment) => fragment.text).join('');
-    const id = nextLineId++;
-    line.dataset.lineId = String(id);
-    lineElements.set(id, line);
-    if (typeof onOutputLine === 'function') onOutputLine({ id, text: renderedText });
+    for (const fragment of record.fragments) appendFragment(line, fragment);
   };
-  const appendOutput = (text, cssClass = '') => {
-    if (disposed || !text) return;
-    for (const fragment of parseAnsi(text)) {
-      const pieces = fragment.text.split('\n');
-      for (const [index, piece] of pieces.entries()) {
-        activeLine ??= createLine(cssClass);
-        appendFragment(activeLine, piece, fragment.style, fragment.href);
-        activeText += piece;
-        if (piece) activeFragments.push({ ...fragment, text: piece });
-        if (index < pieces.length - 1) completeLine();
-      }
-    }
-    announce(text.replace(/\x1b\[[^m]*m/g, ''));
-    scheduleRender();
-  };
-  const clearState = () => {
-    lines.length = 0;
+  const clearDom = () => {
+    pendingLines.length = 0;
     lineElements.clear();
-    activeLine = null;
-    activeText = '';
-    activeFragments = [];
     output.replaceChildren();
     announcer.textContent = '';
     announceText = '';
-    nextLineId = 1;
     navigationLocked = false;
     targetLine?.classList.remove('output-line-mention-target');
     targetLine = null;
   };
-  const clear = () => {
+  const handleModelEvent = (event) => {
     if (disposed) return;
-    clearState();
-    if (typeof onClear === 'function') onClear();
+    if (event.type === 'reset') {
+      clearDom();
+      for (const record of event.records) renderRecord(record);
+      scheduleRender();
+    } else if (event.type === 'upsert') {
+      renderRecord(event.record);
+      scheduleRender();
+    } else if (event.type === 'remove') {
+      const line = lineElements.get(event.id);
+      const pendingIndex = pendingLines.indexOf(line);
+      if (pendingIndex >= 0) pendingLines.splice(pendingIndex, 1);
+      line?.remove();
+      lineElements.delete(event.id);
+    } else if (event.type === 'clear') {
+      clearDom();
+    } else if (event.type === 'announce') {
+      announce(event.text);
+    }
+  };
+  const unsubscribe = model.subscribe(handleModelEvent);
+  const clear = () => {
+    if (!disposed) model.clear();
   };
   const returnToLive = () => {
     if (disposed) return false;
@@ -177,15 +160,15 @@ export function createTerminalOutputCore({
   syncControls();
 
   return {
-    appendOutput,
-    appendSystemMessage: (text) => appendOutput(text, 'system-line'),
+    appendOutput: model.appendOutput,
+    appendSystemMessage: model.appendSystemMessage,
     clear,
     focus: () => output.focus({ preventScroll: true }),
     isLineAvailable: (id) => Number.isSafeInteger(id) && lineElements.has(id),
     navigateToLine: (id) => {
       if (disposed || !Number.isSafeInteger(id)) return false;
       const line = lineElements.get(id);
-      if (!line) return false;
+      if (!line || line.dataset.lineId === undefined) return false;
       renderPending();
       targetLine?.classList.remove('output-line-mention-target');
       targetLine = line;
@@ -203,14 +186,15 @@ export function createTerminalOutputCore({
     dispose: () => {
       if (disposed) return;
       disposed = true;
+      unsubscribe();
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (announceTimer) window.clearTimeout(announceTimer);
       pauseButton.removeEventListener('click', onPauseClick);
       liveButton.removeEventListener('click', returnToLive);
       clearButton.removeEventListener('click', clear);
       output.removeEventListener('scroll', onScroll);
-      clearState();
-      if (typeof onClear === 'function') onClear();
+      clearDom();
+      ownedModel?.dispose();
     },
   };
 }

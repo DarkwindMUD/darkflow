@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import type { Readable } from "svelte/store";
   import type { Session } from "../runtime/session.ts";
-  import { createTerminalAutomation, type TerminalOutputFragment } from "../terminal/automation.ts";
   import { createTerminalInputController } from "../terminal/input-controller.ts";
   // @ts-expect-error The reusable imperative terminal core is legacy JavaScript.
   import { createTerminalOutputCore } from "../../public/js/terminal-output-core.mjs";
@@ -60,7 +59,6 @@
     if (!output || !commandInput || !sendButton || !batchDialog || !batchInput || !batchForm)
       return;
     island = registerTerminalIsland(output, panelId);
-    let automation: ReturnType<typeof createTerminalAutomation> | undefined;
     const terminal = createTerminalOutputCore({
       shell: output.parentElement!,
       output,
@@ -70,18 +68,10 @@
       announcer: output.parentElement!.querySelector<HTMLElement>(
         "[data-testid=terminal-announcer]",
       )!,
-      processLine: (text: string, fragments: TerminalOutputFragment[]) =>
-        automation?.processLine(text, fragments) ?? { fragments, gag: false },
-      onOutputLine: session.notifications.recordOutputLine,
-      onClear: session.notifications.resetOutputLines,
+      subscribeOutput: session.terminal.subscribeOutput,
+      clearOutput: session.terminal.clearOutput,
     });
     const unregisterLineNavigator = registerLineNavigator?.(terminal.navigateToLine);
-    automation = createTerminalAutomation({
-      session,
-      appendOutput: terminal.appendOutput,
-      appendSystemMessage: terminal.appendSystemMessage,
-    });
-    const unsubscribe = session.terminal.subscribeText(automation.receiveText);
     const input = createTerminalInputController({
       session,
       input: commandInput,
@@ -90,18 +80,16 @@
       batchDialog,
       batchInput,
       batchForm,
-      appendEcho: (text) => terminal.appendOutput(`> ${text}\n`, "echo-line"),
-      appendSystemMessage: terminal.appendSystemMessage,
-      executeCommand: automation.sendCommand,
-      getMappedCommand: automation.getMappedCommand,
+      appendEcho: (text) => session.terminal.appendOutput(`> ${text}\n`, "echo-line"),
+      appendSystemMessage: session.terminal.appendSystemMessage,
+      executeCommand: session.terminal.executeCommand,
+      getMappedCommand: session.terminal.getMappedCommand,
       returnOutputToLive: terminal.returnToLive,
     });
 
     return () => {
       unregisterLineNavigator?.();
       input.dispose();
-      unsubscribe();
-      automation?.dispose();
       terminal.dispose();
       island?.dispose();
       island = undefined;

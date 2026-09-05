@@ -172,7 +172,7 @@ export function createDeferredTextOutputSink() {
     deliver(text: string): void {
       if (appendOutput) {
         appendOutput(text);
-      } else {
+      } else if (listeners.size === 0) {
         pending.push(text);
       }
       for (const listener of [...listeners]) {

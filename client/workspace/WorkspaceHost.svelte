@@ -265,6 +265,11 @@
     ws.activatePanel(terminal.id);
   }
 
+  let removeTerminalViewForTestImpl = (): Promise<void> => Promise.resolve();
+  let restoreTerminalViewForTestImpl = (): Promise<void> => Promise.resolve();
+  export const removeTerminalViewForTest = (): Promise<void> => removeTerminalViewForTestImpl();
+  export const restoreTerminalViewForTest = (): Promise<void> => restoreTerminalViewForTestImpl();
+
   let host: HTMLElement;
   let shell: HTMLElement;
   let workspaceControlsEl: HTMLElement | undefined = $state();
@@ -903,6 +908,20 @@
       }
       scheduleSave(composeSnapshot());
     };
+    removeTerminalViewForTestImpl = async () => {
+      suppressPersistence = true;
+      cancelPendingSave();
+      await currentWorkspace.removePanel(terminal.id);
+      await tick();
+      cancelPendingSave();
+    };
+    restoreTerminalViewForTestImpl = async () => {
+      currentWorkspace.addOrUpdatePanel(terminal);
+      currentWorkspace.activatePanel(terminal.id);
+      await tick();
+      cancelPendingSave();
+      suppressPersistence = false;
+    };
     const resetWorkspace = async (): Promise<void> => {
       if (transferBusy) return;
       if (idePanelOpen && !(await currentWorkspace.requestClosePanel("ide"))) return;
@@ -1235,6 +1254,8 @@
       activeTransfers = undefined;
       reconcileResponsive = () => {};
       cancelActiveDrag = undefined;
+      removeTerminalViewForTestImpl = () => Promise.resolve();
+      restoreTerminalViewForTestImpl = () => Promise.resolve();
       workspace = undefined;
       const rails = [leftRail, rightRail];
       leftRail = undefined;

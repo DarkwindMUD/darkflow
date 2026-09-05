@@ -26,16 +26,13 @@ export type TerminalOutputFragment = {
 /** One session-scoped consumer of the frozen effective definitions. */
 export function createTerminalAutomation({
   session,
-  appendOutput,
   appendSystemMessage,
 }: {
   session: Session;
-  appendOutput: (text: string) => void;
   appendSystemMessage: (text: string) => void;
 }): {
   sendCommand(text: string): boolean;
   getMappedCommand(event: KeyboardEvent): string | null;
-  receiveText(text: string): void;
   processLine(
     text: string,
     fragments: TerminalOutputFragment[],
@@ -237,9 +234,6 @@ export function createTerminalAutomation({
               (definition.legacyKey && definition.legacyKey === event.key)),
         );
       return mapping?.command ?? null;
-    },
-    receiveText(text) {
-      if (!disposed) appendOutput(text);
     },
     processLine(text, fragments) {
       if (disposed) return { fragments, gag: false };

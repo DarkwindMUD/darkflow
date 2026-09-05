@@ -55,6 +55,8 @@
   let workspaceHost = $state<{
     navigateTerminalLine(lineId: number): boolean;
     draftTerminalCommand(command: string): boolean;
+    removeTerminalViewForTest(): Promise<void>;
+    restoreTerminalViewForTest(): Promise<void>;
   }>();
   let retryButton = $state<HTMLButtonElement>();
   let updateStatus = $state<UpdateStatus | null>(null);
@@ -72,6 +74,11 @@
   let rfc2549Enabled = $state(false);
   let rfc2549QosOverride = $state<string | null>(null);
   let manualRedMarks = $state<Array<{ ts: string; type: string; detail: unknown }>>([]);
+
+  export const removeTerminalViewForTest = (): Promise<void> =>
+    workspaceHost?.removeTerminalViewForTest() ?? Promise.resolve();
+  export const restoreTerminalViewForTest = (): Promise<void> =>
+    workspaceHost?.restoreTerminalViewForTest() ?? Promise.resolve();
 
   const redEventTypes = new Set([
     "force-reconnect",

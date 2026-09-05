@@ -30,6 +30,7 @@ import type { SessionAudio } from "./audio.ts";
 import type { SessionCombat } from "./combat.ts";
 import type { SessionTutorial } from "./tutorial.ts";
 import type { SessionVisualEffects } from "./visual-effects.ts";
+import type { TerminalProcessing } from "./terminal-processing.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -45,9 +46,35 @@ export interface SessionConnectionSnapshot {
 }
 
 /** Terminal capabilities needed by a mounted session UI. */
+export interface TerminalOutputRecord {
+  id: number;
+  fragments: Array<{
+    text: string;
+    style: Record<string, unknown>;
+    href?: string | null;
+  }>;
+  cssClass: string;
+  complete: boolean;
+  text: string;
+}
+
+export type TerminalOutputEvent =
+  | { type: "reset"; records: TerminalOutputRecord[] }
+  | { type: "upsert"; record: TerminalOutputRecord }
+  | { type: "remove"; id: number }
+  | { type: "clear" }
+  | { type: "announce"; text: string };
+
 export interface SessionTerminal {
   readonly automation: AutomationRuntimeState;
+  startProcessing(): Promise<void>;
   sendCommand(text: string): boolean;
+  executeCommand(text: string): boolean;
+  getMappedCommand(event: KeyboardEvent): string | null;
+  appendOutput(text: string, cssClass?: string): void;
+  appendSystemMessage(text: string): void;
+  clearOutput(): void;
+  subscribeOutput(listener: (event: TerminalOutputEvent) => void): Unsubscribe;
   subscribeText(listener: (text: string) => void): Unsubscribe;
   requestCompletion(request: CompletionRequest): boolean;
   subscribeCompletion(listener: (result: CompletionResult) => void): Unsubscribe;
@@ -149,6 +176,8 @@ export function createSession(parts: SessionParts): Session {
 
   let disposed = false;
   let reconnect: TransportReconnectStatusPayload | null = null;
+  let terminalProcessing: TerminalProcessing | null = null;
+  let terminalProcessingPromise: Promise<void> | null = null;
   const completionListeners = new Set<(result: CompletionResult) => void>();
 
   const completionHandler = (result: CompletionResult): void => {
@@ -236,8 +265,37 @@ export function createSession(parts: SessionParts): Session {
 
   const terminal: SessionTerminal = {
     automation: automationRuntime,
+    async startProcessing() {
+      if (disposed || terminalProcessing !== null) return;
+      terminalProcessingPromise ??= import("./terminal-processing.ts").then(
+        ({ createTerminalProcessing }) => {
+          if (!disposed && terminalProcessing === null) {
+            terminalProcessing = createTerminalProcessing(session, subscribeText);
+          }
+        },
+      );
+      await terminalProcessingPromise;
+    },
     sendCommand(text) {
       return transport.send(text, { kind: "command", size: text.length, preview: text });
+    },
+    executeCommand(text) {
+      return terminalProcessing?.executeCommand(text) ?? false;
+    },
+    getMappedCommand(event) {
+      return terminalProcessing?.getMappedCommand(event) ?? null;
+    },
+    appendOutput(text, cssClass) {
+      terminalProcessing?.appendOutput(text, cssClass);
+    },
+    appendSystemMessage(text) {
+      terminalProcessing?.appendSystemMessage(text);
+    },
+    clearOutput() {
+      terminalProcessing?.clear();
+    },
+    subscribeOutput(listener) {
+      return terminalProcessing?.subscribe(listener) ?? (() => {});
     },
     subscribeText(listener) {
       if (disposed) {
@@ -277,7 +335,7 @@ export function createSession(parts: SessionParts): Session {
     },
   };
 
-  return {
+  const session: Session = {
     get sessionId() {
       return descriptor.sessionId;
     },
@@ -331,6 +389,9 @@ export function createSession(parts: SessionParts): Session {
         return;
       }
       disposed = true;
+      terminalProcessing?.dispose();
+      terminalProcessing = null;
+      terminalProcessingPromise = null;
       unsubscribeConfiguration();
       registry.release(descriptor.sessionId, descriptor.characterProfileId);
       transport.dispose();
@@ -373,4 +434,6 @@ export function createSession(parts: SessionParts): Session {
       return scope.own("listener", listener);
     },
   };
+
+  return session;
 }

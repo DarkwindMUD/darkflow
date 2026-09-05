@@ -112,7 +112,6 @@ function createHarness({
   return {
     automation: createTerminalAutomation({
       session,
-      appendOutput() {},
       appendSystemMessage: (message) => messages.push(message),
     }),
     messages,

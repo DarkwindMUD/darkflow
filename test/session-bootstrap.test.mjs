@@ -43,6 +43,12 @@ function createMemoryStorage(initial = {}) {
 }
 
 async function loadBootstrapModules(t) {
+  globalThis.document ??= {
+    hidden: false,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  globalThis.localStorage ??= createMemoryStorage();
   const server = await createServer({
     configFile: path.join(repoRoot, "vite.config.ts"),
     appType: "custom",
@@ -276,6 +282,22 @@ test("deferred text sink delivers queued text in order to its first subscriber",
   assert.deepEqual(received, ["first", "second", "third"]);
 });
 
+test("deferred text sink does not retain text already delivered to a subscriber", async (t) => {
+  const modules = await loadBootstrapModules(t);
+  const sink = modules.createDeferredTextOutputSink();
+  const processed = [];
+  const legacy = [];
+
+  sink.deliver("queued");
+  sink.subscribe((text) => processed.push(text));
+  sink.deliver("live");
+  sink.bind((text) => legacy.push(text));
+  sink.deliver("shared-live");
+
+  assert.deepEqual(processed, ["queued", "live", "shared-live"]);
+  assert.deepEqual(legacy, ["shared-live"]);
+});
+
 test("MH1 CMH2 same-slot double bootstrap creates one session and one client load", async (t) => {
   const modules = await loadBootstrapModules(t);
   const fixture = loadFixture("single-scope");
@@ -292,6 +314,10 @@ test("MH1 CMH2 same-slot double bootstrap creates one session and one client loa
   assert.equal(harness.clientLoadCount, 1);
   assert.equal(harness.sessionDiagnostic?.phase, "session-ready");
   assert.equal(harness.bootstrapPhase, "legacy-loaded");
+  const outputEvents = [];
+  first.record.session.terminal.subscribeOutput((event) => outputEvents.push(event));
+  assert.deepEqual(outputEvents, []);
+  assert.equal(first.record.session.terminal.executeCommand("legacy stays raw"), false);
 });
 
 test("MH2 migration preserves legacy keys and second migration skips", async (t) => {
@@ -415,11 +441,14 @@ test("Green PR 2 client mount failure clears the session runtime", async (t) => 
   const storage = createMemoryStorage();
   populateLegacyStorage(storage, modules, fixture);
   const harness = createBootHarness(t, modules, { storage });
+  let startedSession;
 
   await assert.rejects(
     () =>
       harness.runTransaction({
-        loadClient() {
+        async loadClient(record) {
+          startedSession = record.session;
+          await record.session.terminal.startProcessing();
           throw new Error("Phase 2 mount failed");
         },
       }),
@@ -429,6 +458,7 @@ test("Green PR 2 client mount failure clears the session runtime", async (t) => 
   assert.equal(modules.readPhase1RuntimeSlot(harness.windowTarget), null);
   assert.equal(harness.sessionDiagnostic, null);
   assert.equal(harness.clientLoadCount, 1);
+  assert.equal(startedSession.disposed, true);
 });
 
 test("Green PR 2 returns shell bootstrap values without runtime handles", async (t) => {

@@ -25,6 +25,12 @@ function createSequentialUuidFactory(prefix = "00000000-0000-4000-8000-") {
 async function loadSessionRuntimeModules(t) {
   globalThis.requestAnimationFrame = (callback) => globalThis.setTimeout(callback, 0);
   globalThis.cancelAnimationFrame = (frameId) => globalThis.clearTimeout(frameId);
+  globalThis.document ??= {
+    hidden: false,
+    addEventListener() {},
+    removeEventListener() {},
+  };
+  globalThis.localStorage ??= createMemoryStorage();
 
   const server = await createServer({
     configFile: path.join(repoRoot, "vite.config.ts"),
@@ -310,6 +316,7 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
 
   return {
     session,
+    storage,
     registry,
     automation: result.handles.automationRuntime,
     gmcp: result.handles.gmcp,
@@ -608,6 +615,44 @@ test("public terminal owns text, commands, completion, configuration, and automa
   FakeWebSocket.reset();
 
   const graph = buildMinimalGraph(modules);
+  graph.state.characterProfiles[graph.characterAId].localDefinitions.aliases = [
+    {
+      id: "alias-look",
+      enabled: true,
+      trigger: "l",
+      description: "Look",
+      group: "",
+      isRegex: false,
+      ignoreCase: true,
+      steps: [{ type: "send_command", template: "look" }],
+    },
+  ];
+  graph.state.characterProfiles[graph.characterAId].localDefinitions.triggers = [
+    {
+      id: "trigger-danger",
+      enabled: true,
+      pattern: "danger",
+      description: "Flee",
+      group: "",
+      isRegex: false,
+      ignoreCase: false,
+      gag: false,
+      steps: [{ type: "send_command", template: "flee" }],
+    },
+  ];
+  graph.state.characterProfiles[graph.characterAId].localDefinitions.timers = [
+    {
+      id: "timer-once",
+      enabled: true,
+      name: "Once",
+      description: "Tick",
+      group: "",
+      durationMs: 50,
+      recurring: false,
+      autoStart: true,
+      steps: [{ type: "send_command", template: "tick" }],
+    },
+  ];
   const harness = createSessionHarness(modules, t, graph, graph.characterAId);
   const other = createSessionHarness(modules, t, graph, graph.characterBId);
   const receivedA = [];
@@ -620,11 +665,18 @@ test("public terminal owns text, commands, completion, configuration, and automa
   harness.session.terminal.subscribeConfiguration((snapshot) => configurations.push(snapshot));
 
   assert.deepEqual(Object.keys(harness.session.terminal).sort(), [
+    "appendOutput",
+    "appendSystemMessage",
     "automation",
+    "clearOutput",
+    "executeCommand",
+    "getMappedCommand",
     "requestCompletion",
     "sendCommand",
+    "startProcessing",
     "subscribeCompletion",
     "subscribeConfiguration",
+    "subscribeOutput",
     "subscribeText",
   ]);
   assert.equal("transport" in harness.session, false);
@@ -650,11 +702,54 @@ test("public terminal owns text, commands, completion, configuration, and automa
   assert.deepEqual(receivedA, ["first"]);
   assert.deepEqual(receivedB, ["first", "second"]);
 
+  await Promise.all([
+    harness.session.terminal.startProcessing(),
+    harness.session.terminal.startProcessing(),
+  ]);
+  assert.deepEqual(
+    harness.session.configuration.replaceLocalDefinitions(
+      "aliases",
+      graph.state.characterProfiles[graph.characterAId].localDefinitions.aliases,
+    ),
+    { success: true },
+  );
+  socket?.emitMessage("processed without a view\n");
+  socket?.emitMessage("danger\n");
+  harness.advance(50);
+  const outputEvents = [];
+  harness.session.terminal.subscribeOutput((event) => outputEvents.push(event));
+  assert.equal(outputEvents.length, 1);
+  assert.equal(outputEvents[0].type, "reset");
+  assert.deepEqual(outputEvents[0].records.map(({ text }) => text), [
+    "processed without a view",
+    "danger",
+  ]);
+  const beforeRemountCommands = socket?.sentPayloads().filter((payload) =>
+    ["flee", "tick"].includes(payload),
+  );
+  const unsubscribeOutput = harness.session.terminal.subscribeOutput(() => {});
+  unsubscribeOutput();
+  harness.session.terminal.subscribeOutput(() => {})();
+  assert.deepEqual(socket?.sentPayloads().filter((payload) => ["flee", "tick"].includes(payload)), [
+    "flee",
+    "tick",
+  ]);
+  assert.deepEqual(beforeRemountCommands, ["flee", "tick"]);
+
   socket?.clearSent();
-  assert.equal(harness.session.terminal.sendCommand("look"), true);
-  assert.deepEqual(socket?.sentPayloads(), ["look"]);
+  assert.equal(harness.session.terminal.sendCommand("l"), true);
+  assert.deepEqual(socket?.sentPayloads(), ["l"]);
+  assert.equal(harness.session.terminal.executeCommand("l"), true);
+  assert.deepEqual(socket?.sentPayloads(), ["l", "look"]);
+
+  await other.session.terminal.startProcessing();
+  other.session.terminal.appendOutput("danger\n");
+  const otherOutput = [];
+  other.session.terminal.subscribeOutput((event) => otherOutput.push(event));
+  assert.equal(otherOutput[0].records[0].id, 1);
+  assert.equal(socket?.sentPayloads().filter((payload) => payload === "flee").length, 0);
   assert.equal(harness.session.terminal.requestCompletion({ line: "look sw", cursor: 7 }), true);
-  assert.deepEqual(decodeSentGmcpPackages(socket?.sentPayloads().slice(1) ?? [], modules.decodeGmcpWireFrame), [
+  assert.deepEqual(decodeSentGmcpPackages(socket?.sentPayloads().slice(2) ?? [], modules.decodeGmcpWireFrame), [
     { packageName: "Darkwind.Completion.Request", data: { line: "look sw", cursor: 7 } },
   ]);
   assert.equal(harness.session.terminal.requestCompletion({ line: 1, cursor: -1 }), false);
@@ -681,8 +776,8 @@ test("public terminal owns text, commands, completion, configuration, and automa
   harness.session.dispose();
   socket?.emitMessage("late");
   modules.replaceLocalDefinitions(storage, graph.characterAId, "aliases", []);
-  assert.deepEqual(receivedB, ["first", "second"]);
-  assert.equal(configurations.length, 2);
+  assert.deepEqual(receivedB, ["first", "second", "processed without a view\n", "danger\n"]);
+  assert.equal(configurations.length, 3);
   assert.equal(harness.session.terminal.sendCommand("late"), false);
 });
 

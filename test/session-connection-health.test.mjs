@@ -120,7 +120,7 @@ test("connection health validates probes, diagnoses, and disposes owned resource
   assert.ok(sent.includes("Darkwind.Lag.Get"));
 
   now += 75;
-  bus.dispatch("Core.Ping", undefined);
+  bus.dispatch("Core.Ping", "");
   assert.equal(capability.getSnapshot().latestRtt, 95);
 
   const legacy = [];

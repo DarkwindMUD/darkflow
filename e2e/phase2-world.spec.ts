@@ -28,7 +28,10 @@ async function togglePanel(page: Page, title: string): Promise<void> {
   await page.getByRole("button", { name: "Panels", exact: true }).click();
   if (onMobile) {
     // Mobile sheet uses Open/Close buttons and closes on selection.
-    await page.getByRole("button", { name: new RegExp(`^(?:Open|Close) ${title}$`) }).click();
+    await page
+      .getByRole("dialog", { name: "Panels", exact: true })
+      .getByRole("button", { name: new RegExp(`^(?:Open|Close) ${title}$`) })
+      .click();
   } else {
     // Desktop launcher is a checkbox list that stays open while toggling.
     await page.getByRole("checkbox", { name: title, exact: true }).click();
@@ -55,6 +58,19 @@ async function dockPanelAsTab(page: Page, panelId: string, targetPanelId: string
   await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, {
     steps: 8,
   });
+  await page.mouse.up();
+}
+
+async function dragPanelToRail(page: Page, panelId: string, side: "left" | "right"): Promise<void> {
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const rail = await page.locator(`[data-rail="${side}"]`).boundingBox();
+  expect(source).not.toBeNull();
+  expect(rail).not.toBeNull();
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rail!.x + rail!.width / 2, rail!.y + 40, { steps: 12 });
   await page.mouse.up();
 }
 
@@ -104,7 +120,7 @@ const playlistState = {
       title: "Next video",
       added_by: "Denian",
       duration: 95,
-      can_remove: 1,
+      can_remove: 32,
     },
     {
       id: 12,
@@ -117,8 +133,80 @@ const playlistState = {
   ],
   skip_votes: 1,
   skip_needed: 2,
-  permissions: { add: 1, moderate: 1 },
+  permissions: { add: 1, moderate: 32 },
 };
+
+test("room and chat panels render session-owned GMCP state and clear on disconnect", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  const room = page.locator('.room-panel[data-panel-id="room"]');
+  const chat = page.locator('.chat-panel[data-panel-id="chat"]');
+  if ((await room.count()) === 0) await togglePanel(page, "Room");
+  if ((await chat.count()) === 0) await togglePanel(page, "Chat");
+  await expect(page.locator('[data-panel-drag-handle][data-panel-id="chat"]')).toBeVisible();
+  await expect(chat).toContainText("No messages.");
+
+  endpoint.sendGmcp("Room.Info", {
+    num: 101,
+    name: "Atrium",
+    area: "Fixture Town",
+    environment: "Inside",
+    exits: { north: 102, east: 103 },
+    exit_states: { east: "closed" },
+  });
+  endpoint.sendGmcp("Room.Players", [{ name: "Alice", fullname: "Alice Example" }]);
+  endpoint.sendGmcp("Room.AddPlayer", { name: "Bob" });
+  endpoint.sendGmcp("Room.RemovePlayer", "Alice");
+  await expect(room).toContainText("Atrium");
+  await expect(room).toContainText("Fixture Town");
+  await expect(room).toContainText("Players: Bob");
+  await expect(room.getByRole("button", { name: "Go east" })).toHaveCount(0);
+  await room.getByRole("button", { name: "Go north" }).click();
+  await expect.poll(() => endpoint.commands).toContain("north");
+
+  endpoint.sendGmcp("Comm.Channel.List", [
+    { name: "gossip", caption: "Gossip" },
+    { name: "tell", caption: "Tells" },
+  ]);
+  endpoint.sendGmcp("Comm.Channel.Players", [{ name: "Alice" }, { name: "Bob" }]);
+  endpoint.sendGmcp("Comm.Channel.Start", "gossip");
+  const message = { channel: "gossip", talker: "alice", text: "[gossip] Alice: Hello there." };
+  endpoint.sendGmcp("Comm.Channel", message);
+  endpoint.sendGmcp("Comm.Channel.Text", message);
+  endpoint.sendGmcp("Comm.Channel", {
+    channel: "tell",
+    talker: "bob",
+    text: "Bob: A private message.",
+  });
+  await expect(chat).toContainText("Gossip");
+  await expect(chat).toContainText("2 online");
+  await expect(chat).toContainText("[gossip] Alice: Hello there.");
+  await expect(chat.locator(".chat-entry")).toHaveCount(2);
+  await expect(chat).toContainText("A private message.");
+
+  endpoint.dropConnections();
+  await expect(room).toContainText("No room data.");
+  await expect(chat).toContainText("No messages.");
+});
+
+test("main panel close controls remove panels and allow reopening", async ({ page }) => {
+  await connect(page);
+  for (const [title, id] of [
+    ["Map", "map"],
+    ["Room Image", "roomImage"],
+    ["Jukebox", "roomPlaylist"],
+  ]) {
+    await togglePanel(page, title!);
+    const header = panelDragHandle(page, id!);
+    await header.getByRole("button", { name: `Close ${title}`, exact: true }).click();
+    await expect(header).toHaveCount(0);
+    await togglePanel(page, title!);
+    await expect(header).toBeVisible();
+    await header.getByRole("button", { name: `Close ${title}`, exact: true }).click();
+  }
+  await expect(page.getByRole("textbox", { name: "Command input" })).toBeVisible();
+});
 
 test("map and room image reset across reconnect and remount after session disposal", async ({
   page,
@@ -179,11 +267,12 @@ test("map and room image reset across reconnect and remount after session dispos
 
 test("map navigation and room imagery survive layout persistence without stale media", async ({
   page,
-}) => {
+}, testInfo) => {
   test.skip(
     (page.viewportSize()?.width ?? Infinity) <= 700,
     "layout persistence is desktop-only; mobile suppresses geometry writes",
   );
+  await page.setViewportSize({ width: 1440, height: 900 });
   const endpoint = await connect(page);
   await togglePanel(page, "Status");
   await togglePanel(page, "Map");
@@ -261,6 +350,21 @@ test("map navigation and room imagery survive layout persistence without stale m
   });
   await expect(roomImage.getByRole("img", { name: "Courtyard" })).toBeVisible();
 
+  await dragPanelToRail(page, "roomImage", "right");
+  const roomImageRailBody = page.locator(
+    '[data-rail="right"] > [data-panel-id="roomImage"] .df-rail-card-body',
+  );
+  await expect(roomImageRailBody).toBeVisible();
+  expect((await roomImageRailBody.boundingBox())?.height).toBeGreaterThanOrEqual(200);
+  expect(
+    await roomImageRailBody.evaluate((element) => element.scrollWidth <= element.clientWidth),
+  ).toBe(true);
+  await dragPanelToRail(page, "map", "left");
+  await page.screenshot({ path: testInfo.outputPath("map-room-image-rails-1440x900.png") });
+  await page.setViewportSize({ width: 1024, height: 768 });
+  await page.screenshot({ path: testInfo.outputPath("map-room-image-rails-1024x768.png") });
+  await page.setViewportSize({ width: 1440, height: 900 });
+
   let releaseBrokenImage: (() => void) | undefined;
   const brokenImageReleased = new Promise<void>((resolve) => {
     releaseBrokenImage = resolve;
@@ -308,11 +412,29 @@ test("map navigation and room imagery survive layout persistence without stale m
   await page.waitForTimeout(100);
   await expect(roomImage).toHaveCount(0);
 
+  const mapRailBody = page.locator('[data-rail="left"] > [data-panel-id="map"] .map-body');
+  await expect(mapRailBody).toBeVisible();
+  const mapRailBox = await mapRailBody.boundingBox();
+  expect(mapRailBox?.width).toBeGreaterThanOrEqual(200);
+  expect(mapRailBox?.height).toBeGreaterThanOrEqual(180);
   await map.getByRole("button", { name: "Zoom map out" }).click();
   await expect(map.locator(".map-zoom-level")).toHaveText("90%");
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.reload();
   await expect(page.locator('.map-panel[data-panel-id="map"] .map-zoom-level')).toHaveText("90%");
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toBeVisible();
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
+    ).__darkflowPhase1Runtime;
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1") ?? "{}");
+    state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview.layout.mapZoom =
+      "invalid";
+    localStorage.setItem("darkflow-session-core-v1", JSON.stringify(state));
+  });
+  await page.reload();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toBeVisible();
+  await expect(page.locator('.map-panel[data-panel-id="map"] .map-zoom-level')).toHaveText("100%");
 });
 
 test("BrowseArea opens only a transient area map and continues pagination", async ({ page }) => {
@@ -329,6 +451,7 @@ test("BrowseArea opens only a transient area map and continues pagination", asyn
 
   const areaMap = page.locator('.map-panel[data-panel-id="areaMap"]');
   await expect(areaMap).toBeVisible();
+  await expect(page.getByRole("button", { name: "Close Area Map", exact: true })).toBeVisible();
   await expect(areaMap.getByRole("button", { name: "Market" })).toHaveAttribute(
     "aria-disabled",
     "true",
@@ -344,7 +467,12 @@ test("BrowseArea opens only a transient area map and continues pagination", asyn
   await expect(areaMap).toHaveCount(0);
 });
 
-test("playlist State stays closed while Open owns focus and player lifecycle", async ({ page }) => {
+test("playlist State stays closed while Open owns focus and player lifecycle", async ({
+  page,
+}, testInfo) => {
+  if ((page.viewportSize()?.width ?? 0) > 700) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+  }
   await page.addInitScript(() => {
     const calls: string[] = [];
     const players: Player[] = [];
@@ -360,8 +488,11 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
     class Player {
       time = 3;
       events;
-      constructor(_hostId: string, options: { events: NonNullable<typeof latestEvents> }) {
+      iframe = document.createElement("iframe");
+      constructor(hostId: string, options: { events: NonNullable<typeof latestEvents> }) {
         this.events = options.events;
+        this.iframe.title = "Fixture YouTube player";
+        document.getElementById(hostId)?.replaceWith(this.iframe);
         latestEvents = options.events;
         eventHistory.push(options.events);
         players.push(this);
@@ -372,6 +503,7 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
       }
       destroy(): void {
         calls.push("destroy");
+        this.iframe.remove();
       }
       getCurrentTime(): number {
         return this.time;
@@ -427,6 +559,80 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
     );
 
   if ((page.viewportSize()?.width ?? 0) > 700) {
+    const playerCountBeforeRail = await page.evaluate(
+      () =>
+        (window as unknown as { __darkflowPlaylistPlayers: unknown[] }).__darkflowPlaylistPlayers
+          .length,
+    );
+    const destroyCountBeforeRail = await page.evaluate(
+      () =>
+        (window as unknown as { __darkflowPlaylistCalls: string[] }).__darkflowPlaylistCalls.filter(
+          (call) => call === "destroy",
+        ).length,
+    );
+    await dragPanelToRail(page, "roomPlaylist", "right");
+    const railCard = page.locator('[data-rail="right"] > [data-panel-id="roomPlaylist"]');
+    await expect(railCard).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { __darkflowPlaylistPlayers: unknown[] })
+              .__darkflowPlaylistPlayers.length,
+        ),
+      )
+      .toBe(playerCountBeforeRail + 1);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (
+              window as unknown as { __darkflowPlaylistCalls: string[] }
+            ).__darkflowPlaylistCalls.filter((call) => call === "destroy").length,
+        ),
+      )
+      .toBe(destroyCountBeforeRail + 1);
+    const playerBox = await railCard
+      .locator('iframe[title="Fixture YouTube player"]')
+      .boundingBox();
+    expect(playerBox?.width).toBeGreaterThanOrEqual(200);
+    expect(playerBox?.height).toBeGreaterThanOrEqual(200);
+    expect(await railCard.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    await page.screenshot({ path: testInfo.outputPath("jukebox-rail-1440x900.png") });
+    await page.setViewportSize({ width: 1024, height: 768 });
+    await page.screenshot({ path: testInfo.outputPath("jukebox-rail-1024x768.png") });
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    await railCard.getByRole("button", { name: "Collapse Jukebox", exact: true }).click();
+    endpoint.sendGmcp("Darkwind.Room.Playlist.Open", playlistState);
+    await expect(
+      railCard.getByRole("button", { name: "Collapse Jukebox", exact: true }),
+    ).toBeVisible();
+    await expect(page.locator('[data-panel-id="roomPlaylist"]')).toHaveCount(3);
+
+    await jukebox.getByRole("button", { name: "Stop listening" }).click();
+    const playerCountAfterStop = await page.evaluate(
+      () =>
+        (window as unknown as { __darkflowPlaylistPlayers: unknown[] }).__darkflowPlaylistPlayers
+          .length,
+    );
+    await panelDragHandle(page, "roomPlaylist").dragTo(panelDragHandle(page, "avatar"));
+    const leftRailCard = page.locator('[data-rail="left"] > [data-panel-id="roomPlaylist"]');
+    await expect(leftRailCard).toBeVisible();
+    expect(
+      await page.evaluate(
+        () =>
+          (window as unknown as { __darkflowPlaylistPlayers: unknown[] }).__darkflowPlaylistPlayers
+            .length,
+      ),
+    ).toBe(playerCountAfterStop);
+    await jukebox.getByRole("button", { name: "Listen in sync" }).click();
+    await leftRailCard.getByRole("button", { name: "Float Jukebox", exact: true }).click();
+    await expect(page.getByTestId("workspace-host").locator(".room-playlist-panel")).toBeVisible();
+    await page.getByRole("button", { name: "Dock Jukebox", exact: true }).click();
+
     const destroyCountBeforeHide = await page.evaluate(
       () =>
         (window as unknown as { __darkflowPlaylistCalls: string[] }).__darkflowPlaylistCalls.filter(
@@ -435,6 +641,10 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
     );
     await dockPanelAsTab(page, "roomPlaylist", "terminal");
     await panelDragHandle(page, "terminal").click();
+    if (await jukebox.isVisible()) {
+      await dockPanelAsTab(page, "roomPlaylist", "terminal");
+      await panelDragHandle(page, "terminal").click();
+    }
     await expect(jukebox).not.toBeVisible();
     await expect(jukebox).toHaveCount(1);
     endpoint.sendGmcp("Darkwind.Room.Playlist.State", {
@@ -457,7 +667,7 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
           ).__darkflowPlaylistCalls.filter((call) => call === "destroy").length,
       ),
     ).toBe(destroyCountBeforeHide);
-    await panelDragHandle(page, "roomPlaylist").click();
+    await panelDragHandle(page, "roomPlaylist").locator(".dv-default-tab-content").click();
     await expect(jukebox.getByRole("button", { name: "Stop listening" })).toBeVisible();
     endpoint.sendGmcp("Darkwind.Room.Playlist.State", playlistState);
     await expect(jukebox.getByRole("button", { name: "Pause all" })).toBeVisible();
@@ -621,6 +831,11 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
     .poll(() => endpoint.gmcpMessages.filter((message) => message === readyReport).length)
     .toBe(readyReportsBeforeReconnect + 1);
 
+  const staleEntryEventIndex = await page.evaluate(
+    () =>
+      (window as unknown as { __darkflowPlaylistEventHistory: unknown[] })
+        .__darkflowPlaylistEventHistory.length - 1,
+  );
   endpoint.sendGmcp("Darkwind.Room.Playlist.State", {
     ...playlistState,
     revision: 8,
@@ -645,9 +860,9 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
           ).__darkflowPlaylistEventHistory.length,
       ),
     )
-    .toBe(3);
+    .toBeGreaterThan(staleEntryEventIndex + 1);
   const reportsBeforeStaleEntryCallback = endpoint.gmcpMessages.length;
-  await page.evaluate(() => {
+  await page.evaluate((staleIndex) => {
     const history = (
       window as unknown as {
         __darkflowPlaylistEventHistory: Array<{
@@ -655,8 +870,8 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
         }>;
       }
     ).__darkflowPlaylistEventHistory;
-    history[1]?.onStateChange({ data: 0 });
-  });
+    history[staleIndex]?.onStateChange({ data: 0 });
+  }, staleEntryEventIndex);
   expect(endpoint.gmcpMessages).toHaveLength(reportsBeforeStaleEntryCallback);
   await page.evaluate(() => {
     const history = (
@@ -692,7 +907,7 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
         (call) => call === "destroy",
       ).length,
   );
-  await togglePanel(page, "Jukebox");
+  await page.getByRole("button", { name: "Close Jukebox", exact: true }).click();
   await expect(jukebox).toHaveCount(0);
   await expect
     .poll(() =>

@@ -65,7 +65,9 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   bus.dispatch("Char.Defences.Remove", { name: "stoneskin" });
   bus.dispatch("Group", { groupname: "Expedition", members: [{ name: "Nacho", info: { hp: 90 } }] });
   bus.dispatch("Darkwind.Char.Avatar", { url: "/assets/avatar.png", name: "Nacho" });
-  bus.dispatch("Darkwind.Divine", { patron: "mitra", summary: "Bright." });
+  bus.dispatch("Darkwind.Divine", {
+    patron: "mitra", summary: "Bright.", holy_hour: { god: 0 }, eclipse: { active: 0 },
+  });
   bus.dispatch("Darkwind.Sky", { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } });
   bus.dispatch("Darkwind.GuildVitals", { items: [{ id: "heat", label: "Heat", cur: 1, max: 10 }] });
   bus.dispatch("Darkwind.XPMon", { active: 1, xp: 25 });
@@ -73,6 +75,8 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   const snapshot = information.getSnapshot();
   assert.deepEqual(snapshot.status, { name: "Nacho", gold: 100, level: 42 });
   assert.equal(snapshot.vitals?.divine_patron, "mitra");
+  assert.equal(snapshot.omens?.holy_hour.god, 0);
+  assert.equal(snapshot.omens?.eclipse.active, 0);
   assert.deepEqual(snapshot.stats, { current: { str: 15 }, base: { realstr: 12 } });
   assert.deepEqual(snapshot.defences, [{ name: "shield", kind: "buff" }]);
   assert.equal(snapshot.group?.groupname, "Expedition");

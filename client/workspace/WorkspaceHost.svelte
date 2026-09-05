@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, tick } from "svelte";
-  import { SvelteMap } from "svelte/reactivity";
+  import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
@@ -10,6 +10,7 @@
   import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
   import { RAIL_DRAG_TYPE, Scrollview } from "./scrollview";
   import "./dockview-theme.css";
+  import ChatPanel from "./ChatPanel.svelte";
   import InformationPanel from "./InformationPanel.svelte";
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import CombatPanel from "./CombatPanel.svelte";
@@ -17,11 +18,14 @@
   import IdePanel from "./IdePanel.svelte";
   import MapPanel from "./MapPanel.svelte";
   import RoomImagePanel from "./RoomImagePanel.svelte";
+  import RoomPanel from "./RoomPanel.svelte";
   import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
   import ServerWindowPanel from "./ServerWindowPanel.svelte";
   import { focusTerminalIsland } from "./terminal-island";
+  // @ts-expect-error Retained zoom helper is JavaScript without declarations.
+  import { normalizeMapZoom } from "../../public/js/map-zoom.js";
   import type {
     CompositeWorkspaceSnapshot,
     PersistedWorkspaceSnapshot,
@@ -83,6 +87,12 @@
     }));
   const worldPanels: readonly (WorkspacePanelSpec & { id: WorldPanelId })[] = [
     {
+      id: "room",
+      kind: "room",
+      title: "Room",
+      state: {},
+    },
+    {
       id: "map",
       kind: "map",
       title: "Map",
@@ -118,6 +128,12 @@
     state: {},
     placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
+  const chatPanel: WorkspacePanelSpec = {
+    id: "chat",
+    kind: "chat",
+    title: "Chat",
+    state: {},
+  };
 
   // Legacy "classic hybrid" default: terminal center, two ordered rails. Each
   // rail is its own Scrollview root, so cards size to their content under one
@@ -135,16 +151,31 @@
     "xpmon",
     "stats",
   ];
-  const rightRailOrder: readonly InformationPanelId[] = [
+  type DefaultRailPanelId = InformationPanelId | "room";
+  type RailPanelId = DefaultRailPanelId | "map" | "roomImage" | "roomPlaylist";
+  type RailSide = "left" | "right";
+  const optionalRailPanelIds: readonly RailPanelId[] = ["map", "roomImage", "roomPlaylist"];
+  const rightRailOrder: readonly DefaultRailPanelId[] = [
+    "room",
     "group",
     "inventory",
     "quests",
     "achievements",
   ];
 
-  function railPanelSpec(id: InformationPanelId): WorkspacePanelSpec {
-    const title = informationPanelLabels.find(([panelId]) => panelId === id)?.[1] ?? id;
-    return { id, kind: id, title, state: {} };
+  function railPanelSpec(id: RailPanelId, state?: Record<string, unknown>): WorkspacePanelSpec {
+    const panel = [...informationPanels, ...worldPanels].find(({ id: panelId }) => panelId === id);
+    return panel
+      ? { ...panel, state: state ?? panel.state }
+      : { id, kind: id, title: id, state: {} };
+  }
+
+  function railEligible(id: string): id is RailPanelId {
+    return (
+      leftRailOrder.includes(id as InformationPanelId) ||
+      rightRailOrder.includes(id as DefaultRailPanelId) ||
+      optionalRailPanelIds.includes(id as RailPanelId)
+    );
   }
 
   /**
@@ -152,13 +183,13 @@
    * grid instead. Without this a panel opened from the mobile sheet lands in a
    * hidden rail: present in the DOM, but invisible and unclickable.
    */
-  let railsEnabled = true;
+  let railsEnabled = $state(true);
 
   /** Which rail a panel belongs to by configuration, open or not. */
   function railHomeFor(id: string): Scrollview | undefined {
     if (!railsEnabled) return undefined;
     if (leftRailOrder.includes(id as InformationPanelId)) return leftRail;
-    if (rightRailOrder.includes(id as InformationPanelId)) return rightRail;
+    if (rightRailOrder.includes(id as DefaultRailPanelId)) return rightRail;
     return undefined;
   }
 
@@ -178,7 +209,8 @@
    */
   function ownerOf(
     id: string,
-  ): Pick<Workspace, "addOrUpdatePanel" | "hasPanel" | "removePanel"> | undefined {
+  ):
+    Pick<Workspace, "addOrUpdatePanel" | "getPanelState" | "hasPanel" | "removePanel"> | undefined {
     return railFor(id) ?? (workspace?.hasPanel(id) ? workspace : (railHomeFor(id) ?? workspace));
   }
 
@@ -204,26 +236,12 @@
       railOrigins.delete(id);
       void ws.removePanel(id);
       const rail = origin?.rail ?? railHomeFor(id);
-      rail?.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), origin?.index);
+      rail?.addOrUpdatePanel(railPanelSpec(id as RailPanelId), origin?.index);
       // Bring the returned card into view; without this a long rail scrolled
       // past the origin index makes the reclaim look like a disappearance.
       rail?.scrollCardIntoView(id);
     }
     reclaiming = false;
-  }
-
-  /** Lift a card out of its rail into a floating Dockview pane, remembering its slot. */
-  function floatFromRail(ws: Workspace, id: string): void {
-    const rail = railFor(id);
-    if (!rail) return;
-    railOrigins.set(id, { rail, index: rail.indexOf(id) });
-    void rail.removePanel(id).then(() => {
-      ws.addOrUpdatePanel({
-        ...railPanelSpec(id as InformationPanelId),
-        placement: { kind: "floating", bounds: RAIL_FLOAT_BOUNDS },
-      });
-      requestSave?.();
-    });
   }
 
   /** The frozen rail membership, used for a fresh layout and for version 1 payloads. */
@@ -248,6 +266,7 @@
   }
 
   let host: HTMLElement;
+  let shell: HTMLElement;
   let workspaceControlsEl: HTMLElement | undefined = $state();
   let workspaceStatusEl: HTMLElement | undefined = $state();
   let leftRailHost: HTMLElement;
@@ -257,6 +276,10 @@
   let workspace: Workspace | undefined;
   /** Set once the save pipeline exists; rail edits are not Dockview layout events. */
   let requestSave: (() => void) | undefined;
+  let movePanel:
+    ((id: RailPanelId, destination: RailSide | "float", index?: number) => void) | undefined;
+  let cancelActiveDrag: (() => void) | undefined;
+  let activeTransfers: ReadonlySet<string> | undefined;
   let terminalLineNavigator: ((lineId: number) => boolean) | undefined;
   let status = $state("Loading workspace...");
   let openInformationPanelIds = $state<string[]>([]);
@@ -265,6 +288,7 @@
   let sheetCloseButton: HTMLButtonElement | undefined;
   let sheetTrigger: HTMLButtonElement | undefined;
   let combatPanelOpen = $state(false);
+  let chatPanelOpen = $state(false);
   let launcherOpen = $state(false);
 
   function handleLauncherFocusOut(event: FocusEvent): void {
@@ -275,14 +299,16 @@
   }
 
   function syncVisiblePanels(): void {
+    if (activeTransfers?.size) return;
     const visible = informationPanels.filter((panel) => ownerOf(panel.id)?.hasPanel(panel.id));
     openInformationPanelIds = visible.map((panel) => panel.id);
     session.information.setVisiblePanels(visible.map((panel) => panel.id));
     const visibleWorldPanels = [...worldPanels, areaMap].filter((panel) =>
-      workspace?.hasPanel(panel.id),
+      ownerOf(panel.id)?.hasPanel(panel.id),
     );
     openWorldPanelIds = visibleWorldPanels.map((panel) => panel.id);
     session.world.setVisiblePanels(visibleWorldPanels.map((panel) => panel.id));
+    chatPanelOpen = workspace?.hasPanel(chatPanel.id) ?? false;
   }
 
   function informationPanelOpen(panel: WorkspacePanelSpec): boolean {
@@ -290,6 +316,7 @@
   }
 
   async function toggleInformationPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
+    if (activeTransfers?.has(panel.id)) return;
     const owner = ownerOf(panel.id);
     if (!owner) return;
     if (owner.hasPanel(panel.id)) {
@@ -308,12 +335,41 @@
   }
 
   async function toggleWorldPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
-    if (!workspace) return;
-    if (workspace.hasPanel(panel.id)) {
-      await workspace.removePanel(panel.id);
+    if (activeTransfers?.has(panel.id)) return;
+    const owner = ownerOf(panel.id);
+    if (!owner) return;
+    const wasRail = railFor(panel.id);
+    if (owner.hasPanel(panel.id)) {
+      await owner.removePanel(panel.id);
     } else {
-      workspace.addOrUpdatePanel(panel);
-      if (activate) workspace.activatePanel(panel.id);
+      owner.addOrUpdatePanel(panel);
+      if (activate && !railFor(panel.id)) workspace?.activatePanel(panel.id);
+    }
+    if (wasRail || railHomeFor(panel.id)) requestSave?.();
+    syncVisiblePanels();
+  }
+
+  async function toggleChatPanel(activate = true): Promise<void> {
+    if (!workspace) return;
+    if (workspace.hasPanel(chatPanel.id)) await workspace.removePanel(chatPanel.id);
+    else {
+      const width = Math.min(750, Math.max(320, host.clientWidth - 16));
+      const height = Math.min(370, Math.max(180, host.clientHeight - 16));
+      workspace.addOrUpdatePanel({
+        ...chatPanel,
+        placement: railsEnabled
+          ? {
+              kind: "floating",
+              bounds: {
+                left: Math.max(0, host.clientWidth - width - 8),
+                top: Math.max(0, host.clientHeight - height - 8),
+                width,
+                height,
+              },
+            }
+          : { kind: "grid", direction: "right", referencePanelId: terminal.id },
+      });
+      if (activate) workspace.activatePanel(chatPanel.id);
     }
     syncVisiblePanels();
   }
@@ -472,7 +528,7 @@
         component: CombatPanel,
         session,
       },
-      fishing: { component: FishingPanel, session },
+      fishing: { canClose: () => true, component: FishingPanel, session },
       ide: {
         canClose: () => ideCloseGuard(),
         component: IdePanel,
@@ -483,12 +539,40 @@
         preserveDomWhenHidden: true,
         session,
       },
-      map: { collapsible: true, component: MapPanel, floatable: true, session },
-      areaMap: { component: MapPanel, session },
-      roomImage: { collapsible: true, component: RoomImagePanel, floatable: true, session },
+      map: {
+        canClose: () => true,
+        collapsible: true,
+        component: MapPanel,
+        floatable: true,
+        session,
+      },
+      areaMap: { canClose: () => true, component: MapPanel, session },
+      room: {
+        canClose: () => true,
+        collapsible: true,
+        component: RoomPanel,
+        floatable: true,
+        session,
+      },
+      roomImage: {
+        canClose: () => true,
+        collapsible: true,
+        component: RoomImagePanel,
+        floatable: true,
+        session,
+      },
       roomPlaylist: {
+        canClose: () => true,
         collapsible: true,
         component: RoomPlaylistPanel,
+        floatable: true,
+        preserveDomWhenHidden: true,
+        session,
+      },
+      chat: {
+        canClose: () => true,
+        collapsible: true,
+        component: ChatPanel,
         floatable: true,
         preserveDomWhenHidden: true,
         session,
@@ -510,6 +594,13 @@
     const diagnostics = new LifecycleDiagnostics();
     const currentWorkspace = createWorkspace(host, registry, diagnostics);
     workspace = currentWorkspace;
+    const transferring = new SvelteSet<string>();
+    activeTransfers = transferring;
+    let transferBusy = false;
+    let reconcileResponsive = () => {};
+    let disposed = false;
+    let draggedPanelId: RailPanelId | undefined;
+    let cancelPendingSave = () => {};
     // Grid-host DnD: accept a rail card dropped anywhere in the Dockview host
     // and promote it to a floating pane. The rail's own drop handler covers
     // rail-to-rail moves; this covers rail-to-grid drags without relying on
@@ -522,9 +613,9 @@
     };
     const onRailDrop = (event: DragEvent) => {
       const id = event.dataTransfer?.getData(RAIL_DRAG_TYPE);
-      if (!id || !railFor(id)) return;
+      if (!id || !railEligible(id) || !railFor(id)) return;
       event.preventDefault();
-      floatFromRail(currentWorkspace, id);
+      movePanel?.(id, "float");
     };
     host.addEventListener("dragover", onRailDragOver);
     host.addEventListener("drop", onRailDrop);
@@ -545,15 +636,8 @@
       if (railEl?.dataset.rail === "right") return rightRail;
       return undefined;
     };
-    const draggingFloatingPanelId = (): string | undefined => {
-      const el = document.querySelector<HTMLElement>(
-        ".dv-resize-container-dragging .dv-floating-titlebar[data-panel-id]",
-      );
-      return el?.dataset.panelId;
-    };
     const onDocPointerMove = (event: PointerEvent) => {
-      const id = draggingFloatingPanelId();
-      if (!id || !railHomeFor(id)) return;
+      if (!draggedPanelId) return;
       const rail = railAt(event.clientX, event.clientY);
       for (const other of [leftRail, rightRail]) {
         if (other && other !== rail) other.clearDropIndicator();
@@ -561,38 +645,46 @@
       rail?.markDropIndicatorAt(event.clientY);
     };
     const onDocPointerUp = (event: PointerEvent) => {
-      const id = draggingFloatingPanelId();
+      const id = draggedPanelId;
+      draggedPanelId = undefined;
+      cancelActiveDrag = undefined;
       leftRail?.clearDropIndicator();
       rightRail?.clearDropIndicator();
-      if (!id || !railHomeFor(id)) return;
+      if (!id) return;
       const rail = railAt(event.clientX, event.clientY);
       if (!rail) return;
-      // Beat Dockview's own pointerup that finalises the floating position.
       const index = rail.dropIndexAt(event.clientY);
-      railOrigins.delete(id);
-      void currentWorkspace.removePanel(id).then(() => {
-        rail.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), index);
-        rail.scrollCardIntoView(id);
-        requestSave?.();
-      });
+      movePanel?.(id, rail === leftRail ? "left" : "right", index);
     };
+    const cancelPanelDrag = () => {
+      draggedPanelId = undefined;
+      cancelActiveDrag = undefined;
+      leftRail?.clearDropIndicator();
+      rightRail?.clearDropIndicator();
+    };
+    const unsubscribePanelDrag = currentWorkspace.subscribePanelDrag((event) => {
+      draggedPanelId = railEligible(event.panelId) ? event.panelId : undefined;
+      cancelActiveDrag = event.cancel;
+    });
     document.addEventListener("pointermove", onDocPointerMove);
-    document.addEventListener("pointerup", onDocPointerUp);
+    window.addEventListener("pointerup", onDocPointerUp);
+    window.addEventListener("pointercancel", cancelPanelDrag);
     // One diagnostics instance across all three roots keeps the exactly-once
     // disposal accounting whole.
     const railCallbacksFor = (self: () => Scrollview | undefined) => ({
       onAcceptForeign: (id: string, index: number) => {
         const receiver = self();
         const source = railFor(id);
-        if (!receiver || !source || source === receiver) return;
-        railOrigins.delete(id);
-        void source.removePanel(id).then(() => {
-          receiver.addOrUpdatePanel(railPanelSpec(id as InformationPanelId), index);
-          requestSave?.();
-        });
+        if (!receiver || !source || source === receiver || !railEligible(id)) return;
+        movePanel?.(id, receiver === leftRail ? "left" : "right", index);
       },
-      onChange: () => requestSave?.(),
-      onFloat: (id: string) => floatFromRail(currentWorkspace, id),
+      onChange: () => {
+        syncVisiblePanels();
+        requestSave?.();
+      },
+      onFloat: (id: string) => {
+        if (railEligible(id)) movePanel?.(id, "float");
+      },
       requestClose: (id: string) => currentWorkspace.requestClosePanel(id),
     });
     leftRail = new Scrollview(
@@ -608,6 +700,62 @@
       railCallbacksFor(() => rightRail),
     );
 
+    movePanel = (id, destination, index) => {
+      if (transferBusy) return;
+      launcherOpen = false;
+      const sourceRail = railFor(id);
+      const source = sourceRail ?? (currentWorkspace.hasPanel(id) ? currentWorkspace : undefined);
+      const receiver =
+        destination === "left" ? leftRail : destination === "right" ? rightRail : currentWorkspace;
+      if (!source || !receiver || source === receiver) return;
+      const state = source.getPanelState(id) ?? railPanelSpec(id).state;
+      const sourceIndex = sourceRail?.indexOf(id) ?? -1;
+      const sourceCollapsed = sourceRail?.collapsedIds().includes(id) ?? false;
+      const sourceSnapshot = sourceRail ? undefined : currentWorkspace.save();
+      transferBusy = true;
+      transferring.add(id);
+      cancelPendingSave();
+      void source
+        .removePanel(id)
+        .then(() => {
+          if (disposed) return;
+          if (destination === "float") {
+            if (sourceRail) railOrigins.set(id, { rail: sourceRail, index: sourceIndex });
+            currentWorkspace.addOrUpdatePanel({
+              ...railPanelSpec(id, state),
+              placement: { kind: "floating", bounds: RAIL_FLOAT_BOUNDS },
+            });
+            currentWorkspace.activatePanel(id);
+          } else {
+            railOrigins.delete(id);
+            receiver.addOrUpdatePanel(railPanelSpec(id, state), index);
+            (receiver as Scrollview).setCollapsed(id, false);
+            (receiver as Scrollview).scrollCardIntoView(id);
+            (receiver as Scrollview).focusPanel(id);
+          }
+        })
+        .catch(async () => {
+          if (disposed) return;
+          if (receiver.hasPanel(id)) await receiver.removePanel(id);
+          if (disposed) return;
+          if (sourceRail) {
+            sourceRail.addOrUpdatePanel(railPanelSpec(id, state), sourceIndex);
+            sourceRail.setCollapsed(id, sourceCollapsed);
+          } else if (sourceSnapshot) {
+            currentWorkspace.restore(sourceSnapshot, [railPanelSpec(id, state)]);
+          }
+          status = `${railPanelSpec(id).title} could not be moved.`;
+        })
+        .finally(() => {
+          transferring.delete(id);
+          transferBusy = false;
+          if (disposed) return;
+          syncVisiblePanels();
+          requestSave?.();
+          reconcileResponsive();
+        });
+    };
+
     /** Dockview tree plus each rail's ordered ids. Rails are not Dockview panels. */
     const composeSnapshot = (): CompositeWorkspaceSnapshot => ({
       version: 2,
@@ -617,6 +765,9 @@
           right: rightRail?.collapsedIds() ?? [],
         },
         dockview: currentWorkspace.save().layout,
+        ...(railFor("map")
+          ? { mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom) }
+          : {}),
         scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
       },
     });
@@ -626,7 +777,7 @@
      * rail membership is whatever `fillRailsWithDefaults` rebuilds.
      */
     const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
-      const panels = [terminal, ...informationPanels, ...worldPanels];
+      const panels = [terminal, ...informationPanels, ...worldPanels, chatPanel];
       if (next.version === 1) {
         if (!currentWorkspace.restore(next, panels)) return false;
         reclaimDockedRailPanels(currentWorkspace);
@@ -654,8 +805,13 @@
         const collapsed = next.layout.collapsed[side];
         if (!rail || !order || !collapsed) continue;
         for (const id of order) {
-          if (informationPanels.some((panel) => panel.id === id)) {
-            rail.addOrUpdatePanel(railPanelSpec(id as InformationPanelId));
+          if (
+            !currentWorkspace.hasPanel(id) &&
+            [...informationPanels, ...worldPanels].some((panel) => panel.id === id)
+          ) {
+            const state =
+              id === "map" ? { mapZoom: normalizeMapZoom(next.layout.mapZoom) } : undefined;
+            rail.addOrUpdatePanel(railPanelSpec(id as RailPanelId, state));
           }
         }
         // Anything absent from the saved order was closed or floated out.
@@ -735,19 +891,20 @@
       if (timer !== undefined) window.clearTimeout(timer);
       timer = window.setTimeout(flush, 75);
     };
-    const cancelPendingSave = () => {
+    cancelPendingSave = () => {
       if (timer !== undefined) window.clearTimeout(timer);
       timer = undefined;
       pending = undefined;
     };
     requestSave = () => {
-      if (suppressPersistence || hasTransientPanels()) {
+      if (suppressPersistence || hasTransientPanels() || transferring.size > 0) {
         cancelPendingSave();
         return;
       }
       scheduleSave(composeSnapshot());
     };
     const resetWorkspace = async (): Promise<void> => {
+      if (transferBusy) return;
       if (idePanelOpen && !(await currentWorkspace.requestClosePanel("ide"))) return;
       if (ideSnapshot.document) session.ide.close();
       idePanelOpen = false;
@@ -782,12 +939,13 @@
       await currentWorkspace.removePanel(terminal.id);
       await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       await Promise.all(worldPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
+      await currentWorkspace.removePanel(chatPanel.id);
       applyDefaultLayout(currentWorkspace);
       syncVisiblePanels();
       const resetSnapshot = composeSnapshot();
       if (!railsEnabled) {
         capturedDesktop = resetSnapshot;
-        presentTerminalCentric();
+        await presentTerminalCentric();
         syncVisiblePanels();
       }
       const result = saveCharacterWorkspace(localStorage, characterProfileId, resetSnapshot);
@@ -863,13 +1021,20 @@
         void currentWorkspace.removePanel(areaMap.id);
       }
       if (next.playlistOpenVersion > seenPlaylistOpenVersion) {
-        seenPlaylistOpenVersion = next.playlistOpenVersion;
         const playlistPanel = worldPanels.find((panel) => panel.id === "roomPlaylist");
-        if (playlistPanel) {
-          const exists = currentWorkspace.hasPanel(playlistPanel.id);
+        if (playlistPanel && !transferring.has(playlistPanel.id)) {
+          seenPlaylistOpenVersion = next.playlistOpenVersion;
+          const owner = ownerOf(playlistPanel.id);
+          const exists = owner?.hasPanel(playlistPanel.id) ?? false;
           visibilityChanged ||= !exists;
-          if (!exists) currentWorkspace.addOrUpdatePanel(playlistPanel);
-          currentWorkspace.activatePanel(playlistPanel.id);
+          if (!exists) owner?.addOrUpdatePanel(playlistPanel);
+          const rail = railFor(playlistPanel.id);
+          if (rail) {
+            rail.setCollapsed(playlistPanel.id, false);
+            rail.scrollCardIntoView(playlistPanel.id);
+          } else {
+            currentWorkspace.activatePanel(playlistPanel.id);
+          }
         }
       }
       if (hasTransientPanels()) cancelPendingSave();
@@ -957,8 +1122,12 @@
         idePanelOpen = false;
         session.ide.close();
       }
+      if (transferring.size > 0) {
+        cancelPendingSave();
+        return;
+      }
       reclaimDockedRailPanels(currentWorkspace);
-      if (suppressPersistence || hasTransientPanels()) cancelPendingSave();
+      if (suppressPersistence || hasTransientPanels() || transferring.size > 0) cancelPendingSave();
       else scheduleSave(composeSnapshot());
       syncVisiblePanels();
     });
@@ -969,29 +1138,33 @@
     const saveMapPanelState = (event: Event) => {
       const detail = (event as CustomEvent<{ mapZoom?: unknown; panelId?: unknown }>).detail;
       const panel = [...worldPanels, areaMap].find(({ id }) => id === detail?.panelId);
-      if (!panel) return;
-      currentWorkspace.addOrUpdatePanel({
+      if (!panel || transferring.has(panel.id)) return;
+      const owner = ownerOf(panel.id);
+      if (!owner?.hasPanel(panel.id)) return;
+      owner.addOrUpdatePanel({
         id: panel.id,
         kind: panel.kind,
         title: panel.title,
-        state: { ...panel.state, mapZoom: detail.mapZoom },
+        state: { ...owner.getPanelState(panel.id), mapZoom: normalizeMapZoom(detail.mapZoom) },
       });
       if (panel.id === "map") requestSave?.();
     };
     const zoneForWidth = (width: number): typeof responsiveZone =>
       width <= 700 ? "mobile" : width < 940 ? "compact" : "desktop";
-    const presentTerminalCentric = (): void => {
+    const presentTerminalCentric = async (): Promise<void> => {
       // Empty the rails so the terminal reclaims the width, then make the roots
       // inert so they cannot intercept touch input. Emptying matters as much as
       // hiding: a card left mounted in a hidden rail would double-mount its
       // panel when the sheet opens the same id into the grid.
       railsEnabled = false;
       for (const rail of [leftRail, rightRail]) {
-        for (const id of rail?.ids() ?? []) void rail?.removePanel(id);
+        await Promise.all((rail?.ids() ?? []).map((id) => rail!.removePanel(id)));
+        if (disposed) return;
         rail?.setInert(true);
       }
     };
-    const applyResponsiveZone = (): void => {
+    const applyResponsiveZone = async (): Promise<void> => {
+      if (disposed || transferBusy) return;
       const next = zoneForWidth(window.innerWidth);
       if (next === responsiveZone) return;
       const leavingDesktop = responsiveZone === "desktop" && next !== "desktop";
@@ -1001,13 +1174,21 @@
         capturedDesktop = composeSnapshot();
         suppressPersistence = true;
         cancelPendingSave();
-        presentTerminalCentric();
+        await presentTerminalCentric();
+        if (disposed) return;
         syncVisiblePanels();
       } else if (enteringDesktop) {
         railsEnabled = true;
         leftRail?.setInert(false);
         rightRail?.setInert(false);
         if (capturedDesktop) {
+          const restoredRailIds = Object.values(capturedDesktop.layout.scrollviews).flat();
+          await Promise.all(
+            restoredRailIds.map((id) =>
+              currentWorkspace.hasPanel(id) ? currentWorkspace.removePanel(id) : Promise.resolve(),
+            ),
+          );
+          if (disposed) return;
           restoreSnapshot(capturedDesktop);
           capturedDesktop = undefined;
         }
@@ -1016,21 +1197,26 @@
       }
       // compact <-> mobile keeps the same terminal-centric presentation.
     };
-    const onResize = () => applyResponsiveZone();
+    let responsiveTransition = Promise.resolve();
+    const onResize = () => {
+      responsiveTransition = responsiveTransition.then(applyResponsiveZone);
+    };
+    reconcileResponsive = onResize;
     const flushOnLeave = () => flush();
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
     window.addEventListener("darkflow:reset-workspace", resetWorkspace);
-    host.addEventListener("darkflow:map-panel-state", saveMapPanelState);
-    applyResponsiveZone();
+    shell.addEventListener("darkflow:map-panel-state", saveMapPanelState);
+    onResize();
 
     return () => {
+      disposed = true;
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
-      host.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
+      shell.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
       unsubscribeCombat();
       unsubscribeIde();
@@ -1042,7 +1228,13 @@
       host.removeEventListener("dragover", onRailDragOver);
       host.removeEventListener("drop", onRailDrop);
       document.removeEventListener("pointermove", onDocPointerMove);
-      document.removeEventListener("pointerup", onDocPointerUp);
+      window.removeEventListener("pointerup", onDocPointerUp);
+      window.removeEventListener("pointercancel", cancelPanelDrag);
+      unsubscribePanelDrag();
+      movePanel = undefined;
+      activeTransfers = undefined;
+      reconcileResponsive = () => {};
+      cancelActiveDrag = undefined;
       workspace = undefined;
       const rails = [leftRail, rightRail];
       leftRail = undefined;
@@ -1056,12 +1248,19 @@
 <svelte:window
   onkeydown={(event) => {
     if (event.key !== "Escape") return;
+    cancelActiveDrag?.();
+    cancelActiveDrag = undefined;
     if (sheetOpen) closeSheet();
     if (launcherOpen) launcherOpen = false;
   }}
 />
 
-<section class="workspace-shell" aria-label="Workspace" data-testid="phase2-workspace">
+<section
+  bind:this={shell}
+  class="workspace-shell"
+  aria-label="Workspace"
+  data-testid="phase2-workspace"
+>
   <div
     bind:this={workspaceControlsEl}
     class="workspace-controls"
@@ -1098,6 +1297,14 @@
               {panel.title}
             </label>
           {/each}
+          <label>
+            <input
+              type="checkbox"
+              checked={chatPanelOpen}
+              onchange={() => void toggleChatPanel(false)}
+            />
+            Chat
+          </label>
         </div>
       {/if}
     </div>
@@ -1164,6 +1371,13 @@
           {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
         </button>
       {/each}
+      <button
+        type="button"
+        aria-pressed={chatPanelOpen}
+        onclick={() => selectPanel(() => void toggleChatPanel())}
+      >
+        {chatPanelOpen ? "Close Chat" : "Open Chat"}
+      </button>
       {#if combatPanelOpen}
         <button
           type="button"
@@ -1275,6 +1489,31 @@
     overflow: hidden;
     border: 1px solid var(--border-color, #30363d);
     border-radius: 0.5rem;
+  }
+
+  :global(.df-rail-card[data-panel-id="map"] .df-rail-card-body),
+  :global(.df-rail-card[data-panel-id="roomImage"] .df-rail-card-body) {
+    height: 220px;
+  }
+
+  :global(.df-rail-card[data-panel-id="roomPlaylist"] .df-rail-card-body) {
+    min-height: 420px;
+  }
+
+  :global(.df-rail-card[data-panel-id="roomPlaylist"] .room-playlist-player) {
+    height: 202px;
+    min-height: 202px;
+    aspect-ratio: auto;
+  }
+
+  :global(.df-rail-card[data-panel-id="roomPlaylist"] .room-playlist-panel) {
+    padding: 0.5rem;
+    overflow: visible;
+  }
+
+  :global(.df-rail-card[data-panel-id="roomPlaylist"] .room-playlist-volume) {
+    width: 100%;
+    margin-left: 0;
   }
 
   .mobile-panels-trigger,

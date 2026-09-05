@@ -117,6 +117,7 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     layout: {
       collapsed: { left: ["avatar"], right: [] },
       dockview: dockviewA.layout,
+      mapZoom: 0.9,
       scrollviews: { left: ["avatar"], right: ["group"] },
     },
   };
@@ -216,6 +217,23 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
       const result = persistence.loadCharacterWorkspace(createGraphStorage(graph), characterAId);
       assert.equal(result.recovered, true);
       assert.equal(result.snapshot, null);
+    }
+  });
+
+  await t.test("optional rail map zoom remains forward-compatible", () => {
+    for (const mapZoom of [undefined, null, "invalid", 0.73]) {
+      const graph = structuredClone(originalGraph);
+      const dockview = structuredClone(compositeA);
+      if (mapZoom === undefined) delete dockview.layout.mapZoom;
+      else dockview.layout.mapZoom = mapZoom;
+      graph.characterProfiles[characterAId].workspace = {
+        version: 2,
+        payload: { dockview, legacy: originalGraph.characterProfiles[characterAId].workspace },
+      };
+      const loaded = persistence.loadCharacterWorkspace(createGraphStorage(graph), characterAId);
+      assert.equal(loaded.success, true);
+      assert.equal(loaded.recovered, false);
+      assert.deepEqual(loaded.snapshot, dockview);
     }
   });
 

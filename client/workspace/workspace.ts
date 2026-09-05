@@ -43,6 +43,7 @@ export interface CompositeWorkspaceSnapshot {
   layout: {
     collapsed: Record<string, string[]>;
     dockview: unknown;
+    mapZoom?: number;
     scrollviews: Record<string, string[]>;
   };
 }
@@ -73,11 +74,13 @@ export type WorkspaceRendererRegistry = Readonly<Record<string, WorkspaceRendere
 export interface Workspace {
   addOrUpdatePanel(spec: WorkspacePanelSpec): void;
   activatePanel(id: string): void;
+  getPanelState(id: string): PanelState | undefined;
   hasPanel(id: string): boolean;
   removePanel(id: string): Promise<void>;
   requestClosePanel(id: string): Promise<boolean>;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;
+  subscribePanelDrag(listener: (event: { cancel(): void; panelId: string }) => void): () => void;
   subscribeLayout(listener: (snapshot: WorkspaceSnapshot) => void): () => void;
   dispose(): Promise<void>;
 }

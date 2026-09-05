@@ -179,10 +179,15 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
 
   bus.dispatch("Room.Info", { num: 101, name: "Atrium", exits: {} });
   bus.dispatch("Room.Info", { area: "Keep", environment: "Inside" });
+  bus.dispatch("Room.Players", [{ name: "Alice", fullname: "Alice Example" }]);
+  bus.dispatch("Room.AddPlayer", { name: "Bob" });
+  bus.dispatch("Room.RemovePlayer", "Alice");
   bus.dispatch("Darkwind.Room.Image", { url: "/rooms/atrium.webp", name: "Atrium" });
   let snapshot = world.getSnapshot();
   assert.equal(snapshot.room?.name, "Atrium");
   assert.equal(snapshot.room?.area, "Keep");
+  assert.deepEqual(snapshot.players, [{ name: "Bob" }]);
+  assert.equal(Object.isFrozen(snapshot.players), true);
   assert.equal(snapshot.roomImage?.roomId, "101");
   assert.equal(snapshot.roomImage?.generation, snapshot.roomGeneration);
   assert.equal(Object.isFrozen(snapshot.roomImage), true);
@@ -205,17 +210,32 @@ test("room image tokens follow merged Room.Info identity and playlist Open alone
   assert.equal(world.getSnapshot().playlist.enabled, true);
   assert.equal(errorSpy.mock.callCount(), 2);
 
+  const permissionState = {
+    ...playlistState,
+    room_id: 2956173791282214,
+    queue: [{ ...playlistState.playback.current, can_remove: 32 }],
+    permissions: { add: 1, moderate: 32 },
+  };
+  bus.dispatch("Darkwind.Room.Playlist.State", permissionState);
+  assert.equal(world.getSnapshot().playlist.queue[0]?.can_remove, true);
+  assert.equal(world.getSnapshot().playlist.permissions.moderate, true);
+  assert.equal(world.getSnapshot().playlistOpenVersion, 0);
+  bus.dispatch("Darkwind.Room.Playlist.Open", permissionState);
+  assert.equal(world.getSnapshot().playlistOpenVersion, 1);
+  assert.equal(errorSpy.mock.callCount(), 2);
+
   bus.dispatch("Darkwind.Room.Playlist.Open", {
     enabled: 0,
     room_id: "101",
     server_time: 60,
   });
-  assert.equal(world.getSnapshot().playlistOpenVersion, 1);
+  assert.equal(world.getSnapshot().playlistOpenVersion, 2);
 
   const generation = world.getSnapshot().roomGeneration;
   bus.dispatch("Room.Info", { num: "202", name: "Elsewhere", exits: {} });
   assert.equal(world.getSnapshot().roomGeneration, generation + 1);
   assert.equal(world.getSnapshot().roomImage, null);
+  assert.deepEqual(world.getSnapshot().players, []);
   scope.dispose();
 });
 
@@ -237,6 +257,11 @@ test("world sends exact browse, subscriptions, media, and named playlist actions
   assert.equal(subscription.panels.room, true);
   assert.equal(subscription.panels.roomImage, true);
   assert.equal(subscription.panels.roomPlaylist, true);
+
+  world.setVisiblePanels(["room"]);
+  const roomSubscription = JSON.parse(sent.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(roomSubscription.panels.map, false);
+  assert.equal(roomSubscription.panels.room, true);
 
   assert.equal(world.resyncCurrentArea(), true);
   const sync = JSON.parse(sent.at(-1).slice("Darkwind.MapData2.Sync ".length));
@@ -313,6 +338,7 @@ test("disconnect clears live view state, retains playlist data, and disposal rel
   const disconnected = world.getSnapshot();
   assert.equal(disconnected.connected, false);
   assert.equal(disconnected.room, null);
+  assert.deepEqual(disconnected.players, []);
   assert.equal(disconnected.roomImage, null);
   assert.equal(disconnected.playlist.enabled, true);
   assert.equal(disconnected.playlistFresh, false);

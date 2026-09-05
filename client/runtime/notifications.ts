@@ -1,13 +1,16 @@
 import { deepFreeze } from "../configuration/snapshot";
 import type {
+  CommChannelEntry,
   CommChannelList,
   CommChannelMessage,
   CommChannelPlayers,
+  CommChannelState,
 } from "../gmcp/contracts/comm.ts";
 import {
   validateCommChannelList,
   validateCommChannelMessage,
   validateCommChannelPlayers,
+  validateCommChannelState,
 } from "../gmcp/contracts/validators";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
 // @ts-expect-error Retained JavaScript helper has no TypeScript declaration.
@@ -26,6 +29,7 @@ const MAX_NAME_LENGTH = 80;
 const MAX_DISPLAY_NAME_LENGTH = 120;
 const MAX_TEXT_LENGTH = 4096;
 const MAX_NOTIFICATIONS = 100;
+const MAX_CHANNEL_MESSAGES = 200;
 const MAX_OUTPUT_LINES = 250;
 const MATCH_WINDOW_MS = 10_000;
 const ROSTER_REQUEST_INTERVAL_MS = 1000;
@@ -51,9 +55,25 @@ export interface SessionNotification {
   readonly expired: boolean;
 }
 
+export interface SessionChannelMessage {
+  readonly id: number;
+  readonly channel: string;
+  readonly talker: string;
+  readonly text: string;
+}
+
+export interface SessionChatChannel {
+  readonly name: string;
+  readonly label: string;
+}
+
 export interface SessionNotificationsSnapshot {
   readonly playerName: string;
   readonly channelNames: readonly string[];
+  readonly chatChannels: readonly SessionChatChannel[];
+  readonly activeChannelNames: readonly string[];
+  readonly channelMessages: readonly SessionChannelMessage[];
+  readonly onlinePlayerCount: number;
   readonly roster: readonly SessionNotificationRosterEntry[];
   readonly rosterRequestPending: boolean;
   readonly notifications: readonly SessionNotification[];
@@ -86,6 +106,10 @@ function emptySnapshot(playerName = ""): SessionNotificationsSnapshot {
   return {
     playerName,
     channelNames: [],
+    chatChannels: [],
+    activeChannelNames: [],
+    channelMessages: [],
+    onlinePlayerCount: 0,
     roster: [],
     rosterRequestPending: false,
     notifications: [],
@@ -144,6 +168,35 @@ function normalizeList(data: CommChannelList): string[] | null {
     ? data.slice(0, MAX_CHANNELS)
     : Object.fromEntries(Object.entries(data).slice(0, MAX_CHANNELS));
   return [...new Set<string>(normalizeChannelList(limited) as string[])].slice(0, MAX_CHANNELS);
+}
+
+function chatChannel(entry: CommChannelEntry): SessionChatChannel | null {
+  const name = boundedString(entry.name ?? entry.command, MAX_NAME_LENGTH);
+  if (!name) return null;
+  const label = boundedString(
+    entry.caption ?? entry.name ?? entry.command,
+    MAX_DISPLAY_NAME_LENGTH,
+  );
+  return label ? { name: name.toLowerCase(), label } : null;
+}
+
+function normalizeChatChannels(data: CommChannelList): SessionChatChannel[] {
+  if (!Array.isArray(data)) {
+    return Object.keys(data)
+      .slice(0, MAX_CHANNELS)
+      .map((name) => ({ name: name.toLowerCase(), label: name }));
+  }
+  return data
+    .slice(0, MAX_CHANNELS)
+    .map(chatChannel)
+    .filter((channel): channel is SessionChatChannel => channel !== null);
+}
+
+function normalizeChannelState(data: CommChannelState): string | null {
+  return boundedString(
+    typeof data === "string" ? data : (data.channel ?? data.name),
+    MAX_NAME_LENGTH,
+  );
 }
 
 function normalizePlayers(data: CommChannelPlayers): SessionNotificationRosterEntry[] | null {
@@ -206,6 +259,7 @@ export function createSessionNotifications(
   const now = options.now ?? Date.now;
   let snapshot = deepFreeze(emptySnapshot());
   let nextNotificationId = 1;
+  let nextChannelMessageId = 1;
   let lastRosterRequestAt = -Infinity;
   let cancelRosterTimeout: Unsubscribe | null = null;
   let recentLines: RecentOutputLine[] = [];
@@ -235,6 +289,7 @@ export function createSessionNotifications(
     recentLines = [];
     pendingMentions = [];
     nextNotificationId = 1;
+    nextChannelMessageId = 1;
     lastRosterRequestAt = -Infinity;
     publish(emptySnapshot(playerName));
   };
@@ -273,11 +328,21 @@ export function createSessionNotifications(
     const result = validateCommChannelMessage(data);
     if (!result.success) return;
     const message = normalizeMessage(result.data);
+    if (!message) return;
+    const lastMessage = snapshot.channelMessages.at(-1);
     if (
-      !message ||
-      !snapshot.playerName ||
-      !messageMentionsPlayer(message.text, snapshot.playerName)
+      !lastMessage ||
+      notificationKey(lastMessage.channel, lastMessage.talker, lastMessage.text) !==
+        notificationKey(message.channel, message.talker, message.text)
     ) {
+      update({
+        channelMessages: [
+          ...snapshot.channelMessages,
+          { id: nextChannelMessageId++, ...message },
+        ].slice(-MAX_CHANNEL_MESSAGES),
+      });
+    }
+    if (!snapshot.playerName || !messageMentionsPlayer(message.text, snapshot.playerName)) {
       return;
     }
 
@@ -330,7 +395,7 @@ export function createSessionNotifications(
     const result = validateCommChannelList(boundedData);
     if (!result.success) return;
     const channelNames = normalizeList(result.data);
-    if (channelNames) update({ channelNames });
+    if (channelNames) update({ channelNames, chatChannels: normalizeChatChannels(result.data) });
   });
   listen("Comm.Channel.Players", (data) => {
     const result = validateCommChannelPlayers(
@@ -340,7 +405,21 @@ export function createSessionNotifications(
     const roster = normalizePlayers(result.data);
     if (!roster) return;
     stopRosterTimeout();
-    update({ roster, rosterRequestPending: false });
+    update({ roster, onlinePlayerCount: result.data.length, rosterRequestPending: false });
+  });
+  listen("Comm.Channel.Start", (data) => {
+    const result = validateCommChannelState(data);
+    if (!result.success) return;
+    const channel = normalizeChannelState(result.data);
+    if (!channel || snapshot.activeChannelNames.includes(channel)) return;
+    update({ activeChannelNames: [...snapshot.activeChannelNames, channel] });
+  });
+  listen("Comm.Channel.End", (data) => {
+    const result = validateCommChannelState(data);
+    if (!result.success) return;
+    const channel = normalizeChannelState(result.data);
+    if (!channel) return;
+    update({ activeChannelNames: snapshot.activeChannelNames.filter((name) => name !== channel) });
   });
 
   const unsubscribeInformation = information.subscribe((informationSnapshot) => {

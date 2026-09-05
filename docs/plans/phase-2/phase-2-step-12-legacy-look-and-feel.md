@@ -8,8 +8,9 @@ six survived independent recheck._
 - Mode: detailed implementation plan for the complete Step 12 horizon.
 - Complexity: 8/10 — shell geometry, Dockview behavior, persistence, mobile,
   accessibility, and visual evidence cross lifecycle-sensitive boundaries.
-- Status: **PLANNED — WAITING FOR USER AUTHORIZATION**. This document does not
-  authorize Step 12 implementation.
+- Status: **IMPLEMENTED LOCALLY — FINAL COMPLETION GATE OPEN**. The separately
+  approved Room/Chat functional slice has resolved the last inventory gaps;
+  Step 13 remains unstarted.
 - Base: `bff841e` (`Phase 2 Step 11: port combat and specialty surfaces`).
 - Depends on: Steps 1–11 complete and committed.
 - Current horizon: presentation and workspace behavior only. Step 13 retains
@@ -39,7 +40,7 @@ any Step 2–11 surface.
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Legacy is a full-window floating workspace.                       | The saved default is the **classic hybrid**: terminal center, 260px left/right rails, and selected floating panes. The optional all-floating profile is a separate legacy setting, not the default.                       |
 | Every migrated panel can close, dock, float, resize, and restore. | Controls differ by panel class. Terminal is never closable; launcher panels may be hidden rather than tab-closed; session-owned panels have domain close rules; transient panels are intentionally excluded from restore. |
-| Room, Enemy, Chat, Connection, and others are missing.            | Enemy is ported. Connection Health is a semantic replacement, not the legacy Connection pane. The remaining functional inventory gaps are **Room and Chat**.                                                              |
+| Room, Enemy, Chat, Connection, and others are missing.            | Enemy, Room, and Chat are ported. Connection Health is a semantic replacement, not the legacy Connection pane. No functional panel inventory gap remains.                                                                 |
 | Map and Room Image are a durable pair.                            | Pairing is initial placement only: Room Image begins 8px below Map and does not follow later Map movement.                                                                                                                |
 | Current mobile behavior is already the desired sheet model.       | The current sheet manipulates the live Dockview workspace and its touch test proves mobile dragging changes desktop persistence. Legacy mobile temporarily presents one panel and does not save mobile geometry.          |
 | Theme work is missing.                                            | Theme selection, persistence, and root application already exist. Step 12 needs scoped Dockview/pane styling and retained background presets; terminal ANSI/game colors remain unchanged.                                 |
@@ -75,13 +76,13 @@ Primary evidence:
   - Terminal occupies the flexible center.
   - Left rail is 260px and initially contains Avatar, Status, Vitals, Guild
     Vitals, Sky, Omens, Buffs, Worth, XP Monitor, and Stats in that order.
-  - Right rail is 260px and initially contains Group, Inventory, Quests, and
-    Achievements; Cyberware is available but initially hidden.
+  - Right rail is 260px and initially contains Room, Group, Inventory, Quests,
+    and Achievements; Cyberware is available but initially hidden.
   - These persistent panel containers exist from the fresh layout and render
     their current empty/loading state until data arrives. Data arrival does not
     insert a new group or shift saved geometry.
-  - Map and Room Image use legacy floating defaults. Missing functional content
-    such as Room/Chat is never replaced with a fake panel.
+  - Map and Room Image use legacy floating defaults. Room renders from
+    `Session.world`; Chat renders from the existing Comm.Channel owner.
 - At widths from 701px through 939px, use a compact desktop layout: Terminal
   remains at least 420px wide, both rail contents remain launcher-accessible, and
   at most one 260px rail is expanded at a time. At `<=700px`, use the mobile
@@ -182,16 +183,12 @@ Connection Health panel.
 
 ## Inventory boundary
 
-At `bff841e`, the Phase 2 workspace owns all legacy information/world/specialty
-definitions except Room and Chat. They are **explicit Step 12 exclusions**, not
-unknown work. Step 12 records the exclusions and does not smuggle new functional
-capabilities into a presentation step. Before Step 13, they require either a
-separately approved functional slice with narrow public Session owners or an
-explicit Phase 2 product-parity waiver.
-
-Room may be able to render from the existing `Session.world.room` snapshot after
-a bounded implementation audit. Chat requires a real output/channel ownership
-decision and must not be inferred from terminal DOM.
+At `bff841e`, Room and Chat were the two explicit gaps. The user approved a
+separate functional slice before Step 13. Room now extends the existing
+`Session.world` snapshot with validated room-player state. Chat extends the
+existing `session.notifications` Comm.Channel owner with channel metadata,
+active channels, online count, and a bounded message log. Neither panel reads
+terminal DOM or creates a second GMCP owner.
 
 ## Must-have outcomes
 
@@ -205,7 +202,7 @@ decision and must not be inferred from terminal DOM.
 | MH6  | Correct persistence       | Persistent panels restore; malformed data recovers; transient panels do not restore; one retained legacy fallback remains untouched                                            |
 | MH7  | Responsive isolation      | Compact-rail and mobile-sheet selection never mutate persisted desktop geometry; desktop state returns after responsive transitions and reload                                 |
 | MH8  | Themed presentation       | Darkflow pane/Dockview chrome follows existing themes and retained backgrounds; ANSI/game colors do not change                                                                 |
-| MH9  | Honest inventory          | Every presented panel has one existing Phase 2 owner; Room/Chat remain explicit gaps until separately resolved                                                                 |
+| MH9  | Complete inventory        | Every legacy panel has one Phase 2 owner; Room and Chat consume narrow public Session snapshots and have focused lifecycle/browser evidence                                    |
 | MH10 | Integrated evidence       | Stable semantic and screenshot evidence passes in development and built Chromium/mobile, then the full supported development matrix and authenticated live gate pass           |
 
 ## Out of scope
@@ -215,7 +212,7 @@ decision and must not be inferred from terminal DOM.
 - Reusing live state from `darkwind-panel-state`; it remains rollback data only.
 - A second panel manager, geometry engine, z-order stack, or generic media/window
   framework.
-- Functional Room or Chat ownership without separate approval.
+- Chat composition/input features beyond the retained legacy read-only panel.
 - Exact reproduction of legacy implementation quirks: cloned drag ghosts, native
   resize grips, same-layer non-MRU ordering, stale off-screen geometry after
   viewport shrink, relational Map/Image anchors, or broken dynamic redock paths.
@@ -240,17 +237,15 @@ decision and must not be inferred from terminal DOM.
 - Keep Dockview snapshot version 1. Existing preview users use the current Reset
   workspace action once to adopt the new default; Step 12 does not add a storage
   migration merely to force a reset.
-- Room and Chat are documented Step 12 exclusions. Step 13 cannot silently treat
-  them as replaced.
+- Room and Chat use the separately approved functional owners recorded in the
+  parity matrix; Step 13 must include their evidence in certification.
 
 ### Future expansion gates
 
 1. **Automatic layout migration.** Add only on explicit request, with an additive
    preservation schema and recovery/rollback tests. Rejecting snapshot version 1
    is not a migration.
-2. **Room and Chat.** Resolve in a separately approved functional slice or grant
-   an explicit parity waiver before Step 13.
-3. **Optional all-floating profile.** Add only on explicit request after MH1–MH8;
+2. **Optional all-floating profile.** Add only on explicit request after MH1–MH8;
    it is not necessary to reproduce the legacy default the user identified.
 
 ## Dependency-ordered implementation slices
@@ -335,7 +330,8 @@ mobile geometry corruption.
 **Root-owned shared files:** `WorkspaceHost.svelte`, `persistence.ts` only for the
 approved reset policy, and `dockview-workspace.ts` only for a proven gap.
 
-**Work:** apply frozen defaults to owned panels; keep Room/Chat absent; preserve
+**Work:** apply frozen defaults to then-owned panels; Room/Chat remained absent
+until their separately approved follow-up slice; preserve
 transient save suppression and authoritative close; keep snapshot version 1 and
 apply the new default through fresh state or Reset workspace; persist collapse
 only for persistent launcher panels; capture/suppress/restore desktop state
@@ -358,12 +354,12 @@ focused theme/background tests.
 
 **Work:** reuse retained backgrounds and `darkwind-client-settings`; map existing
 variables into scoped chrome; preserve unknown settings; add only capability-backed
-Map controls and placement/bounds/priority polish; do not port Room/Chat data or
-style terminal ANSI.
+Map controls and placement/bounds/priority polish; defer Room/Chat data to their
+separately approved follow-up slice; do not style terminal ANSI.
 
 **Exit:** MH8/MH9 pass across themes/backgrounds/reduced motion/forced colors and
-all target widths; the completion record names Room/Chat as Step 12 exclusions
-and Step 13 blockers absent a separate decision; settings never remount
+all target widths; the completion record includes the later approved Room/Chat
+evidence; settings never remount
 terminal/panels; built assets stay local.
 
 ### Green PR 6 — Integrated evidence and completion record
@@ -380,8 +376,8 @@ launcher/sheet, allowed float/dock/resize/close, theme/background switch, reload
 and transient close/reopen. Reset uses a disposable character profile; without
 one, it remains pending unless the user explicitly approves losing that profile's
 saved Phase 2 geometry. Capture and restore the prior theme/background settings.
-Evidence does not claim Room/Chat, optional all-floating mode, unrun browsers, or
-Step 13 certification.
+Evidence does not claim optional all-floating mode, unrun browsers, or Step 13
+certification.
 
 ## Writer boundaries
 
@@ -434,8 +430,8 @@ this document.
   support is required, expand the matrix before Green PR 2.
 - Existing `--df-*` variables/background assets remain available. If false, stop
   that styling slice and inventory the missing source rather than inventing it.
-- Room/Chat are not required to begin presentation work. If either becomes a
-  Step 12 exit, pause before Green PR 5 and approve a functional owner.
+- Room/Chat were not required to begin presentation work; both now have the
+  separately approved functional owners recorded in the parity matrix.
 - Authenticated live access and a disposable character profile will be available
   for the Reset gate. If false, run the non-destructive live checks and leave Reset
   pending unless the user explicitly approves losing the saved Phase 2 geometry.
@@ -454,7 +450,8 @@ this document.
 - **Presentation changes protocol lifecycle:** use public Session only and rerun exact-direction/reconnect/disposal fixtures.
 - **Pixel baselines become noisy:** freeze fixtures/viewports/fonts, disable animation,
   and mask only proven nondeterminism.
-- **Missing functionality leaks into Step 12:** retain the Room/Chat gate.
+- **Room/Chat duplicate protocol ownership:** keep both panels on their existing
+  public session owners and retain focused disposal/reconnect evidence.
 
 ## Rollback
 
@@ -477,7 +474,7 @@ this document.
 - [ ] MH6 persistence/recovery/transient exclusion.
 - [ ] MH7 compact/mobile responsive isolation.
 - [ ] MH8 theme/background consistency.
-- [ ] MH9 honest inventory and explicit Room/Chat Step 12 exclusions.
+- [ ] MH9 complete inventory including Room and Chat owners.
 - [ ] MH10 development, built, full-browser, package, and live evidence.
 - [ ] Step 13 remains unstarted.
 

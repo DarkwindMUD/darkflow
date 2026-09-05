@@ -57,6 +57,9 @@ Darkwind.Room.Playlist 1
 ```
 
 `playback.status` is `stopped`, `playing`, `paused`, or `paused_empty`.
+`can_remove` and `permissions.moderate` may be JSON booleans or LPC numeric
+permission values (for example, the architect bitmask `32`). Zero is false;
+nonzero is true. The client normalizes them to booleans before rendering.
 `server_time` establishes the client/server clock offset. While playing, the
 expected position is `position + (serverNow - start_at)`. Darkflow checks drift
 every five seconds and seeks when playback differs by more than two seconds.

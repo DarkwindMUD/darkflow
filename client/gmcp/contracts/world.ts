@@ -13,7 +13,8 @@ export interface DarkwindRoomPlaylistEntry {
   title: string;
   added_by: string;
   duration: number;
-  can_remove?: MapData2WireBoolean;
+  /** LPC permission expressions may return a nonzero privilege bitmask. */
+  can_remove?: boolean | number;
 }
 
 export interface DarkwindRoomPlaylistPlayback {
@@ -35,7 +36,7 @@ export interface DarkwindRoomPlaylistEnabledState {
   skip_needed: number;
   permissions: {
     add: MapData2WireBoolean;
-    moderate: MapData2WireBoolean;
+    moderate: boolean | number;
   };
 }
 

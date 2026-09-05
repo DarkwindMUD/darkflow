@@ -18,10 +18,10 @@ function extractBatchCommands(text: string): string[] {
     .filter(Boolean);
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+function isInteractiveTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
-    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A|SUMMARY)$/.test(target.tagName))
   );
 }
 
@@ -183,13 +183,13 @@ export function createTerminalInputController({
     if (event.defaultPrevented) return;
     if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"]'))
       return;
-    if (isEditableTarget(event.target) && event.target !== input) return;
+    if (isInteractiveTarget(event.target) && event.target !== input) return;
     if (event.key === "Escape" && returnOutputToLive?.()) {
       event.preventDefault();
       input.focus();
       return;
     }
-    if (isEditableTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return;
+    if (isInteractiveTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return;
     const mappedCommand = getMappedCommand?.(event);
     if (mappedCommand) {
       event.preventDefault();

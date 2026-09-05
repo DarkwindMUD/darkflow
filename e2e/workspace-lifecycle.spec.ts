@@ -1,4 +1,5 @@
 import { expect, test as base, type Page } from "@playwright/test";
+import type { SerializedDockview } from "dockview";
 import type {
   PanelObservation,
   PanelPlacement,
@@ -170,6 +171,41 @@ test("updates a panel in place and leaves unaffected panels mounted", async ({ p
   expect(survivingFirst.rootIdentity).toBe(beforeFirst.rootIdentity);
   expect(survivingFirst.mountCount).toBe(beforeFirst.mountCount);
   expect(beforeSecond.rootIdentity).not.toBe(beforeFirst.rootIdentity);
+});
+
+test("restoring a workspace removes tabless floating groups without losing real panels", async ({
+  page,
+}) => {
+  const terminal = terminalPanel("ghost-terminal");
+  const floating = lifecyclePanel("real-floating", "still here", {
+    kind: "floating",
+    bounds: { left: 40, top: 40, width: 320, height: 240 },
+  });
+  await page.evaluate(
+    (specs) => specs.forEach((spec) => window.__darkflowWorkspace.upsert(spec)),
+    [terminal, floating],
+  );
+  const snapshot = await page.evaluate(() => window.__darkflowWorkspace.save());
+  const layout = snapshot.layout as SerializedDockview;
+  const ghost = structuredClone(layout.floatingGroups![0]!);
+  // Persist the same floating shell, but with no panel occupying it.
+  ghost.data!.views = [];
+  delete ghost.data!.activeView;
+  ghost.data!.id = "ghost-group";
+  layout.floatingGroups!.push(ghost);
+  expect(
+    await page.evaluate(({ saved, specs }) => window.__darkflowWorkspace.restore(saved, specs), {
+      saved: snapshot,
+      specs: [terminal, floating],
+    }),
+  ).toBe(true);
+  await expect(page.locator(".dv-resize-container")).toHaveCount(1);
+  await expect(
+    page.locator('[data-panel-id="real-floating"] [data-testid="lifecycle-state"]'),
+  ).toContainText("still here");
+  expect((await observePanel(page, terminal.id)).title).toBe(terminal.title);
+  await page.evaluate((id) => window.__darkflowWorkspace.remove(id), floating.id);
+  await expect(page.locator(".dv-resize-container")).toHaveCount(0);
 });
 
 test("emits user layout changes, relayouts on host resize, and keeps terminal focus on activation", async ({

@@ -12,7 +12,13 @@ import type {
   MapData2Sync,
   MapData2Update,
 } from "../gmcp/contracts/darkwind-map-data-v2.ts";
-import type { RoomInfo } from "../gmcp/contracts/room.ts";
+import type {
+  RoomAddPlayer,
+  RoomInfo,
+  RoomPlayer,
+  RoomPlayers,
+  RoomRemovePlayer,
+} from "../gmcp/contracts/room.ts";
 import type {
   DarkwindRoomImage,
   DarkwindRoomPlaylistAction,
@@ -30,7 +36,10 @@ import {
   validateMapData2Error,
   validateMapData2Reset,
   validateMapData2Update,
+  validateRoomAddPlayer,
   validateRoomInfo,
+  validateRoomPlayers,
+  validateRoomRemovePlayer,
 } from "../gmcp/contracts/validators";
 import type { SessionGmcpBus } from "../gmcp/bus.ts";
 import type { TransportReconnectStatusPayload } from "../transport/types.ts";
@@ -50,8 +59,9 @@ import type { ResourceScope } from "./resource-scope.ts";
 
 const mapDataWorldRepository = mapDataV2Core.createMapDataV2WorldRepository();
 const learnedMapWorldRepository = learnedMapCore.createLearnedMapWorldRepository();
+const MAX_ROOM_PLAYERS = 512;
 
-export const WORLD_PANEL_IDS = ["map", "areaMap", "roomImage", "roomPlaylist"] as const;
+export const WORLD_PANEL_IDS = ["room", "map", "areaMap", "roomImage", "roomPlaylist"] as const;
 export type WorldPanelId = (typeof WORLD_PANEL_IDS)[number];
 
 export interface WorldMapRoom {
@@ -134,6 +144,7 @@ export interface SessionWorldSnapshot {
   readonly browseOpenVersion: number;
   readonly speedwalking: boolean;
   readonly room: RoomInfo | null;
+  readonly players: readonly RoomPlayer[];
   readonly roomGeneration: number;
   readonly roomImage: SessionRoomImageSnapshot | null;
   readonly playlist: SessionPlaylistSnapshot;
@@ -240,6 +251,7 @@ export function createSessionWorld(
   let playlistOpenVersion = 0;
   let roomGeneration = 0;
   let room: RoomInfo | null = null;
+  let players: readonly RoomPlayer[] = [];
   let roomImage: SessionRoomImageSnapshot | null = null;
   let playlist = deepFreeze(initialPlaylist());
   let playlistFresh = false;
@@ -332,6 +344,7 @@ export function createSessionWorld(
       browseOpenVersion,
       speedwalking: speedwalk.isSpeedwalking(),
       room,
+      players,
       roomGeneration,
       roomImage,
       playlist,
@@ -373,12 +386,26 @@ export function createSessionWorld(
     if (nextRoomId !== previousRoomId) {
       roomGeneration += 1;
       roomImage = null;
+      players = [];
     }
     room = deepFreeze(nextRoom);
     selector.processGenericRoomInfo(data);
     if (selector.getLiveMapSource() === learnedMap && nextRoomId) {
       speedwalk.notifyRoomChange(nextRoomId);
     }
+    publish();
+  });
+  listen<RoomPlayers>("Room.Players", validateRoomPlayers, (data) => {
+    players = deepFreeze(Array.isArray(data) ? data.slice(0, MAX_ROOM_PLAYERS) : []);
+    publish();
+  });
+  listen<RoomAddPlayer>("Room.AddPlayer", validateRoomAddPlayer, (data) => {
+    players = deepFreeze([...players, data].slice(-MAX_ROOM_PLAYERS));
+    publish();
+  });
+  listen<RoomRemovePlayer>("Room.RemovePlayer", validateRoomRemovePlayer, (data) => {
+    const name = typeof data === "string" ? data : data.name;
+    players = deepFreeze(players.filter((player) => player.name !== name));
     publish();
   });
 
@@ -453,6 +480,7 @@ export function createSessionWorld(
         speedwalk.cancel();
         void selector.resetLiveMapModeForConnection();
         room = null;
+        players = [];
         roomGeneration += 1;
         roomImage = null;
       }
@@ -500,6 +528,7 @@ export function createSessionWorld(
     learnedMap.disposeMapDataLifecycle();
     roomGeneration += 1;
     roomImage = null;
+    players = [];
   });
 
   return {
@@ -518,7 +547,7 @@ export function createSessionWorld(
         panels: {
           map: mapVisible,
           areaMap: visible.has("areaMap"),
-          room: mapVisible || visible.has("roomImage"),
+          room: mapVisible || visible.has("room") || visible.has("roomImage"),
           roomImage: visible.has("roomImage"),
           roomPlaylist: visible.has("roomPlaylist"),
         },

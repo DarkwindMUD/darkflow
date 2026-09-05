@@ -8,7 +8,7 @@ import {
   type Parameters as DockviewParameters,
   type TabPartInitParameters,
 } from "dockview";
-import { writable, type Writable } from "svelte/store";
+import { get, writable, type Writable } from "svelte/store";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
 import { PanelCardHeader, SveltePanelBody } from "./panel-parts";
 import type {
@@ -113,6 +113,7 @@ export function createWorkspace(
   const collapsedPanes = new Set<string>();
   const pendingUnmounts = new Set<Promise<void>>();
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
+  const panelDragSubscribers = new Set<(event: { cancel(): void; panelId: string }) => void>();
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
   let requestClosePanel: (id: string) => Promise<boolean> = async () => false;
@@ -186,11 +187,21 @@ export function createWorkspace(
       }
     }
   };
+  const removeEmptyFloatingGroups = () => {
+    // Close controls belong to tabs. A restored empty floating group has none,
+    // so it must be removed through Dockview rather than left as an unclosable shell.
+    for (const group of api.groups) {
+      if (group.api.location.type === "floating" && group.panels.length === 0) {
+        api.removeGroup(group);
+      }
+    }
+  };
   const emitLayout = () => {
-    annotateFloatingTitlebars();
     if (disposed || suppressLayoutEvents) {
       return;
     }
+    removeEmptyFloatingGroups();
+    annotateFloatingTitlebars();
 
     const snapshot: WorkspaceSnapshot = { layout: api.toJSON(), version: 1 };
     for (const listener of layoutSubscribers) {
@@ -199,6 +210,36 @@ export function createWorkspace(
   };
   const releaseLayoutListener = diagnostics.trackResource("listener");
   const layoutListener = api.onDidLayoutChange(emitLayout);
+  const publishPanelDrag = (panelId: string, nativeEvent: PointerEvent) => {
+    const cancel = () => {
+      const event = new PointerEvent("pointercancel", {
+        bubbles: true,
+        pointerId: nativeEvent.pointerId,
+        pointerType: nativeEvent.pointerType,
+      });
+      window.dispatchEvent(event);
+    };
+    for (const listener of panelDragSubscribers) listener({ cancel, panelId });
+  };
+  const panelDragListener = api.onWillDragPanel(({ nativeEvent, panel }) => {
+    if (nativeEvent instanceof PointerEvent) {
+      publishPanelDrag(panel.id, nativeEvent);
+    }
+  });
+  const releasePanelDragListener = diagnostics.trackResource("listener");
+  const groupDragListener = api.onWillDragGroup(({ nativeEvent, group }) => {
+    const floatingWindow = group.element.closest(".dv-resize-container");
+    const panelCount = floatingWindow
+      ? api.groups
+          .filter((candidate) => floatingWindow.contains(candidate.element))
+          .reduce((count, candidate) => count + candidate.panels.length, 0)
+      : group.panels.length;
+    if (nativeEvent instanceof PointerEvent && panelCount === 1) {
+      const panel = group.panels[0];
+      if (panel) publishPanelDrag(panel.id, nativeEvent);
+    }
+  });
+  const releaseGroupDragListener = diagnostics.trackResource("listener");
   const layoutHost = () => {
     diagnostics.recordLayout();
     api.layout(host.clientWidth, host.clientHeight, true);
@@ -603,6 +644,11 @@ export function createWorkspace(
       return !disposed && api.getPanel(id) !== undefined;
     },
 
+    getPanelState(id) {
+      const state = records.get(id)?.state;
+      return state ? get(state) : undefined;
+    },
+
     removePanel,
 
     requestClosePanel,
@@ -635,6 +681,7 @@ export function createWorkspace(
         }
         preserveOwnedFocus(() => {
           api.fromJSON(snapshot.layout as never, { reuseExistingPanels: true });
+          removeEmptyFloatingGroups();
           layoutHost();
         });
         queueMicrotask(annotateFloatingTitlebars);
@@ -655,6 +702,12 @@ export function createWorkspace(
       return () => layoutSubscribers.delete(listener);
     },
 
+    subscribePanelDrag(listener) {
+      assertUsable();
+      panelDragSubscribers.add(listener);
+      return () => panelDragSubscribers.delete(listener);
+    },
+
     dispose() {
       if (disposePromise) {
         return disposePromise;
@@ -662,8 +715,13 @@ export function createWorkspace(
 
       disposed = true;
       layoutSubscribers.clear();
+      panelDragSubscribers.clear();
       api.dispose();
       layoutListener.dispose();
+      panelDragListener.dispose();
+      releasePanelDragListener();
+      groupDragListener.dispose();
+      releaseGroupDragListener();
       releaseLayoutListener();
       resizeObserver.disconnect();
       releaseResizeObserver();

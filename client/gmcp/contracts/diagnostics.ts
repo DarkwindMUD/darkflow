@@ -1,5 +1,5 @@
-/** Empty payload echoed by the server for Core.Ping. */
-export type CorePing = undefined;
+/** Payload-free ping, including the server's empty-string echo. */
+export type CorePing = undefined | "";
 
 /** Server-side driver health reported by Darkwind.Lag.Status. */
 export interface DarkwindLagStatus {

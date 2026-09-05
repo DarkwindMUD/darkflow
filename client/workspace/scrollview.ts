@@ -1,4 +1,4 @@
-import { writable, type Writable } from "svelte/store";
+import { get, writable, type Writable } from "svelte/store";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
 import { PanelCardHeader, SveltePanelBody } from "./panel-parts";
 import type { PanelState, WorkspacePanelSpec, WorkspaceRendererRegistry } from "./workspace";
@@ -150,6 +150,11 @@ export class Scrollview {
     return this.#cards.has(id);
   }
 
+  getPanelState(id: string): PanelState | undefined {
+    const state = this.#cards.get(id)?.state;
+    return state ? get(state) : undefined;
+  }
+
   indexOf(id: string): number {
     return this.ids().indexOf(id);
   }
@@ -262,6 +267,10 @@ export class Scrollview {
   scrollCardIntoView(id: string): void {
     const card = this.#cards.get(id)?.element;
     card?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }
+
+  focusPanel(id: string): void {
+    this.#cards.get(id)?.header.element.querySelector<HTMLElement>("button")?.focus();
   }
 
   setCollapsed(id: string, collapsed: boolean): void {

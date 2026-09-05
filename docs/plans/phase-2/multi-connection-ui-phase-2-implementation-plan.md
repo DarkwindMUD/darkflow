@@ -448,7 +448,10 @@ pane chrome, theming, and presentation consistency; Step 13 owns release cutover
 Phase map:
 [`phase-2-step-12-legacy-look-and-feel.md`](phase-2-step-12-legacy-look-and-feel.md).
 
-The phase map requires a detailed implementation plan before Step 12 code work.
+**Status:** `IMPLEMENTED LOCALLY — FINAL COMPLETION GATE OPEN`. The separately
+approved Room/Chat functional slice resolved the last panel inventory gaps.
+Step 13 remains blocked on Step 12 completion reconciliation and final live/package
+evidence.
 
 ### Step 13 — Cut over, certify Phase 2, and freeze Phase 3 interfaces
 

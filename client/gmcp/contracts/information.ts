@@ -149,9 +149,9 @@ export interface DarkwindDivine {
   leader_label?: string;
   changed_at?: number;
   pressure_scale?: Record<string, number>;
-  holy_hour?: { god?: string; expires_at?: number; [key: string]: unknown };
+  holy_hour?: { god?: string | 0; expires_at?: number; [key: string]: unknown };
   eclipse?: {
-    active?: boolean;
+    active?: boolean | 0 | 1;
     expires_at?: number;
     seconds_left?: number;
     cooldown_left?: number;

@@ -6,15 +6,15 @@ roster used by the mention picker.
 
 ## Messages
 
-| Message | Direction | Purpose |
-| --- | --- | --- |
-| `Comm.Channel` | Server -> Client | Receive a channel message |
-| `Comm.Channel.Text` | Server -> Client | Receive a channel message |
-| `Comm.Channel.List` | Server -> Client | Replace channel metadata |
-| `Comm.Channel.Players` | Mixed | Request or receive the online player roster |
-| `Comm.Channel.Start` | Server -> Client | Mark a channel active for this session |
-| `Comm.Channel.End` | Server -> Client | Mark a channel inactive for this session |
-| `Comm.Channel.Enable` | Client -> Server | Ask the server to enable one channel |
+| Message                | Direction        | Purpose                                     |
+| ---------------------- | ---------------- | ------------------------------------------- |
+| `Comm.Channel`         | Server -> Client | Receive a channel message                   |
+| `Comm.Channel.Text`    | Server -> Client | Receive a channel message                   |
+| `Comm.Channel.List`    | Server -> Client | Replace channel metadata                    |
+| `Comm.Channel.Players` | Mixed            | Request or receive the online player roster |
+| `Comm.Channel.Start`   | Server -> Client | Mark a channel active for this session      |
+| `Comm.Channel.End`     | Server -> Client | Mark a channel inactive for this session    |
+| `Comm.Channel.Enable`  | Client -> Server | Ask the server to enable one channel        |
 
 ## Channel Messages
 
@@ -39,7 +39,8 @@ Darkflow accepts both common field families:
 The normalizer fills both aliases (`channel`/`chan`, `talker`/`player`, and
 `text`/`msg`) before dispatch. A non-object payload becomes `{ "text": ... }`.
 The Chat panel keeps the latest 200 distinct messages and suppresses an
-immediately repeated message with the same channel, talker, and text.
+immediately repeated message with the same channel, talker, and text. Channel
+and active-channel labels are passive metadata above the combined log.
 
 ## Channel And Player Lists
 
@@ -48,9 +49,7 @@ objects and uses common fields such as `name`, `caption`, and `command` when
 rendering controls.
 
 ```json
-[
-  { "name": "gossip", "caption": "Gossip", "command": "gossip" }
-]
+[{ "name": "gossip", "caption": "Gossip", "command": "gossip" }]
 ```
 
 `Comm.Channel.Players` is sent by Darkflow with an empty object after the first

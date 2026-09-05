@@ -76,7 +76,8 @@ When the connection-health monitor is enabled, Darkflow sends a payload-free
 Core.Ping
 ```
 
-The server should echo `Core.Ping` without a payload. Darkflow correlates one
+The server echoes `Core.Ping` without a payload or with an empty string (`""`).
+Darkflow accepts both empty forms and correlates one
 outstanding request at a time and records the elapsed round-trip time. This is
 separate from `Darkwind.Lag.Status`, which reports server-side driver health.
 

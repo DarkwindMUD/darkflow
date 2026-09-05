@@ -292,6 +292,7 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   const batchInput = document.createElement("textarea");
   const batchForm = document.createElement("form");
   let sends = 0;
+  const executed = [];
   let completions = 0;
   let returnToLive = false;
   let returnCalls = 0;
@@ -326,10 +327,12 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
     batchForm,
     appendEcho: () => {},
     appendSystemMessage: () => {},
-    executeCommand: () => {
+    executeCommand: (command) => {
       sends += 1;
+      executed.push(command);
       return true;
     },
+    getMappedCommand: (event) => (event.key === "F1" ? "score" : null),
     returnOutputToLive: () => {
       returnCalls += 1;
       return returnToLive;
@@ -389,6 +392,19 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   assert.equal(returnCalls, 1);
   assert.equal(dialogEscape.defaultPrevented, false);
   assert.equal(document.activeElement, dialogButton);
+
+  const toolbarButton = document.createElement("button");
+  toolbarButton.focus();
+  document.dispatchKeydown(toolbarButton, new FakeKeyboardEvent(" "));
+  assert.equal(document.activeElement, toolbarButton);
+
+  document.body.focus();
+  document.dispatchKeydown(document.body, new FakeKeyboardEvent("x"));
+  assert.equal(document.activeElement, input);
+
+  document.body.focus();
+  document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
+  assert.equal(executed.at(-1), "score");
 
   controller.dispose();
   assert.equal(notifications.listeners.size, 0);

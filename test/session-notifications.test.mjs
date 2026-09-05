@@ -102,21 +102,38 @@ test("notifications publishes frozen bounded channel and roster snapshots", asyn
       ignored: "not retained",
     },
   ]);
+  bus.dispatch("Comm.Channel.Start", { channel: "gossip" });
+  bus.dispatch("Comm.Channel", mention("hello from chat"));
+  bus.dispatch("Comm.Channel.Text", mention("hello from chat"));
 
   const snapshot = notifications.getSnapshot();
   assert.deepEqual(snapshot.channelNames, ["gossip", "trade"]);
+  assert.deepEqual(snapshot.chatChannels, [
+    { name: "gossip", label: "Gossip" },
+    { name: "tell", label: "tell" },
+    { name: "trade", label: "Trade" },
+  ]);
+  assert.deepEqual(snapshot.activeChannelNames, ["gossip"]);
+  assert.deepEqual(snapshot.channelMessages, [
+    { id: 1, channel: "gossip", talker: "Alice", text: "hello from chat" },
+  ]);
+  assert.equal(snapshot.onlinePlayerCount, 1);
   assert.deepEqual(snapshot.roster, [
     { name: "alice", displayName: "Alice Example", channels: ["gossip"] },
   ]);
   assert.equal(snapshot.playerName, "Nacho");
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.channelNames), true);
+  assert.equal(Object.isFrozen(snapshot.channelMessages[0]), true);
   assert.equal(Object.isFrozen(snapshot.roster[0]), true);
   assert.equal(Object.isFrozen(snapshot.roster[0].channels), true);
   assert.equal(secondCalls, 1);
 
   bus.dispatch("Comm.Channel.Players", [{ name: "NoChannels" }]);
   assert.deepEqual(notifications.getSnapshot().roster, []);
+  assert.equal(notifications.getSnapshot().onlinePlayerCount, 1);
+  bus.dispatch("Comm.Channel.End", "gossip");
+  assert.deepEqual(notifications.getSnapshot().activeChannelNames, []);
   scope.dispose();
 });
 
@@ -226,7 +243,7 @@ test("notifications caps rows and supports activation, expiration, reset, and cl
   let clock = 0;
   const { bus, notifications, scope } = createNotifications(modules, { now: () => clock });
 
-  for (let index = 0; index < 101; index += 1) {
+  for (let index = 0; index < 201; index += 1) {
     const text = `message-${index} @Nacho`;
     notifications.recordOutputLine({ id: index + 1, text: `Alice: ${text}` });
     bus.dispatch("Comm.Channel.Text", mention(text));
@@ -234,6 +251,8 @@ test("notifications caps rows and supports activation, expiration, reset, and cl
   }
   let snapshot = notifications.getSnapshot();
   assert.equal(snapshot.notifications.length, 100);
+  assert.equal(snapshot.channelMessages.length, 200);
+  assert.equal(snapshot.channelMessages[0].text, "message-1 @Nacho");
   assert.equal(snapshot.unreadCount, 100);
   const newest = snapshot.notifications[0];
 
@@ -256,6 +275,7 @@ test("notifications caps rows and supports activation, expiration, reset, and cl
   notifications.clear();
   assert.equal(notifications.getSnapshot().notifications.length, 0);
   assert.equal(notifications.getSnapshot().unreadCount, 0);
+  assert.equal(notifications.getSnapshot().channelMessages.length, 200);
   scope.dispose();
 });
 
@@ -304,6 +324,10 @@ test("notifications isolates sessions and resets on identity, reconnect, and dis
   assert.deepEqual(first.notifications.getSnapshot(), {
     playerName: "Other",
     channelNames: [],
+    chatChannels: [],
+    activeChannelNames: [],
+    channelMessages: [],
+    onlinePlayerCount: 0,
     roster: [],
     rosterRequestPending: false,
     notifications: [],
@@ -329,6 +353,10 @@ test("notifications isolates sessions and resets on identity, reconnect, and dis
   assert.deepEqual(first.notifications.getSnapshot(), {
     playerName: "",
     channelNames: [],
+    chatChannels: [],
+    activeChannelNames: [],
+    channelMessages: [],
+    onlinePlayerCount: 0,
     roster: [],
     rosterRequestPending: false,
     notifications: [],

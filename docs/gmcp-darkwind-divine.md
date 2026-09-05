@@ -69,10 +69,10 @@ Replaces the omens snapshot used by the Omens panel. The full payload is sent ea
 | `changed_at` | number | No | Unix timestamp of the last divine state change |
 | `pressure_scale` | object | No | Per-god pressure values, normalized 0-100. Keys are `mitra`, `gaea`, `set` |
 | `holy_hour` | object | No | Active Holy Hour, if any |
-| `holy_hour.god` | string | No | Lowercase god key currently in Holy Hour |
+| `holy_hour.god` | string or 0 | No | Lowercase god key currently in Holy Hour; 0 means none |
 | `holy_hour.expires_at` | number | No | Unix timestamp when the Holy Hour ends |
 | `eclipse` | object | No | Set Eclipse state |
-| `eclipse.active` | boolean | No | True when an eclipse is currently active |
+| `eclipse.active` | boolean or 0/1 | No | True or 1 when an eclipse is currently active |
 | `eclipse.expires_at` | number | No | Unix timestamp of eclipse end |
 | `eclipse.seconds_left` | number | No | Seconds remaining in the eclipse |
 | `eclipse.cooldown_left` | number | No | Seconds remaining on the eclipse cooldown |

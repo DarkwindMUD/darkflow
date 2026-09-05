@@ -525,7 +525,7 @@ test("fishing casts, hooks, renders catches and late art, cancels, and keeps End
     "src",
     "/assets/brand/darkflow-icon-64.png",
   );
-  await panel.getByRole("button", { name: "Stop fishing" }).click();
+  await page.getByRole("button", { name: "Close Fishing", exact: true }).click();
   await expect
     .poll(() => endpoint.gmcpMessages)
     .toContain('Darkwind.Fishing.Cancel {"session":"fish-1"}');
@@ -538,6 +538,8 @@ test("fishing casts, hooks, renders catches and late art, cancels, and keeps End
     message: "Fishing finished.",
   });
   await expect(panel).toContainText("Fishing finished.");
+  await page.getByRole("button", { name: "Close Fishing", exact: true }).click();
+  await expect(panel).toHaveCount(0);
 });
 
 test("disconnect clears transient interaction surfaces", async ({ page }) => {

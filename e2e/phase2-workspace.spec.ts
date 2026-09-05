@@ -32,6 +32,36 @@ async function toggleAvatar(page: Page): Promise<void> {
   await page.keyboard.press("Escape");
 }
 
+async function dragPanelToRail(page: Page, panelId: string, side: "left" | "right"): Promise<void> {
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const rail = await page.locator(`[data-rail="${side}"]`).boundingBox();
+  expect(source).not.toBeNull();
+  expect(rail).not.toBeNull();
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rail!.x + rail!.width / 2, rail!.y + 40, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function dockPanelAsTab(page: Page, panelId: string, targetPanelId: string): Promise<void> {
+  const source = await panelDragHandle(page, panelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const target = await panelDragHandle(page, targetPanelId)
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  expect(source).not.toBeNull();
+  expect(target).not.toBeNull();
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, {
+    steps: 12,
+  });
+  await page.mouse.up();
+}
+
 async function terminalState(
   page: Page,
 ): Promise<{ buffer: string; identity: string; scrollTop: number }> {
@@ -95,6 +125,203 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await disposeSession(page);
   await expect(page.getByTestId("phase2-shell")).toHaveCount(0);
   await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+});
+
+test("eligible docked tabs move directly into either rail", async ({ page }, testInfo) => {
+  test.slow();
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop rails only");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+
+  const source = await panelDragHandle(page, "map")
+    .locator(".dv-default-tab-content")
+    .boundingBox();
+  const leftRail = await page.locator('[data-rail="left"]').boundingBox();
+  expect(source).not.toBeNull();
+  expect(leftRail).not.toBeNull();
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(leftRail!.x + leftRail!.width / 2, leftRail!.y + 40, { steps: 8 });
+  await page.keyboard.press("Escape");
+  await page.mouse.up();
+  await expect(
+    page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toHaveCount(0);
+
+  await page.evaluate(() => {
+    window.addEventListener(
+      "pointerdown",
+      (event) => {
+        (window as unknown as { __railTestPointerId: number }).__railTestPointerId =
+          event.pointerId;
+      },
+      { once: true },
+    );
+  });
+  await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(leftRail!.x + leftRail!.width / 2, leftRail!.y + 40, { steps: 8 });
+  await page.evaluate(() =>
+    window.dispatchEvent(
+      new PointerEvent("pointercancel", {
+        pointerId: (window as unknown as { __railTestPointerId: number }).__railTestPointerId,
+      }),
+    ),
+  );
+  await page.mouse.up();
+  await expect(
+    page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toHaveCount(0);
+
+  await dragPanelToRail(page, "map", "left");
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toBeVisible();
+  await expect(page.locator('[data-rail="right"] > [data-panel-id="map"]')).toHaveCount(0);
+  await expect(page.getByTestId("workspace-host").locator('[data-panel-id="map"]')).toHaveCount(0);
+
+  const scrolledLeftRail = page.locator('[data-rail="left"]');
+  await scrolledLeftRail.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+  await expect
+    .poll(() => scrolledLeftRail.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Move .* to (left|right) rail/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await panelDragHandle(page, "map").dragTo(panelDragHandle(page, "group"));
+  await expect(page.locator('[data-rail="right"] > [data-panel-id="map"]')).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Collapse Map", exact: true })).toBeFocused();
+
+  await panelDragHandle(page, "map").dragTo(panelDragHandle(page, "stats"));
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toBeVisible();
+  await expect
+    .poll(() => scrolledLeftRail.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await panelDragHandle(page, "map").dragTo(panelDragHandle(page, "xpmon"));
+  const leftOrder = await scrolledLeftRail
+    .locator(".df-rail-card")
+    .evaluateAll((cards) => cards.map((card) => (card as HTMLElement).dataset.panelId));
+  expect(leftOrder.indexOf("map")).toBeLessThan(leftOrder.indexOf("xpmon"));
+  // The cross-root transfer publishes its settled owner before another move
+  // may begin; production runs can otherwise outrun the transfer's finalizer.
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  await panelDragHandle(page, "map").dragTo(panelDragHandle(page, "group"));
+  await expect(page.locator('[data-rail="right"] > [data-panel-id="map"]')).toBeVisible();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  const desktopBytes = await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1"));
+  await page.setViewportSize({ width: 800, height: 700 });
+  await expect(page.locator('[data-rail="right"]')).toBeHidden();
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(
+    page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]'),
+  ).toBeVisible();
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect(page.locator('[data-rail="right"] > [data-panel-id="map"]')).toBeVisible();
+  await expect(
+    page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]'),
+  ).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1"))).toBe(
+    desktopBytes,
+  );
+});
+
+test("duplicate persisted ownership keeps the Dockview panel", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop rails only");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
+    ).__darkflowPhase1Runtime;
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1") ?? "{}");
+    state.characterProfiles[
+      runtime.characterProfileId
+    ].workspace.payload.dockview.layout.scrollviews.left.push("map");
+    localStorage.setItem("darkflow-session-core-v1", JSON.stringify(state));
+  });
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  await expect(
+    page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]'),
+  ).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toHaveCount(0);
+  await expect(page.locator('.map-panel[data-panel-id="map"]')).toHaveCount(1);
+});
+
+test("failed and disposed transfers do not leave partial owners", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "focused lifecycle fault injection");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+  const map = page.getByTestId("workspace-host").locator('.map-panel[data-panel-id="map"]');
+  const before = await map.boundingBox();
+
+  await page.evaluate(() => {
+    const rail = document.querySelector<HTMLElement>('[data-rail="left"]')!;
+    Object.defineProperty(rail, "insertBefore", {
+      configurable: true,
+      value() {
+        delete (rail as HTMLElement & { insertBefore?: unknown }).insertBefore;
+        throw new Error("fixture destination failure");
+      },
+    });
+  });
+  await dragPanelToRail(page, "map", "left");
+  await expect(map).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="map"]')).toHaveCount(0);
+  const recovered = await map.boundingBox();
+  expect(Math.abs((recovered?.x ?? 0) - (before?.x ?? 0))).toBeLessThanOrEqual(2);
+  expect(Math.abs((recovered?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(2);
+
+  await dragPanelToRail(page, "map", "left");
+  await disposeSession(page);
+  await expect(page.getByTestId("phase2-shell")).toHaveCount(0);
+  await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+});
+
+test("a multi-panel floating window cannot be dropped into a rail", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "focused floating-window ownership guard");
+  await openWorkspace(page);
+  for (const title of ["Map", "Room Image"]) {
+    await page.getByRole("button", { name: "Panels", exact: true }).click();
+    await page.getByRole("checkbox", { name: title, exact: true }).click();
+    await page.keyboard.press("Escape");
+  }
+  await page.getByRole("button", { name: "Float Map", exact: true }).click();
+  await dockPanelAsTab(page, "roomImage", "map");
+  const floating = page.locator(".dv-resize-container").filter({
+    has: panelDragHandle(page, "map"),
+  });
+  await expect(floating.locator('[data-panel-drag-handle="true"]')).toHaveCount(2);
+  const titlebar = await floating.locator(".dv-floating-titlebar").boundingBox();
+  const rail = await page.locator('[data-rail="left"]').boundingBox();
+  expect(titlebar).not.toBeNull();
+  expect(rail).not.toBeNull();
+  await page.mouse.move(titlebar!.x + titlebar!.width / 2, titlebar!.y + titlebar!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(rail!.x + rail!.width / 2, rail!.y + 60, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(page.locator('[data-rail] > [data-panel-id="map"]')).toHaveCount(0);
+  await expect(page.locator('[data-rail] > [data-panel-id="roomImage"]')).toHaveCount(0);
+  await expect(
+    page.getByTestId("workspace-host").locator('[data-panel-drag-handle][data-panel-id="map"]'),
+  ).toHaveCount(1);
+  await expect(
+    page
+      .getByTestId("workspace-host")
+      .locator('[data-panel-drag-handle][data-panel-id="roomImage"]'),
+  ).toHaveCount(1);
 });
 
 test("Phase 2 recovers from a malformed layout and reports a storage failure", async ({

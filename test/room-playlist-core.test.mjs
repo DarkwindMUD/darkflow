@@ -64,6 +64,28 @@ test('paused playback does not advance and duration caps the playhead', () => {
   assert.equal(expectedPlaybackPosition(playing, 110), 200);
 });
 
+test('queue snapshots do not count elapsed playback twice', () => {
+  const initial = playingState({ position: 0 });
+  const updated = normalizePlaylistState({
+    ...initial,
+    revision: initial.revision + 1,
+    server_time: 130,
+    playback: { ...initial.playback, position: 30 },
+    queue: [{ id: 4, video_id: 'M7lc1UVf-VE', title: 'Next song' }],
+  });
+  assert.equal(expectedPlaybackPosition(updated, 130), 30);
+  assert.equal(expectedPlaybackPosition(updated, 135), 35);
+  assert.equal(expectedPlaybackPosition(updated, 135), expectedPlaybackPosition(initial, 135));
+  assert.equal(shouldCorrectDrift(30, expectedPlaybackPosition(updated, 130)), false);
+});
+
+test('scheduled playback waits for its future start time', () => {
+  const state = playingState({ position: 30, start_at: 110 });
+  assert.equal(expectedPlaybackPosition(state, 105), 30);
+  assert.equal(expectedPlaybackPosition(state, 110), 30);
+  assert.equal(expectedPlaybackPosition(state, 115), 35);
+});
+
 test('drift correction uses a strict threshold', () => {
   assert.equal(shouldCorrectDrift(10, 12, 2), false);
   assert.equal(shouldCorrectDrift(10, 12.01, 2), true);

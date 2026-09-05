@@ -62,7 +62,9 @@ export function expectedPlaybackPosition(state, serverNowSeconds) {
   if (state.playback.status !== 'playing') return base;
   const startAt = Math.max(0, Number(state.playback.start_at) || 0);
   if (!startAt || serverNowSeconds <= startAt) return base;
-  const expected = base + (serverNowSeconds - startAt);
+  // Position already includes elapsed playback through the server snapshot.
+  const positionAt = Math.max(startAt, Number(state.server_time) || 0);
+  const expected = base + Math.max(0, serverNowSeconds - positionAt);
   const duration = Number(state.playback.current.duration) || 0;
   return clamp(expected, 0, duration > 0 ? duration : 21600);
 }

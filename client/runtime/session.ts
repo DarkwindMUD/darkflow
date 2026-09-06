@@ -74,6 +74,7 @@ export interface SessionTerminal {
   appendOutput(text: string, cssClass?: string): void;
   appendSystemMessage(text: string): void;
   clearOutput(): void;
+  setOutputRecordLimit(limit: number): void;
   subscribeOutput(listener: (event: TerminalOutputEvent) => void): Unsubscribe;
   subscribeText(listener: (text: string) => void): Unsubscribe;
   requestCompletion(request: CompletionRequest): boolean;
@@ -211,6 +212,15 @@ export function createSession(parts: SessionParts): Session {
     gmcp.off("Char.Vitals", vitalsHandler);
   });
 
+  const recoveredHandler = () => {
+    gmcp.sendSubscriptions({ reason: "session-recovered", full: true });
+    gmcp.requestMediaRefresh();
+  };
+  gmcp.on("Darkwind.Session.Recovered", recoveredHandler);
+  scope.own("listener", () => {
+    gmcp.off("Darkwind.Session.Recovered", recoveredHandler);
+  });
+
   const automationGmcpHandler = (packageName: string, data: unknown): void => {
     automationRuntime.setGmcpVariable(packageName, data);
   };
@@ -293,6 +303,9 @@ export function createSession(parts: SessionParts): Session {
     },
     clearOutput() {
       terminalProcessing?.clear();
+    },
+    setOutputRecordLimit(limit) {
+      terminalProcessing?.setOutputRecordLimit(limit);
     },
     subscribeOutput(listener) {
       return terminalProcessing?.subscribe(listener) ?? (() => {});

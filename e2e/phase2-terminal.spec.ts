@@ -400,6 +400,71 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   await expect(output.locator(".ansi-fg-red")).toContainText("glow");
 });
 
+test("Phase 2 applies emoji and split scrollback settings to the mounted terminal", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("say :smi");
+  const picker = page.locator("#emoji-picker");
+  await expect(picker).toBeVisible();
+  await input.press("ArrowDown");
+  await input.press("Tab");
+  await expect(input).toHaveValue("say \u{1f603} ");
+  await input.fill("say :smile:");
+  await expect(input).toHaveValue("say \u{1f604}");
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await dialog.getByLabel("Scrollback behavior").selectOption("split");
+  await dialog.getByRole("button", { name: "Apply" }).click();
+
+  const output = page.getByLabel("Terminal output", { exact: true });
+  endpoint.sendText(Array.from({ length: 80 }, (_, index) => `split line ${index}\n`).join(""));
+  await expect(output).toContainText("split line 79");
+  await output.hover();
+  await page.mouse.wheel(0, -300);
+  await expect(page.getByLabel("Scrollback history", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Live output", { exact: true })).toBeVisible();
+  await expect(output).toBeHidden();
+  const divider = page.getByRole("separator", { name: "Resize terminal history" });
+  const shellBox = await page.locator(".terminal-output-shell").boundingBox();
+  const dividerBox = await divider.boundingBox();
+  expect(shellBox).not.toBeNull();
+  expect(dividerBox).not.toBeNull();
+  const targetY = shellBox!.y + shellBox!.height * 0.72;
+  const expectedRatio = Math.max(
+    0.2,
+    Math.min(0.8, (targetY - shellBox!.y) / (shellBox!.height - 10)),
+  );
+  await page.mouse.move(
+    dividerBox!.x + dividerBox!.width / 2,
+    dividerBox!.y + dividerBox!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(dividerBox!.x + dividerBox!.width / 2, targetY);
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem("darkwind-client-settings")!).scrollbackSplitRatio,
+      ),
+    )
+    .toBeCloseTo(expectedRatio, 2);
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(output).toBeVisible();
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
+  await dialog.getByLabel("Show emoji picker").uncheck();
+  await dialog.getByRole("button", { name: "Apply" }).click();
+  await input.fill("say :smile:");
+  await expect(picker).toBeHidden();
+  await expect(input).toHaveValue("say :smile:");
+});
+
 test("Phase 2 processes output without Terminal and hydrates remount silently", async ({
   page,
 }, testInfo) => {

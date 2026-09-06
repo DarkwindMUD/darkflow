@@ -2,7 +2,10 @@
   import { onMount } from "svelte";
   import type { Readable } from "svelte/store";
   import type { Session } from "../runtime/session.ts";
+  import { loadClientSettings, saveClientSettings } from "../app/client-settings.ts";
   import { createTerminalInputController } from "../terminal/input-controller.ts";
+  // @ts-expect-error Retained preset constants are JavaScript without declarations.
+  import { OUTPUT_SCROLLBACK_PRESETS } from "../../public/js/constants.js";
   // @ts-expect-error The reusable imperative terminal core is legacy JavaScript.
   import { createTerminalOutputCore } from "../../public/js/terminal-output-core.mjs";
   import {
@@ -25,6 +28,9 @@
   } = $props();
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
+  let historyOutput = $state<HTMLElement>();
+  let liveOutput = $state<HTMLElement>();
+  let divider = $state<HTMLElement>();
   let commandInput = $state<HTMLInputElement>();
   let sendButton = $state<HTMLButtonElement>();
   let batchDialog = $state<HTMLDialogElement>();
@@ -62,6 +68,9 @@
     const terminal = createTerminalOutputCore({
       shell: output.parentElement!,
       output,
+      historyOutput,
+      liveOutput,
+      divider,
       pauseButton: output.parentElement!.querySelector<HTMLButtonElement>("[data-action=pause]")!,
       liveButton: output.parentElement!.querySelector<HTMLButtonElement>("[data-action=live]")!,
       clearButton: output.parentElement!.querySelector<HTMLButtonElement>("[data-action=clear]")!,
@@ -70,7 +79,21 @@
       )!,
       subscribeOutput: session.terminal.subscribeOutput,
       clearOutput: session.terminal.clearOutput,
+      onSplitRatioChange: (scrollbackSplitRatio: number) => {
+        const settings = loadClientSettings(localStorage).settings;
+        settings.scrollbackSplitRatio = scrollbackSplitRatio;
+        saveClientSettings(localStorage, settings, session.configuration.getSnapshot().themeKey);
+      },
     });
+    const applyTerminalSettings = () => {
+      const settings = loadClientSettings(localStorage).settings;
+      terminal.configure(settings);
+      session.terminal.setOutputRecordLimit(
+        OUTPUT_SCROLLBACK_PRESETS[settings.outputScrollbackPreset],
+      );
+    };
+    applyTerminalSettings();
+    window.addEventListener("darkflow:client-settings-changed", applyTerminalSettings);
     const unregisterLineNavigator = registerLineNavigator?.(terminal.navigateToLine);
     const input = createTerminalInputController({
       session,
@@ -88,6 +111,7 @@
     });
 
     return () => {
+      window.removeEventListener("darkflow:client-settings-changed", applyTerminalSettings);
       unregisterLineNavigator?.();
       input.dispose();
       terminal.dispose();
@@ -117,6 +141,27 @@
         aria-label="Terminal output"
         tabindex="-1"
       ></div>
+      <div class="terminal-output-split">
+        <div
+          bind:this={historyOutput}
+          class="terminal-output terminal-history-output"
+          aria-label="Scrollback history"
+          tabindex="-1"
+        ></div>
+        <div
+          bind:this={divider}
+          class="terminal-output-divider"
+          role="separator"
+          aria-label="Resize terminal history"
+          aria-orientation="horizontal"
+        ></div>
+        <div
+          bind:this={liveOutput}
+          class="terminal-output terminal-live-output"
+          aria-label="Live output"
+          tabindex="-1"
+        ></div>
+      </div>
       <div class="terminal-input-bar">
         <input
           bind:this={commandInput}
@@ -178,6 +223,35 @@
     line-height: 1.4;
     white-space: pre-wrap;
     overflow-wrap: break-word;
+  }
+
+  .terminal-output-split {
+    display: none;
+    flex: 1;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  :global(.terminal-output-shell.split-active > .terminal-output) {
+    display: none;
+  }
+
+  :global(.terminal-output-shell.split-active) .terminal-output-split {
+    display: flex;
+  }
+
+  .terminal-history-output {
+    flex: 0 0 calc(var(--output-split-ratio, 60%) - 5px);
+  }
+
+  .terminal-live-output {
+    flex: 1 1 0;
+  }
+
+  .terminal-output-divider {
+    flex: 0 0 10px;
+    cursor: row-resize;
+    touch-action: none;
   }
 
   .terminal-controls {

@@ -9,6 +9,7 @@ export interface TerminalProcessing {
   appendOutput(text: string, cssClass?: string): void;
   appendSystemMessage(text: string): void;
   clear(): void;
+  setOutputRecordLimit(limit: number): void;
   executeCommand(text: string): boolean;
   getMappedCommand(event: KeyboardEvent): string | null;
   subscribe(listener: (event: TerminalOutputEvent) => void): Unsubscribe;
@@ -43,6 +44,7 @@ export function createTerminalProcessing(
     appendOutput: output.appendOutput,
     appendSystemMessage: output.appendSystemMessage,
     clear: output.clear,
+    setOutputRecordLimit: output.setRecordLimit,
     executeCommand: automation.sendCommand,
     getMappedCommand: automation.getMappedCommand,
     subscribe: output.subscribe,

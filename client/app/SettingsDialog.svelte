@@ -21,6 +21,7 @@
   const tabs = [
     { id: "connection", group: "Client", label: "Connection" },
     { id: "appearance", group: "Client", label: "Appearance" },
+    { id: "terminal", group: "Client", label: "Terminal" },
     { id: "audio", group: "Client", label: "Audio" },
     { id: "controls", group: "Client", label: "Controls" },
     { id: "aliases", group: "Automation", label: "Aliases" },
@@ -146,6 +147,7 @@
     for (const name of runtime.listVariableNames())
       if (!nextNames.has(name)) runtime.removeVariable(name);
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
+    window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
     dialog?.close();
   }
@@ -405,7 +407,40 @@
           ><label class="settings-check"
             ><input type="checkbox" bind:checked={settings.historyTabCompletionEnabled} /> Complete from
             history with Tab</label
+          ><label class="settings-check"
+            ><input type="checkbox" bind:checked={settings.emojiPickerEnabled} /> Show emoji picker</label
           >{#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
+        </div>
+        <div
+          class="settings-panel"
+          id="settings-panel-terminal"
+          role="tabpanel"
+          aria-labelledby="settings-tab-terminal"
+          hidden={panelHidden("terminal")}
+        >
+          <h3>Terminal</h3>
+          <label class="settings-row"
+            >Scrollback behavior<select bind:value={settings.scrollbackBehavior}
+              ><option value="pause">Pause</option><option value="split"
+                >Split history and live</option
+              ></select
+            ></label
+          ><label class="settings-row"
+            >Scrollback memory<select bind:value={settings.outputScrollbackPreset}
+              ><option value="low">5,000 lines</option><option value="normal">10,000 lines</option
+              ><option value="high">20,000 lines</option></select
+            ></label
+          ><label class="settings-row"
+            >Split history size<input
+              aria-label="Split history size"
+              type="range"
+              min="20"
+              max="80"
+              value={settings.scrollbackSplitRatio * 100}
+              oninput={(event) =>
+                (settings.scrollbackSplitRatio = Number(event.currentTarget.value) / 100)}
+            /></label
+          >
         </div>
         <div
           class="settings-panel"

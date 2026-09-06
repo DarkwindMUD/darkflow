@@ -17,10 +17,17 @@ export interface SettingsWindowState {
   tab: string;
 }
 
+export type ScrollbackBehavior = "pause" | "split";
+export type OutputScrollbackPreset = "low" | "normal" | "high";
+
 export interface Phase2ClientSettings {
   repeatLastCommand: boolean;
   aliasTabCompletionEnabled: boolean;
   historyTabCompletionEnabled: boolean;
+  emojiPickerEnabled: boolean;
+  scrollbackBehavior: ScrollbackBehavior;
+  scrollbackSplitRatio: number;
+  outputScrollbackPreset: OutputScrollbackPreset;
   lagMonitorEnabled: boolean;
   visualEffectsEnabled: boolean;
   visualEffectPreferences: SessionVisualEffectPreferences;
@@ -30,6 +37,10 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   repeatLastCommand: true,
   aliasTabCompletionEnabled: true,
   historyTabCompletionEnabled: false,
+  emojiPickerEnabled: true,
+  scrollbackBehavior: "pause",
+  scrollbackSplitRatio: 0.6,
+  outputScrollbackPreset: "normal",
   lagMonitorEnabled: true,
   visualEffectsEnabled: false,
   visualEffectPreferences: visualEffectSettings.createDefaultVisualEffectPreferences(),
@@ -50,10 +61,23 @@ function readObject(storage: Pick<Storage, "getItem">): Record<string, unknown> 
 }
 
 function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
+  const splitRatio =
+    typeof settings.scrollbackSplitRatio === "number" ? settings.scrollbackSplitRatio : Number.NaN;
   return {
     repeatLastCommand: settings.repeatLastCommand !== false,
     aliasTabCompletionEnabled: settings.aliasTabCompletionEnabled !== false,
     historyTabCompletionEnabled: settings.historyTabCompletionEnabled === true,
+    emojiPickerEnabled: settings.emojiPickerEnabled !== false,
+    scrollbackBehavior: settings.scrollbackBehavior === "split" ? "split" : "pause",
+    scrollbackSplitRatio: Number.isFinite(splitRatio)
+      ? Math.max(0.2, Math.min(0.8, splitRatio))
+      : 0.6,
+    outputScrollbackPreset:
+      settings.outputScrollbackPreset === "low" ||
+      settings.outputScrollbackPreset === "high" ||
+      settings.outputScrollbackPreset === "normal"
+        ? settings.outputScrollbackPreset
+        : "normal",
     lagMonitorEnabled: settings.lagMonitorEnabled !== false,
     visualEffectsEnabled: settings.visualEffectsEnabled === true,
     visualEffectPreferences: visualEffectSettings.normalizeVisualEffectPreferences(

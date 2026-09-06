@@ -80,3 +80,57 @@ test("stream reset drops only partial state and preserves completed history", ()
   ]);
   assert.equal(model.snapshot()[1].fragments[0].style.fg, null);
 });
+
+test("prunes the oldest completed records with ordinary remove events", () => {
+  const model = createTerminalOutputModel({ recordLimit: 3 });
+  const events = [];
+  model.subscribe((event) => events.push(event));
+
+  model.appendOutput("one\ntwo\nthree\nfour\n");
+  assert.deepEqual(model.snapshot().map(({ id, text }) => ({ id, text })), [
+    { id: 2, text: "two" },
+    { id: 3, text: "three" },
+    { id: 4, text: "four" },
+  ]);
+  assert.deepEqual(events.filter((event) => event.type === "remove").map((event) => event.id), [1]);
+
+  model.setRecordLimit(2);
+  assert.deepEqual(model.snapshot().map(({ id, text }) => ({ id, text })), [
+    { id: 3, text: "three" },
+    { id: 4, text: "four" },
+  ]);
+  assert.deepEqual(events.filter((event) => event.type === "remove").map((event) => event.id), [1, 2]);
+});
+
+test("keeps the active partial record within the selected limit", () => {
+  const model = createTerminalOutputModel({ recordLimit: 2 });
+  model.appendOutput("one\ntwo\nprompt");
+
+  assert.deepEqual(model.snapshot().map(({ id, text, complete }) => ({ id, text, complete })), [
+    { id: 2, text: "two", complete: true },
+    { id: 3, text: "", complete: false },
+  ]);
+  assert.equal(model.snapshot()[1].fragments[0].text, "prompt");
+  model.appendOutput(" done\n");
+  assert.deepEqual(model.snapshot().map(({ id, text }) => ({ id, text })), [
+    { id: 2, text: "two" },
+    { id: 3, text: "prompt done" },
+  ]);
+});
+
+test("completes a protected source record after nested output prunes earlier history", () => {
+  let model;
+  model = createTerminalOutputModel({
+    recordLimit: 2,
+    processLine(text, fragments) {
+      if (text === "outer") model.appendSystemMessage("nested\n");
+      return { fragments, gag: false };
+    },
+  });
+
+  model.appendOutput("before\nouter\n");
+  assert.deepEqual(model.snapshot().map(({ id, text, cssClass }) => ({ id, text, cssClass })), [
+    { id: 2, text: "outer", cssClass: "" },
+    { id: 3, text: "nested", cssClass: "system-line" },
+  ]);
+});

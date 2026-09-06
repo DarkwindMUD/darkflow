@@ -251,6 +251,25 @@ test("map and room image reset across reconnect and remount after session dispos
       .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
       .at(-1),
   ).toContain('"roomImage":true');
+  endpoint.sendGmcp("Darkwind.Session.Recovered", { mode: "linkdead" });
+  await expect
+    .poll(() =>
+      endpoint.gmcpMessages
+        .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+        .at(-1),
+    )
+    .toContain('"reason":"session-recovered"');
+  expect(
+    endpoint.gmcpMessages
+      .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+      .at(-1),
+  ).toContain('"map":true');
+  expect(
+    endpoint.gmcpMessages
+      .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+      .at(-1),
+  ).toContain('"roomImage":true');
+  expect(endpoint.gmcpMessages).toContain("Darkwind.Client.RefreshMedia");
   endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0));
   endpoint.sendGmcp("Room.Info", { num: 101, name: "Atrium", exits: {} });
   endpoint.sendGmcp("Darkwind.Room.Image", {

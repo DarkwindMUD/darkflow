@@ -2,11 +2,16 @@ import { styleToElement } from './ansi.js';
 import { createTerminalOutputModel } from './terminal-output-model.mjs';
 
 const SCREEN_READER_DELAY_MS = 180;
+const BOTTOM_THRESHOLD = 5;
+const USER_SCROLL_INTENT_MS = 900;
 
 /** One DOM-owned renderer for a terminal output model. */
 export function createTerminalOutputCore({
   shell,
   output,
+  historyOutput,
+  liveOutput,
+  divider,
   pauseButton,
   liveButton,
   clearButton,
@@ -16,41 +21,64 @@ export function createTerminalOutputCore({
   processLine,
   onOutputLine,
   onClear,
+  onSplitRatioChange,
 }) {
   const ownedModel = subscribeOutput
     ? null
     : createTerminalOutputModel({ processLine, onOutputLine, onClear });
-  const model = ownedModel ?? {
-    subscribe: subscribeOutput,
-    clear: clearOutput,
-  };
-  const pendingLines = [];
+  const model = ownedModel ?? { subscribe: subscribeOutput, clear: clearOutput };
+  const pendingLines = new Map();
   const lineElements = new Map();
+  const historyLineElements = new Map();
+  const liveLineElements = new Map();
   let animationFrame = 0;
   let announceTimer = 0;
   let disposed = false;
   let paused = false;
   let navigationLocked = false;
   let targetLine = null;
+  let targetOutput = output;
   let announceText = '';
+  let behavior = 'pause';
+  let splitActive = false;
+  let splitRatio = 0.6;
+  let userScrollIntentUntil = 0;
+  let dividerPointerId = null;
 
-  const isAtBottom = () => output.scrollTop + output.clientHeight >= output.scrollHeight - 5;
+  const isAtBottom = (element) =>
+    element.scrollTop + element.clientHeight >= element.scrollHeight - BOTTOM_THRESHOLD;
+  const isSplitMode = () => behavior === 'split' && historyOutput && liveOutput;
+  const clampSplitRatio = (value) => {
+    const ratio = Number(value);
+    return Number.isFinite(ratio) ? Math.max(0.2, Math.min(0.8, ratio)) : 0.6;
+  };
   const syncControls = () => {
     shell.classList.toggle('paused', paused);
+    shell.classList.toggle('split-active', splitActive);
+    shell.style.setProperty('--output-split-ratio', `${splitRatio * 100}%`);
     pauseButton.setAttribute('aria-pressed', String(paused));
     pauseButton.title = paused ? 'Resume live terminal' : 'Pause live terminal';
+    liveButton.title = splitActive ? 'Return to live terminal' : 'Live terminal';
+  };
+  const queueLine = (host, line) => {
+    const lines = pendingLines.get(host) ?? [];
+    if (!pendingLines.has(host)) pendingLines.set(host, lines);
+    if (!lines.includes(line)) lines.push(line);
   };
   const renderPending = () => {
     if (animationFrame) {
       cancelAnimationFrame(animationFrame);
       animationFrame = 0;
     }
-    if (pendingLines.length) {
+    for (const [host, lines] of pendingLines) {
+      if (!lines.length) continue;
       const fragment = document.createDocumentFragment();
-      for (const line of pendingLines.splice(0)) fragment.append(line);
-      output.append(fragment);
+      for (const line of lines.splice(0)) fragment.append(line);
+      host.append(fragment);
     }
-    if (!paused) output.scrollTop = output.scrollHeight;
+    pendingLines.clear();
+    if (splitActive && liveOutput) liveOutput.scrollTop = liveOutput.scrollHeight;
+    else if (!paused) output.scrollTop = output.scrollHeight;
   };
   const scheduleRender = () => {
     if (animationFrame || disposed) return;
@@ -83,12 +111,12 @@ export function createTerminalOutputCore({
       line.append(rendered);
     }
   };
-  const renderRecord = (record) => {
-    let line = lineElements.get(record.id);
+  const renderRecordInto = (record, elements, host) => {
+    let line = elements.get(record.id);
     if (!line) {
       line = document.createElement('div');
-      lineElements.set(record.id, line);
-      pendingLines.push(line);
+      elements.set(record.id, line);
+      queueLine(host, line);
     }
     line.className = `output-line${record.cssClass ? ` ${record.cssClass}` : ''}`;
     if (record.complete) line.dataset.lineId = String(record.id);
@@ -96,10 +124,28 @@ export function createTerminalOutputCore({
     line.replaceChildren();
     for (const fragment of record.fragments) appendFragment(line, fragment);
   };
+  const renderRecord = (record) => {
+    renderRecordInto(record, lineElements, output);
+    if (historyOutput) renderRecordInto(record, historyLineElements, historyOutput);
+    if (liveOutput) renderRecordInto(record, liveLineElements, liveOutput);
+  };
+  const removeRecord = (id) => {
+    for (const elements of [lineElements, historyLineElements, liveLineElements]) {
+      const line = elements.get(id);
+      for (const lines of pendingLines.values()) {
+        const index = lines.indexOf(line);
+        if (index >= 0) lines.splice(index, 1);
+      }
+      line?.remove();
+      elements.delete(id);
+    }
+  };
   const clearDom = () => {
-    pendingLines.length = 0;
+    pendingLines.clear();
     lineElements.clear();
-    output.replaceChildren();
+    historyLineElements.clear();
+    liveLineElements.clear();
+    for (const host of [output, historyOutput, liveOutput]) host?.replaceChildren();
     announcer.textContent = '';
     announceText = '';
     navigationLocked = false;
@@ -116,11 +162,7 @@ export function createTerminalOutputCore({
       renderRecord(event.record);
       scheduleRender();
     } else if (event.type === 'remove') {
-      const line = lineElements.get(event.id);
-      const pendingIndex = pendingLines.indexOf(line);
-      if (pendingIndex >= 0) pendingLines.splice(pendingIndex, 1);
-      line?.remove();
-      lineElements.delete(event.id);
+      removeRecord(event.id);
     } else if (event.type === 'clear') {
       clearDom();
     } else if (event.type === 'announce') {
@@ -131,58 +173,139 @@ export function createTerminalOutputCore({
   const clear = () => {
     if (!disposed) model.clear();
   };
+  const deactivateSplit = () => {
+    if (!splitActive) return;
+    splitActive = false;
+    userScrollIntentUntil = 0;
+    syncControls();
+    renderPending();
+    output.scrollTop = output.scrollHeight;
+  };
+  const activateSplit = () => {
+    if (splitActive || !isSplitMode()) return;
+    splitActive = true;
+    paused = false;
+    syncControls();
+    renderPending();
+    historyOutput.scrollTop = output.scrollTop;
+    liveOutput.scrollTop = liveOutput.scrollHeight;
+  };
   const returnToLive = () => {
     if (disposed) return false;
-    const changed = paused || navigationLocked || targetLine !== null || !isAtBottom();
+    if (splitActive) {
+      deactivateSplit();
+      return true;
+    }
+    const changed = paused || navigationLocked || targetLine !== null || !isAtBottom(output);
     targetLine?.classList.remove('output-line-mention-target');
     targetLine = null;
     navigationLocked = false;
     paused = false;
+    userScrollIntentUntil = 0;
     syncControls();
     renderPending();
     output.scrollTop = output.scrollHeight;
     return changed;
   };
   const pause = () => {
-    paused = true;
-    syncControls();
+    if (splitActive) deactivateSplit();
+    else {
+      paused = true;
+      syncControls();
+    }
   };
   const onScroll = () => {
-    if (!disposed && !navigationLocked) paused = !isAtBottom();
+    if (disposed || navigationLocked || splitActive) return;
+    if (isSplitMode()) {
+      if (!isAtBottom(output) && Date.now() <= userScrollIntentUntil) activateSplit();
+      return;
+    }
+    paused = !isAtBottom(output);
     syncControls();
   };
-  const onPauseClick = () => (paused ? returnToLive() : pause());
+  const onHistoryScroll = () => {
+    if (!disposed && splitActive && isAtBottom(historyOutput)) deactivateSplit();
+  };
+  const markUserScrollIntent = () => {
+    userScrollIntentUntil = Date.now() + USER_SCROLL_INTENT_MS;
+  };
+  const markScrollbarPointerIntent = (event) => {
+    const target = event.currentTarget;
+    const rect = target.getBoundingClientRect();
+    const scrollbarWidth = Math.max(0, target.offsetWidth - target.clientWidth);
+    if (event.clientX >= rect.right - Math.max(16, scrollbarWidth + 4)) {
+      markUserScrollIntent();
+    }
+  };
+  const onPauseClick = () => (paused || splitActive ? returnToLive() : pause());
+  const onDividerDown = (event) => {
+    dividerPointerId = event.pointerId;
+    divider?.setPointerCapture?.(event.pointerId);
+    event.preventDefault();
+  };
+  const onDividerMove = (event) => {
+    if (event.pointerId !== dividerPointerId) return;
+    const rect = shell.getBoundingClientRect();
+    if (rect.height <= 10) return;
+    splitRatio = clampSplitRatio((event.clientY - rect.top) / (rect.height - 10));
+    syncControls();
+  };
+  const onDividerEnd = (event) => {
+    if (event.pointerId !== dividerPointerId) return;
+    divider?.releasePointerCapture?.(dividerPointerId);
+    dividerPointerId = null;
+    onSplitRatioChange?.(splitRatio);
+  };
 
   pauseButton.addEventListener('click', onPauseClick);
   liveButton.addEventListener('click', returnToLive);
   clearButton.addEventListener('click', clear);
   output.addEventListener('scroll', onScroll);
+  output.addEventListener('wheel', markUserScrollIntent, { passive: true });
+  output.addEventListener('touchstart', markUserScrollIntent, { passive: true });
+  output.addEventListener('pointerdown', markScrollbarPointerIntent);
+  historyOutput?.addEventListener('scroll', onHistoryScroll);
+  if (divider) {
+    divider.addEventListener('pointerdown', onDividerDown);
+    window.addEventListener('pointermove', onDividerMove);
+    window.addEventListener('pointerup', onDividerEnd);
+    window.addEventListener('pointercancel', onDividerEnd);
+  }
   syncControls();
 
   return {
     appendOutput: model.appendOutput,
     appendSystemMessage: model.appendSystemMessage,
     clear,
+    configure({ scrollbackBehavior, scrollbackSplitRatio } = {}) {
+      behavior = scrollbackBehavior === 'split' ? 'split' : 'pause';
+      splitRatio = clampSplitRatio(scrollbackSplitRatio);
+      if (!isSplitMode()) deactivateSplit();
+      syncControls();
+    },
     focus: () => output.focus({ preventScroll: true }),
     isLineAvailable: (id) => Number.isSafeInteger(id) && lineElements.has(id),
     navigateToLine: (id) => {
       if (disposed || !Number.isSafeInteger(id)) return false;
-      const line = lineElements.get(id);
+      const elements = splitActive ? historyLineElements : lineElements;
+      const target = splitActive ? historyOutput : output;
+      const line = elements.get(id);
       if (!line || line.dataset.lineId === undefined) return false;
       renderPending();
       targetLine?.classList.remove('output-line-mention-target');
       targetLine = line;
+      targetOutput = target;
       targetLine.classList.add('output-line-mention-target');
       navigationLocked = true;
-      paused = true;
+      paused = !splitActive;
       syncControls();
       const lineTop =
-        line.getBoundingClientRect().top - output.getBoundingClientRect().top + output.scrollTop;
-      output.scrollTop = Math.max(0, lineTop - Math.round(output.clientHeight * 0.35));
+        line.getBoundingClientRect().top - target.getBoundingClientRect().top + target.scrollTop;
+      target.scrollTop = Math.max(0, lineTop - Math.round(target.clientHeight * 0.35));
       return true;
     },
     returnToLive,
-    snapshot: () => ({ buffer: output.textContent ?? '', scrollTop: output.scrollTop }),
+    snapshot: () => ({ buffer: targetOutput.textContent ?? '', scrollTop: targetOutput.scrollTop }),
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -193,6 +316,17 @@ export function createTerminalOutputCore({
       liveButton.removeEventListener('click', returnToLive);
       clearButton.removeEventListener('click', clear);
       output.removeEventListener('scroll', onScroll);
+      output.removeEventListener('wheel', markUserScrollIntent);
+      output.removeEventListener('touchstart', markUserScrollIntent);
+      output.removeEventListener('pointerdown', markScrollbarPointerIntent);
+      userScrollIntentUntil = 0;
+      historyOutput?.removeEventListener('scroll', onHistoryScroll);
+      if (divider) {
+        divider.removeEventListener('pointerdown', onDividerDown);
+        window.removeEventListener('pointermove', onDividerMove);
+        window.removeEventListener('pointerup', onDividerEnd);
+        window.removeEventListener('pointercancel', onDividerEnd);
+      }
       clearDom();
       ownedModel?.dispose();
     },

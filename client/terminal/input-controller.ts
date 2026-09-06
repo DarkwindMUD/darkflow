@@ -3,6 +3,8 @@ import type { Session } from "../runtime/session.ts";
 import { loadCommandHistory, saveCommandHistory } from "./history.ts";
 import { loadClientSettings } from "../app/client-settings.ts";
 import { createMentionPicker } from "./mention-picker.ts";
+// @ts-expect-error Shared emoji picker is legacy JavaScript without declarations.
+import { handleEmojiPickerKeydown, initEmojiPicker, updateEmojiPicker } from "../../public/js/emoji-picker.js";
 
 // @ts-expect-error Shared legacy/Phase 2 completion core is JavaScript.
 import { createCompletionController } from "../../public/js/completion-core.mjs";
@@ -98,6 +100,9 @@ export function createTerminalInputController({
     appendSystemMessage,
   });
   const mentionPicker = createMentionPicker({ input, notifications: session.notifications });
+  const disposeEmojiPicker = initEmojiPicker(input, {
+    isEnabled: () => loadClientSettings(localStorage).settings.emojiPickerEnabled,
+  });
 
   const send = () => {
     const text = input.value;
@@ -141,7 +146,12 @@ export function createTerminalInputController({
     batchInput.focus();
   };
   const onKeydown = (event: KeyboardEvent) => {
-    if (event.defaultPrevented || mentionPicker.handleKeydown(event)) return;
+    if (
+      event.defaultPrevented ||
+      mentionPicker.handleKeydown(event) ||
+      handleEmojiPickerKeydown(event)
+    )
+      return;
     if (event.key === "Enter") {
       event.preventDefault();
       send();
@@ -213,6 +223,7 @@ export function createTerminalInputController({
     batchDialog.close();
     sendBatch(commands);
   };
+  const onSettingsChanged = () => updateEmojiPicker();
   const unsubscribeConfiguration = session.terminal.subscribeConfiguration((snapshot) => {
     aliases = snapshot.aliases;
   });
@@ -226,6 +237,7 @@ export function createTerminalInputController({
   batchForm.addEventListener("submit", onBatchSubmit);
   document.addEventListener("keydown", onDocumentKeydown);
   window.addEventListener("pagehide", flushHistory);
+  window.addEventListener("darkflow:client-settings-changed", onSettingsChanged);
 
   return {
     dispose() {
@@ -235,9 +247,11 @@ export function createTerminalInputController({
       batchForm.removeEventListener("submit", onBatchSubmit);
       document.removeEventListener("keydown", onDocumentKeydown);
       window.removeEventListener("pagehide", flushHistory);
+      window.removeEventListener("darkflow:client-settings-changed", onSettingsChanged);
       unsubscribeConfiguration();
       unsubscribeConnection();
       mentionPicker.dispose();
+      disposeEmojiPicker();
       completion.dispose();
       for (const timer of batchTimers) window.clearTimeout(timer);
       batchTimers.clear();

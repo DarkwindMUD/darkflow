@@ -4,7 +4,7 @@ import { createAnsiState, parseAnsi } from './ansi.js';
  * Session-owned terminal text processing. Records are inserted before line
  * processing so synchronous local output cannot overtake its source line.
  */
-export function createTerminalOutputModel({ processLine, onOutputLine, onClear } = {}) {
+export function createTerminalOutputModel({ processLine, onOutputLine, onClear, recordLimit = 10000 } = {}) {
   const listeners = new Set();
   const records = [];
   let parserState = createAnsiState();
@@ -14,6 +14,8 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
   let activeFragments = [];
   let nextLineId = 1;
   let disposed = false;
+  let maxRecords = Number.isSafeInteger(recordLimit) && recordLimit > 0 ? recordLimit : 10000;
+  const processingRecordIds = new Set();
 
   const emit = (event) => {
     for (const listener of [...listeners]) listener(event);
@@ -25,6 +27,7 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
     emit({ type: 'upsert', record: activeRecord });
   };
   const createRecord = (cssClass) => {
+    pruneRecords(maxRecords - 1);
     activeRecord = {
       id: nextLineId++,
       fragments: [],
@@ -36,9 +39,19 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
     activeIndex = records.length - 1;
     emit({ type: 'upsert', record: activeRecord });
   };
+  const pruneRecords = (target = maxRecords) => {
+    while (records.length > target) {
+      const index = records.findIndex(
+        (record) => record !== activeRecord && !processingRecordIds.has(record.id),
+      );
+      if (index < 0) return;
+      const [removed] = records.splice(index, 1);
+      if (activeIndex > index) activeIndex -= 1;
+      emit({ type: 'remove', id: removed.id });
+    }
+  };
   const completeLine = () => {
     const record = activeRecord;
-    const recordIndex = activeIndex;
     const text = activeText.replace(/\r/g, '');
     const fragments = activeFragments.map((fragment) => ({
       ...fragment,
@@ -52,9 +65,13 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
     activeFragments = [];
     if (!record) return;
 
+    processingRecordIds.add(record.id);
     const result = typeof processLine === 'function'
       ? processLine(text, fragments)
       : { fragments, gag: false };
+    processingRecordIds.delete(record.id);
+    const recordIndex = records.findIndex((candidate) => candidate.id === record.id);
+    if (recordIndex < 0) return;
     if (result.gag) {
       records.splice(recordIndex, 1);
       if (activeIndex > recordIndex) activeIndex -= 1;
@@ -70,6 +87,7 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
     };
     records[recordIndex] = completed;
     emit({ type: 'upsert', record: completed });
+    pruneRecords();
     if (typeof onOutputLine === 'function') {
       onOutputLine({ id: completed.id, text: completed.text });
     }
@@ -117,6 +135,11 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear }
       if (typeof onClear === 'function') onClear();
     },
     resetStream,
+    setRecordLimit(limit) {
+      if (disposed || !Number.isSafeInteger(limit) || limit < 1) return;
+      maxRecords = limit;
+      pruneRecords();
+    },
     snapshot: () => [...records],
     subscribe(listener) {
       if (disposed) return () => {};

@@ -182,6 +182,10 @@ test("Phase 2 header matches the legacy toolbar controls", async ({ page }) => {
   const connectButton = page.locator("#connect-btn");
   await expect(connectButton).toHaveText("Connect");
   await expect(connectButton).toHaveClass(/disconnected/);
+  await expect(connectButton).toBeDisabled();
+  await host.fill("fixture.example");
+  await expect(connectButton).toBeEnabled();
+  await host.fill("");
   await expect(connectButton).toHaveCSS("width", "112px");
   await expect(connectButton).toHaveCSS("margin-left", "4px");
   const disconnectedColor = await connectButton.evaluate((button) =>
@@ -306,12 +310,17 @@ test("Phase 2 controls drive connection, retry countdown, disconnect, and dispos
 
   await page.getByLabel("Host").fill("");
   await page.getByLabel("Port").fill("");
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(connectionButton).toBeDisabled();
   await expect(page.getByLabel("Host")).toHaveValue("");
   await expect(page.getByLabel("Port")).toHaveValue("");
+  expect((await readFakeSockets(page)).urls).toHaveLength(socketsBeforeDisconnect);
+
+  await page.getByLabel("Host").fill("retry.example");
+  await expect(connectionButton).toBeEnabled();
+  await connectionButton.click();
   await expect
     .poll(async () => (await readFakeSockets(page)).urls.at(-1))
-    .toBe("ws://localhost:4242/");
+    .toBe("ws://retry.example:4242/");
   await controlFakeSocket(page, "open");
   await controlFakeSocket(page, "drop");
   await expect(connectionButton).toHaveText(/Retrying in \d+s/);

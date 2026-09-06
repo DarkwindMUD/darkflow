@@ -316,7 +316,14 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await page.evaluate(() =>
     localStorage.setItem(
       "darkwind-client-settings",
-      JSON.stringify({ deferredSetting: { keep: true }, keyMappings: [{ command: "look" }] }),
+      JSON.stringify({
+        deferredSetting: { keep: true },
+        emojiPickerEnabled: "invalid",
+        keyMappings: [{ command: "look" }],
+        outputScrollbackPreset: "invalid",
+        scrollbackBehavior: "invalid",
+        scrollbackSplitRatio: null,
+      }),
     ),
   );
 
@@ -327,9 +334,17 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme").selectOption("nord");
   await settingsTab(dialog, "Controls");
+  await expect(dialog.getByLabel("Show emoji picker")).toBeChecked();
   await dialog.getByLabel("Repeat last command").uncheck();
   await dialog.getByLabel("Complete aliases with Tab").uncheck();
   await dialog.getByLabel("Complete from history with Tab").check();
+  await dialog.getByLabel("Show emoji picker").uncheck();
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("pause");
+  await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("normal");
+  await expect(dialog.getByLabel("Split history size")).toHaveValue("60");
+  await dialog.getByLabel("Scrollback behavior").selectOption("split");
+  await dialog.getByLabel("Scrollback memory").selectOption("high");
   await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Add variable" }).click();
   await dialog.getByLabel("Name").fill("target");
@@ -362,9 +377,12 @@ test("Phase 2 settings save current preferences without replacing deferred field
   expect(saved.settings).toMatchObject({
     aliasTabCompletionEnabled: false,
     deferredSetting: { keep: true },
+    emojiPickerEnabled: false,
     historyTabCompletionEnabled: true,
     keyMappings: [{ command: "look" }],
     repeatLastCommand: false,
+    scrollbackBehavior: "split",
+    outputScrollbackPreset: "high",
     theme: "nord",
   });
   expect(saved.variables).toMatchObject({ target: "goblin" });
@@ -378,6 +396,10 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await expect(dialog.getByLabel("Repeat last command")).not.toBeChecked();
   await expect(dialog.getByLabel("Complete aliases with Tab")).not.toBeChecked();
   await expect(dialog.getByLabel("Complete from history with Tab")).toBeChecked();
+  await expect(dialog.getByLabel("Show emoji picker")).not.toBeChecked();
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("split");
+  await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("high");
   await settingsTab(dialog, "Variables");
   await expect(dialog.getByText("Variables last for this session only.")).toBeVisible();
   await expect(dialog.getByLabel("Name")).toHaveCount(0);

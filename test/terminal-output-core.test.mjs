@@ -51,8 +51,11 @@ class FakeElement {
     this.attributes = new Map();
     this.listeners = new Map();
     this.classList = new FakeClassList(this);
+    this.style = { setProperty() {} };
     this.scrollTop = 0;
     this.clientHeight = 100;
+    this.clientWidth = 100;
+    this.offsetWidth = 100;
     this.title = "";
   }
 
@@ -81,7 +84,7 @@ class FakeElement {
   }
 
   getBoundingClientRect() {
-    return { top: this.offsetTop - (this.parentElement?.scrollTop ?? 0) };
+    return { top: this.offsetTop - (this.parentElement?.scrollTop ?? 0), height: 200, right: 100 };
   }
 
   append(...nodes) {
@@ -134,8 +137,8 @@ class FakeElement {
     if (this.listeners.get(type) === listener) this.listeners.delete(type);
   }
 
-  dispatch(type) {
-    this.listeners.get(type)?.({ type, currentTarget: this, target: this });
+  dispatch(type, event = {}) {
+    this.listeners.get(type)?.({ type, currentTarget: this, target: this, ...event });
   }
 
   focus() {}
@@ -151,6 +154,7 @@ function installDom(t) {
   let nextId = 1;
   const frames = new Map();
   const timers = new Map();
+  const windowListeners = new Map();
 
   globalThis.document = {
     createElement: (tagName) => new FakeElement(tagName),
@@ -172,6 +176,12 @@ function installDom(t) {
     clearTimeout(id) {
       timers.delete(id);
     },
+    addEventListener(type, listener) {
+      windowListeners.set(type, listener);
+    },
+    removeEventListener(type, listener) {
+      if (windowListeners.get(type) === listener) windowListeners.delete(type);
+    },
   };
 
   t.after(() => {
@@ -184,6 +194,7 @@ function installDom(t) {
   return {
     frames,
     timers,
+    windowListeners,
     flushFrames() {
       const pending = [...frames.values()];
       frames.clear();
@@ -325,9 +336,110 @@ test("dispose cancels pending work, clears targets, and removes listeners", (t) 
   assert.equal(harness.output.children.length, 0);
 });
 
+test("split scrollback renders one record stream into history and live panes", (t) => {
+  const scheduler = installDom(t);
+  const shell = new FakeElement("section");
+  const output = new FakeElement("div");
+  const historyOutput = new FakeElement("div");
+  const liveOutput = new FakeElement("div");
+  const core = createTerminalOutputCore({
+    shell,
+    output,
+    historyOutput,
+    liveOutput,
+    pauseButton: new FakeElement("button"),
+    liveButton: new FakeElement("button"),
+    clearButton: new FakeElement("button"),
+    announcer: new FakeElement("div"),
+  });
+
+  core.configure({ scrollbackBehavior: "split", scrollbackSplitRatio: 2 });
+  core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\n");
+  scheduler.flushFrames();
+  output.scrollTop = 0;
+  output.dispatch("wheel");
+  output.dispatch("scroll");
+
+  assert.equal(shell.classList.contains("split-active"), true);
+  assert.equal(historyOutput.children.length, 6);
+  assert.equal(liveOutput.children.length, 6);
+  assert.equal(liveOutput.scrollTop, liveOutput.scrollHeight);
+
+  historyOutput.scrollTop = historyOutput.scrollHeight;
+  historyOutput.dispatch("scroll");
+  assert.equal(shell.classList.contains("split-active"), false);
+  core.dispose();
+});
+
+test("split scrollback requires current wheel or scrollbar intent", (t) => {
+  const scheduler = installDom(t);
+  const previousNow = Date.now;
+  let now = 1_000;
+  Date.now = () => now;
+  t.after(() => (Date.now = previousNow));
+  const shell = new FakeElement("section");
+  const output = new FakeElement("div");
+  const core = createTerminalOutputCore({
+    shell,
+    output,
+    historyOutput: new FakeElement("div"),
+    liveOutput: new FakeElement("div"),
+    pauseButton: new FakeElement("button"),
+    liveButton: new FakeElement("button"),
+    clearButton: new FakeElement("button"),
+    announcer: new FakeElement("div"),
+  });
+
+  core.configure({ scrollbackBehavior: "split" });
+  core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\n");
+  scheduler.flushFrames();
+  output.dispatch("wheel");
+  now += 901;
+  output.scrollTop = 0;
+  output.dispatch("scroll");
+  assert.equal(shell.classList.contains("split-active"), false);
+
+  output.scrollTop = output.scrollHeight;
+  output.dispatch("pointerdown", { clientX: 4 });
+  output.scrollTop = 0;
+  output.dispatch("scroll");
+  assert.equal(shell.classList.contains("split-active"), false);
+
+  output.dispatch("wheel");
+  output.dispatch("scroll");
+  assert.equal(shell.classList.contains("split-active"), true);
+  core.dispose();
+});
+
+test("split divider clamps and persists its ratio", (t) => {
+  const scheduler = installDom(t);
+  const shell = new FakeElement("section");
+  const divider = new FakeElement("div");
+  let savedRatio;
+  const core = createTerminalOutputCore({
+    shell,
+    output: new FakeElement("div"),
+    historyOutput: new FakeElement("div"),
+    liveOutput: new FakeElement("div"),
+    divider,
+    pauseButton: new FakeElement("button"),
+    liveButton: new FakeElement("button"),
+    clearButton: new FakeElement("button"),
+    announcer: new FakeElement("div"),
+    onSplitRatioChange: (ratio) => (savedRatio = ratio),
+  });
+
+  divider.dispatch("pointerdown", { pointerId: 1, preventDefault() {} });
+  scheduler.windowListeners.get("pointermove")({ pointerId: 1, clientY: 500 });
+  scheduler.windowListeners.get("pointerup")({ pointerId: 1 });
+  assert.equal(savedRatio, 0.8);
+  core.dispose();
+  assert.equal(scheduler.windowListeners.size, 0);
+});
+
 test("hydrates large retained histories without spreading the line collection", (t) => {
   const scheduler = installDom(t);
-  const model = createTerminalOutputModel();
+  const model = createTerminalOutputModel({ recordLimit: 200_000 });
   model.appendOutput(`${Array.from({ length: 150_000 }, (_, index) => `line ${index}`).join("\n")}\n`);
   const shell = new FakeElement("section");
   const output = new FakeElement("div");

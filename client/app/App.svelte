@@ -391,6 +391,7 @@
         class:disconnected={snapshot.state === "disconnected" &&
           snapshot.reconnect?.status !== "scheduled"}
         type="button"
+        disabled={!shell.zorkOnly && snapshot.state === "disconnected" && !host.trim()}
         title={snapshot.state === "connecting"
           ? "Cancel connection attempt"
           : snapshot.reconnect?.status === "scheduled"

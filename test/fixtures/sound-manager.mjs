@@ -10,6 +10,7 @@ const categories = [
   "ambient",
   "fishing",
   "ui",
+  "music",
 ];
 
 export function createSoundManagerStub() {

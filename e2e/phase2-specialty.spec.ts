@@ -18,7 +18,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   return endpoint;
 }
 
@@ -727,11 +727,10 @@ test("Visual Effects stay cosmetic across settings, motion, recovery, reconnect,
     .toBe(true);
 
   endpoint.dropConnections();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
   await expect(root).not.toHaveClass(/is-planet-markas/);
   const reconnectStart = endpoint.gmcpMessages.length;
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   await expect
     .poll(() =>
       framesSince(endpoint, reconnectStart, "Darkwind.Client.Subscriptions").some(
@@ -885,8 +884,8 @@ test("Street Samurai replaces one literal dashboard without tab reset or late up
   await expect(dashboard).toContainText("REOPENED");
   endpoint.dropConnections();
   await expect(panel).toHaveCount(0);
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   endpoint.sendGmcp("Darkwind.StreetSamurai", streetState({ firmware_version: "Late reconnect" }));
   await expect(dashboard).toHaveCount(0);
   await disposeSession(page);

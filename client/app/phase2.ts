@@ -64,8 +64,9 @@ function resolvePhase2Endpoint(
     protocol = config.host ? (config.wss ? "wss" : "ws") : baseline.protocol;
   }
 
+  const baselineHost = baseline.host.trim().toLowerCase() === "default" ? "" : baseline.host;
   return {
-    host: params.get("host")?.trim() || config.host.trim() || baseline.host,
+    host: params.get("host")?.trim() || config.host.trim() || baselineHost,
     port:
       params.get("port")?.trim() || (config.host ? String(config.port) : baseline.port) || "4242",
     protocol: isProtocol(protocol) ? protocol : baseline.protocol,

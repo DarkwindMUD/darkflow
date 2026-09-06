@@ -1,4 +1,5 @@
 <script lang="ts">
+  import Bell from "@lucide/svelte/icons/bell";
   import { untrack } from "svelte";
   import type { Session } from "../runtime/session.ts";
 
@@ -61,7 +62,7 @@
     aria-controls="notifications-menu"
     aria-expanded={open}
     aria-haspopup="dialog"
-    onclick={() => (open = !open)}>🔔</button
+    onclick={() => (open = !open)}><Bell size={16} /></button
   >
 
   {#if snapshot.unreadCount > 0}

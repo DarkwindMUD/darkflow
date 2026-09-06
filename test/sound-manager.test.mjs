@@ -135,6 +135,19 @@ test('uses HTML5 streaming only for long-form music keys', () => {
   assert.equal(engine.created[1].options.html5, true);
 });
 
+test('controls phase 2 login music independently of ambient sounds', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+
+  manager.setCategoryEnabled('ambient', false);
+  manager.loop('music', 'darkwind-theme', 'login-theme');
+  assert.equal(engine.plays.length, 1);
+  assert.equal(engine.created[0].src, '/assets/sounds/darkwind-theme.mp3');
+
+  manager.setCategoryEnabled('music', false);
+  assert.equal(engine.stops.length, 1);
+  assert.equal(manager.getSettings().categoryEnabled.music, false);
+});
+
 test('replaces and stops loops by Darkflow semantic ID', () => {
   const { engine, manager } = createManager({ unlocked: true });
 

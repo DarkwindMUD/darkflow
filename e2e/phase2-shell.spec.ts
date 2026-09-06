@@ -156,7 +156,82 @@ test("Phase 2 chrome applies the migrated theme and disposes desktop updates", a
     .toBe(0);
 });
 
-test("Phase 2 controls drive connection, reconnect overlay, focus, and disposal", async ({
+test("Phase 2 header matches the legacy toolbar controls", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("workspace-host")).toBeVisible();
+
+  const header = page.locator(".app-chrome");
+  const connection = page.getByRole("form", { name: "Connection" });
+  const host = page.getByLabel("Host");
+  const port = page.getByLabel("Port");
+  const protocol = page.getByLabel("Connection protocol");
+  await expect(header).toHaveCSS("height", "42px");
+  expect(await header.boundingBox()).toMatchObject({ x: 0, y: 0, width: 1440, height: 42 });
+  expect(await page.locator(".workspace-rails").boundingBox()).toMatchObject({ x: 0 });
+  await expect(connection.locator("label")).toHaveCount(0);
+  await expect(host).toHaveAttribute("placeholder", "Host");
+  await expect(host).toHaveValue("");
+  await expect(host).toHaveCSS("width", "130px");
+  await expect(port).toHaveAttribute("type", "number");
+  await expect(port).toHaveAttribute("inputmode", "numeric");
+  await expect(port).toHaveCSS("appearance", "textfield");
+  await expect(port).toHaveCSS("width", "64px");
+  await expect(protocol.locator("option")).toHaveText(["wss", "ws", "telnets", "telnet"]);
+  await expect(page.getByTestId("connection-status")).toHaveCSS("position", "absolute");
+  const connectButton = page.locator("#connect-btn");
+  await expect(connectButton).toHaveText("Connect");
+  await expect(connectButton).toHaveClass(/disconnected/);
+  await expect(connectButton).toHaveCSS("width", "112px");
+  await expect(connectButton).toHaveCSS("margin-left", "4px");
+  const disconnectedColor = await connectButton.evaluate((button) =>
+    getComputedStyle(button).backgroundColor.match(/\d+/g)?.map(Number),
+  );
+  expect(disconnectedColor?.[1]).toBeGreaterThan(disconnectedColor?.[0] ?? 0);
+  expect(disconnectedColor?.[1]).toBeGreaterThan(disconnectedColor?.[2] ?? 0);
+
+  const notifications = page.getByRole("button", { name: "Notifications" });
+  const announcements = page.getByRole("button", { name: "Announcements" });
+  const leftToggle = page.getByRole("button", { name: "Toggle left sidebar" });
+  const rightToggle = page.getByRole("button", { name: "Toggle right sidebar" });
+  const panels = page.getByRole("button", { name: "Panels", exact: true });
+  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  await expect(notifications.locator(".lucide-bell")).toBeVisible();
+  await expect(announcements.locator(".lucide-newspaper")).toBeVisible();
+  await expect(panels.locator(".lucide-layout-panel-left")).toBeVisible();
+  await expect(settings.locator(".lucide-settings")).toBeVisible();
+  await expect(announcements).toHaveCSS("width", "26px");
+  await expect(announcements).toHaveCSS("height", "26px");
+  await expect(header.locator(".toolbar-separator")).toHaveCount(2);
+  await expect(header.locator(".toolbar-brand span")).toHaveCSS(
+    "background-image",
+    /linear-gradient/,
+  );
+
+  await expect(leftToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(leftToggle).toHaveClass(/active/);
+  await expect(leftToggle.locator(".lucide-panel-left-close")).toBeVisible();
+  await leftToggle.click();
+  await expect(leftToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(leftToggle).not.toHaveClass(/active/);
+  await expect(leftToggle.locator(".lucide-panel-left-open")).toBeVisible();
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  await leftToggle.click();
+  await expect(page.locator("#phase2-left-rail")).toBeVisible();
+
+  await expect(rightToggle).toHaveAttribute("aria-pressed", "true");
+  await expect(rightToggle).toHaveClass(/active/);
+  await expect(rightToggle.locator(".lucide-panel-right-close")).toBeVisible();
+  await rightToggle.click();
+  await expect(rightToggle).toHaveAttribute("aria-pressed", "false");
+  await expect(rightToggle).not.toHaveClass(/active/);
+  await expect(rightToggle.locator(".lucide-panel-right-open")).toBeVisible();
+  await expect(page.locator("#phase2-right-rail")).toBeHidden();
+  await rightToggle.click();
+  await expect(page.locator("#phase2-right-rail")).toBeVisible();
+});
+
+test("Phase 2 controls drive connection, retry countdown, disconnect, and disposal", async ({
   page,
 }) => {
   await page.addInitScript(() => localStorage.setItem("darkflow-protocol", "telnet"));
@@ -174,54 +249,105 @@ test("Phase 2 controls drive connection, reconnect overlay, focus, and disposal"
 
   await page.getByLabel("Host").fill("fixture.example");
   await page.getByLabel("Port").fill("4321");
-  await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connecting via ws");
+  const connectionButton = page.locator("#connect-btn");
+  const connectionButtonWidth = await connectionButton.evaluate(
+    (button) => button.getBoundingClientRect().width,
+  );
+  await connectionButton.click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connecting");
+  await expect(connectionButton).toHaveText("Connecting");
+  await expect(connectionButton).toHaveClass(/connecting/);
+  await expect(connectionButton).toHaveCSS("animation-name", /connection-sweep/);
+  await expect(connectionButton).toHaveCSS("background-image", /linear-gradient/);
+  expect(await connectionButton.evaluate((button) => button.getBoundingClientRect().width)).toBe(
+    connectionButtonWidth,
+  );
   expect(await readFakeSockets(page)).toMatchObject({ urls: ["ws://fixture.example:4321/"] });
-  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(page.locator(".reconnect-overlay")).toHaveCount(0);
 
   await controlFakeSocket(page, "open");
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
-  await expect(page.getByRole("button", { name: "Disconnect" })).toBeVisible();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  await expect(connectionButton).toHaveText("Disconnect");
+  await expect(connectionButton).toHaveClass(/connected/);
+  await expect(connectionButton).toHaveCSS("background-image", /linear-gradient/);
+  expect(await connectionButton.evaluate((button) => button.getBoundingClientRect().width)).toBe(
+    connectionButtonWidth,
+  );
   await expect(page.locator(".app-workspace-slot > .workspace-controls")).toHaveCount(1);
   await expect(page.locator(".app-workspace-slot > .workspace-status")).toHaveCount(1);
 
   await shell.focus();
   await controlFakeSocket(page, "drop");
-  const dialog = page.getByRole("alertdialog");
-  await expect(dialog).toBeVisible();
-  await expect(dialog).toContainText("Connection lost");
-  await expect(dialog).toContainText(/Next attempt in [01]s; attempt 1; via ws/);
-  await expect(page.getByRole("button", { name: "Retry now" })).toBeFocused();
+  await expect(page.locator(".reconnect-overlay")).toHaveCount(0);
+  await expect(connectionButton).toHaveText(/Retrying in \d+s/);
+  await expect(connectionButton).toHaveClass(/retrying/);
+  await expect(connectionButton).toHaveCSS("animation-direction", "reverse");
+  await expect(connectionButton).toHaveCSS("background-image", /linear-gradient/);
+  expect(await connectionButton.evaluate((button) => button.getBoundingClientRect().width)).toBe(
+    connectionButtonWidth,
+  );
 
-  await page.getByRole("button", { name: "Retry now" }).click();
-  await expect(dialog).toContainText("Reconnecting...");
-  await expect.poll(async () => (await readFakeSockets(page)).urls).toHaveLength(2);
+  await page.getByLabel("Host").fill("retry.example");
+  await expect
+    .poll(async () => (await readFakeSockets(page)).urls)
+    .toEqual(["ws://fixture.example:4321/", "ws://retry.example:4321/"]);
+  await expect(connectionButton).toHaveText("Connecting");
   await controlFakeSocket(page, "open");
-  await expect(dialog).toHaveCount(0);
-  await expect(shell).toBeFocused();
+  await expect(connectionButton).toHaveText("Disconnect");
 
-  await controlFakeSocket(page, "drop");
-  await expect(dialog).toBeVisible();
-  await page.getByRole("button", { name: "Stop trying" }).click();
-  await expect(dialog).toHaveCount(0);
-  await expect(shell).toBeFocused();
+  const socketsBeforeDisconnect = (await readFakeSockets(page)).urls.length;
+  await connectionButton.click();
+  await expect(connectionButton).toHaveText("Connect");
+  await expect(page.locator(".reconnect-overlay")).toHaveCount(0);
+  await page.waitForTimeout(1_100);
+  expect((await readFakeSockets(page)).urls).toHaveLength(socketsBeforeDisconnect);
   await expect(page.getByTestId("connection-status")).toHaveText("Disconnected");
+  await expect(page.getByLabel("Host")).toHaveValue("retry.example");
 
   await page.getByLabel("Host").fill("");
   await page.getByLabel("Port").fill("");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByLabel("Host")).toHaveValue("");
+  await expect(page.getByLabel("Port")).toHaveValue("");
   await expect
     .poll(async () => (await readFakeSockets(page)).urls.at(-1))
     .toBe("ws://localhost:4242/");
   await controlFakeSocket(page, "open");
   await controlFakeSocket(page, "drop");
-  await expect(dialog).toBeVisible();
+  await expect(connectionButton).toHaveText(/Retrying in \d+s/);
   const socketsBeforeDisposal = (await readFakeSockets(page)).urls.length;
   await disposePhase2Session(page);
   await expect(shell).toHaveCount(0);
-  await expect(dialog).toHaveCount(0);
   await page.waitForTimeout(1_100);
   expect((await readFakeSockets(page)).urls).toHaveLength(socketsBeforeDisposal);
+});
+
+test("connection button cancels connecting and scheduled retries", async ({ page }) => {
+  await installFakeWebSocket(page);
+  await page.goto("/phase2/");
+
+  const connectionButton = page.locator("#connect-btn");
+  await connectionButton.click();
+  await expect(connectionButton).toHaveText("Connecting");
+  await expect(connectionButton).toHaveAttribute("title", "Cancel connection attempt");
+  await connectionButton.click();
+  await expect(connectionButton).toHaveText("Connect");
+
+  const socketsAfterConnectingCancel = (await readFakeSockets(page)).urls.length;
+  await page.waitForTimeout(1_100);
+  expect((await readFakeSockets(page)).urls).toHaveLength(socketsAfterConnectingCancel);
+
+  await connectionButton.click();
+  await controlFakeSocket(page, "open");
+  await controlFakeSocket(page, "drop");
+  await expect(connectionButton).toHaveText(/Retrying in \d+s/);
+  await expect(connectionButton).toHaveAttribute("title", "Cancel automatic retry");
+  await connectionButton.click();
+  await expect(connectionButton).toHaveText("Connect");
+
+  const socketsAfterRetryCancel = (await readFakeSockets(page)).urls.length;
+  await page.waitForTimeout(1_100);
+  expect((await readFakeSockets(page)).urls).toHaveLength(socketsAfterRetryCancel);
 });
 
 test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", async ({
@@ -247,6 +373,9 @@ test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", 
   await expect
     .poll(async () => (await readFakeSockets(page)).urls)
     .toEqual(["wss://config.example:7777/"]);
+  await controlFakeSocket(page, "open");
+  await page.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await expect(page.getByLabel("Host")).toHaveValue("config.example");
 
   await page.goto("/phase2/?host=url.example&port=3131&type=ws");
   await expect(page.getByLabel("Host")).toHaveValue("url.example");

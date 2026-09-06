@@ -16,13 +16,15 @@ export const SESSION_AUDIO_CATEGORIES = [
   ...DARKWIND_SOUND_CATEGORIES.slice(0, -1),
   "fishing",
   "ui",
+  "music",
 ] as const;
 
-export type SessionAudioCategory = DarkwindSoundCategory | "fishing";
+export type SessionAudioCategory = DarkwindSoundCategory | "fishing" | "music";
 export type SessionAudioActivityKind = "play" | "loop" | null;
 
 export interface SessionAudioSnapshot {
   readonly connected: boolean;
+  readonly loggedIn: boolean;
   readonly supported: boolean;
   readonly enabled: boolean;
   readonly volume: number;
@@ -72,7 +74,7 @@ const ONE_SHOT_ACTIVITY_MS = 2_000;
 const AUTH_TRANSITION_GRACE_MS = 100;
 const AUTH_WINDOW_IDS = new Set(["login", "newchar", "charselect"]);
 const LOGIN_THEME = {
-  category: "ambient" as const,
+  category: "music" as const,
   sound: "darkwind-theme",
   id: "darkwind-login-theme",
   volume: 0.5,
@@ -104,6 +106,7 @@ export function createSessionAudio(
   manager: RetainedSoundManager,
 ): SessionAudio {
   let connected = false;
+  let loggedIn = false;
   let supported = false;
   let currentCategory: SessionAudioCategory | null = null;
   let activityKind: SessionAudioActivityKind = null;
@@ -127,6 +130,7 @@ export function createSessionAudio(
     ) as Record<SessionAudioCategory, boolean>;
     return deepFreeze({
       connected,
+      loggedIn,
       supported,
       enabled: settings.enabled,
       volume: settings.volume,
@@ -247,7 +251,14 @@ export function createSessionAudio(
     const active = Object.values(interactions.getSnapshot().windows).some(
       (window) => window.type === "modal" && AUTH_WINDOW_IDS.has(window.sourceId),
     );
-    if (active === authActive) {
+    const changed = active !== authActive;
+    authActive = active;
+    if (manager.getSettings().categoryEnabled.music === false) {
+      cancelAuthGrace();
+      stopLoginTheme();
+      return;
+    }
+    if (!changed) {
       if (active && !loginThemeRequested && connected) {
         loginThemeRequested = loop(
           LOGIN_THEME.category,
@@ -258,7 +269,6 @@ export function createSessionAudio(
       }
       return;
     }
-    authActive = active;
     cancelAuthGrace();
     if (authActive) {
       if (connected && !loginThemeRequested) {
@@ -291,8 +301,10 @@ export function createSessionAudio(
   scope.own("listener", () => gmcp.off(SOUND_PACKAGE, soundHandler));
 
   const characterAttachedHandler = (): void => {
+    loggedIn = true;
     authActive = false;
     stopLoginTheme();
+    publish();
   };
   for (const packageName of ["Char.Vitals", "Char.Status", "Darkwind.Session.Recovered"]) {
     gmcp.on(packageName, characterAttachedHandler);
@@ -312,7 +324,10 @@ export function createSessionAudio(
   scope.own(
     "subscription",
     manager.onChange(() => {
-      if (!disposed && !suppressManagerPublish) publish();
+      if (!disposed && !suppressManagerPublish) {
+        reconcileAuthWindows();
+        publish();
+      }
     }),
   );
 
@@ -334,6 +349,7 @@ export function createSessionAudio(
         return;
       }
       connected = false;
+      loggedIn = false;
       supported = false;
       cancelAuthGrace();
       loginThemeRequested = false;

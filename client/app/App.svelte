@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Newspaper from "@lucide/svelte/icons/newspaper";
+  import Settings from "@lucide/svelte/icons/settings";
   import { untrack } from "svelte";
   import type { ShellBootstrap } from "./bootstrap-transaction.ts";
   import type { Session, SessionConnectionSnapshot } from "../runtime/session.ts";
@@ -48,9 +50,7 @@
   let host = $state(untrack(() => endpoint.host));
   let port = $state(untrack(() => endpoint.port));
   let protocol = $state<TransportName>(untrack(() => endpoint.protocol));
-  let everConnected = $state(false);
   let now = $state(Date.now());
-  let shellRoot = $state<HTMLElement>();
   let workspaceToolbar = $state<HTMLElement>();
   let workspaceHost = $state<{
     navigateTerminalLine(lineId: number): boolean;
@@ -58,7 +58,6 @@
     removeTerminalViewForTest(): Promise<void>;
     restoreTerminalViewForTest(): Promise<void>;
   }>();
-  let retryButton = $state<HTMLButtonElement>();
   let updateStatus = $state<UpdateStatus | null>(null);
   let clientVersion = $state<string | null>(null);
   let settingsOpen = $state(false);
@@ -113,21 +112,14 @@
       visualSnapshot.activeCues.some(({ slot }) => slot === "outgoing"),
   );
 
-  const reconnectVisible = $derived(
-    everConnected &&
-      snapshot.state !== "connected" &&
-      snapshot.reconnect?.userDisconnected !== true &&
-      ["connecting", "scheduled", "idle"].includes(snapshot.reconnect?.status ?? ""),
-  );
   const secondsUntilRetry = $derived(
     snapshot.reconnect?.nextAttemptAt
       ? Math.max(0, Math.ceil((snapshot.reconnect.nextAttemptAt - now) / 1000))
       : 0,
   );
   const connectionStatus = $derived.by(() => {
-    const transport = snapshot.reconnect?.transport ?? protocol;
-    if (snapshot.state === "connecting") return `Connecting via ${transport}`;
-    if (snapshot.state === "connected") return `Connected via ${transport}`;
+    if (snapshot.state === "connecting") return "Connecting";
+    if (snapshot.state === "connected") return "Connected";
     if (snapshot.reconnect?.status === "scheduled") return "Disconnected. Retry scheduled.";
     return "Disconnected";
   });
@@ -197,32 +189,18 @@
     session.setConnectionEndpoint(endpoint);
     const unsubscribe = session.subscribeConnection((next) => {
       snapshot = next;
-      if (next.state === "connected") everConnected = true;
     });
     if (shell.shouldAutoConnect) session.connect();
     return unsubscribe;
   });
 
+  $effect(() => session.setConnectionEndpoint(readConnectionEndpoint()));
+
   $effect(() => {
-    if (!reconnectVisible || snapshot.reconnect?.status !== "scheduled") return;
+    if (snapshot.reconnect?.status !== "scheduled") return;
     now = Date.now();
     const timer = setInterval(() => (now = Date.now()), 250);
     return () => clearInterval(timer);
-  });
-
-  $effect(() => {
-    if (!reconnectVisible) return;
-    const previousFocus = document.activeElement;
-    queueMicrotask(() => retryButton?.focus());
-    return () => {
-      queueMicrotask(() => {
-        const restoreTarget =
-          previousFocus instanceof HTMLElement && previousFocus.isConnected
-            ? previousFocus
-            : shellRoot;
-        restoreTarget?.focus();
-      });
-    };
   });
 
   $effect(() => {
@@ -270,15 +248,17 @@
     };
   });
 
-  function connect(event: SubmitEvent): void {
-    event.preventDefault();
-    const next: TransportEndpoint = {
+  function readConnectionEndpoint(): TransportEndpoint {
+    return {
       host: host.trim() || "localhost",
       port: port.trim() || "4242",
       protocol,
     };
-    host = next.host;
-    port = next.port;
+  }
+
+  function connect(event?: SubmitEvent): void {
+    event?.preventDefault();
+    const next = readConnectionEndpoint();
     session.setConnectionEndpoint(next);
     persistProtocol(protocol);
     if (snapshot.reconnect?.status === "scheduled") session.retryConnection();
@@ -291,16 +271,6 @@
     } catch {
       // Private browsing and quota failures leave the current selection usable.
     }
-  }
-
-  function reconnectDetail(): string {
-    const parts: string[] = [];
-    if (snapshot.reconnect?.status === "scheduled") {
-      parts.push(`Next attempt in ${secondsUntilRetry}s`);
-    }
-    if (snapshot.reconnect?.attempt) parts.push(`attempt ${snapshot.reconnect.attempt}`);
-    if (snapshot.reconnect?.transport) parts.push(`via ${snapshot.reconnect.transport}`);
-    return parts.join("; ");
   }
 
   const updateDisplay = $derived(
@@ -366,7 +336,6 @@
 />
 
 <main
-  bind:this={shellRoot}
   class:dw-visual-impact-shake={incomingVisualMotion}
   class:dw-visual-attack-lunge={outgoingVisualMotion}
   data-testid="phase2-shell"
@@ -374,75 +343,108 @@
   tabindex="-1"
 >
   <header class="app-chrome">
-    <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
-    <h1>{gameTitle(shell.gameName)}</h1>
+    <h1 class="toolbar-brand">
+      <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
+      <span>{gameTitle(shell.gameName)}</span>
+    </h1>
 
     <form class="connection-form" aria-label="Connection" onsubmit={connect}>
       {#if !shell.zorkOnly}
-        <label>
-          Host
-          <input aria-label="Host" bind:value={host} autocomplete="url" />
-        </label>
-        <label>
-          Port
-          <input
-            aria-label="Port"
-            type="number"
-            min="1"
-            max="65535"
-            value={port}
-            oninput={(event) => (port = event.currentTarget.value)}
-          />
-        </label>
-        <label>
-          Protocol
-          <select
-            aria-label="Connection protocol"
-            bind:value={protocol}
-            onchange={(event) => persistProtocol(event.currentTarget.value as TransportName)}
-          >
-            <option value="ws">WebSocket</option>
-            <option value="wss">Secure WebSocket</option>
-            <option value="telnet">Telnet proxy</option>
-            <option value="telnets">Secure telnet proxy</option>
-          </select>
-        </label>
+        <input
+          id="host"
+          aria-label="Host"
+          placeholder="Host"
+          bind:value={host}
+          autocomplete="url"
+        />
+        <span class="connection-separator" aria-hidden="true">:</span>
+        <input
+          id="port"
+          aria-label="Port"
+          type="number"
+          inputmode="numeric"
+          min="1"
+          max="65535"
+          value={port}
+          oninput={(event) => (port = event.currentTarget.value)}
+        />
+        <select
+          id="protocol-select"
+          aria-label="Connection protocol"
+          bind:value={protocol}
+          onchange={(event) => persistProtocol(event.currentTarget.value as TransportName)}
+        >
+          <option value="wss">wss</option>
+          <option value="ws">ws</option>
+          <option value="telnets">telnets</option>
+          <option value="telnet">telnet</option>
+        </select>
       {:else}
         <p>Darkwind connection</p>
       {/if}
 
-      {#if snapshot.state === "connected"}
-        <button type="button" onclick={() => session.disconnect()}>Disconnect</button>
-      {:else}
-        <button type="submit" disabled={snapshot.state === "connecting"}>
-          {snapshot.state === "connecting" ? "Connecting..." : "Connect"}
-        </button>
-      {/if}
+      <button
+        id="connect-btn"
+        class:connected={snapshot.state === "connected"}
+        class:connecting={snapshot.state === "connecting"}
+        class:retrying={snapshot.reconnect?.status === "scheduled"}
+        class:disconnected={snapshot.state === "disconnected" &&
+          snapshot.reconnect?.status !== "scheduled"}
+        type="button"
+        title={snapshot.state === "connecting"
+          ? "Cancel connection attempt"
+          : snapshot.reconnect?.status === "scheduled"
+            ? "Cancel automatic retry"
+            : undefined}
+        onclick={() =>
+          snapshot.state === "disconnected" && snapshot.reconnect?.status !== "scheduled"
+            ? connect()
+            : session.disconnect()}
+      >
+        {snapshot.state === "connected"
+          ? "Disconnect"
+          : snapshot.state === "connecting"
+            ? "Connecting"
+            : snapshot.reconnect?.status === "scheduled"
+              ? `Retrying in ${secondsUntilRetry}s`
+              : "Connect"}
+      </button>
     </form>
 
     <p data-testid="connection-status" role="status" aria-live="polite" class="app-chrome-status">
       {connectionStatus}
     </p>
 
-    <div class="app-workspace-slot" bind:this={workspaceToolbar}></div>
-
     <div class="app-actions">
       <AudioControls {session} />
       <NotificationsMenu {session} onactivate={activateNotification} />
       <button
         bind:this={announcementsButton}
+        class="toolbar-icon-btn"
         type="button"
+        title="Announcements"
+        aria-label="Announcements"
         onclick={() => (announcementsOpen = true)}
       >
-        Announcements
+        <Newspaper size={16} />
         {#if interactionSnapshot.announcements.unreadCount > 0}
           <span class="toolbar-count-badge" aria-label="Unread announcements">
             {interactionSnapshot.announcements.unreadCount}
           </span>
         {/if}
       </button>
-      <button bind:this={settingsButton} type="button" onclick={() => (settingsOpen = true)}>
-        Settings
+      <span class="toolbar-separator"></span>
+      <div class="app-workspace-slot" bind:this={workspaceToolbar}></div>
+      <span class="toolbar-separator"></span>
+      <button
+        bind:this={settingsButton}
+        class="toolbar-icon-btn"
+        type="button"
+        title="Settings"
+        aria-label="Settings"
+        onclick={() => (settingsOpen = true)}
+      >
+        <Settings size={16} />
       </button>
     </div>
   </header>
@@ -529,34 +531,6 @@
   </aside>
 {/if}
 
-{#if reconnectVisible}
-  <div class="reconnect-overlay">
-    <div
-      class="reconnect-dialog"
-      role="alertdialog"
-      aria-modal="true"
-      aria-labelledby="reconnect-title"
-      aria-describedby="reconnect-detail"
-    >
-      <h2 id="reconnect-title">
-        {snapshot.reconnect?.status === "connecting" ? "Reconnecting..." : "Connection lost"}
-      </h2>
-      <p id="reconnect-detail">
-        {snapshot.reconnect?.status === "idle" ? "Automatic reconnect is off." : reconnectDetail()}
-      </p>
-      <div class="reconnect-actions">
-        <button
-          bind:this={retryButton}
-          type="button"
-          disabled={snapshot.reconnect?.status === "connecting"}
-          onclick={() => session.retryConnection()}>Retry now</button
-        >
-        <button type="button" onclick={() => session.disconnect()}>Stop trying</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
 <style>
   main {
     box-sizing: border-box;
@@ -564,73 +538,66 @@
     flex-direction: column;
     height: 100dvh;
     min-height: 100dvh;
-    padding: clamp(0.75rem, 2.5vw, 1.5rem);
+    padding: 0;
     background: var(--df-bg, #0d1117);
     color: var(--df-text, #c9d1d9);
   }
 
   .app-chrome {
     display: flex;
-    gap: 0.75rem;
+    gap: 8px;
     align-items: center;
     /* Wide screens use one stable row; narrower screens move the intact
        connection form to a deliberate second row below. */
     flex-wrap: nowrap;
+    height: 42px;
+    min-height: 42px;
     min-width: 0;
-    margin-bottom: 0.5rem;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--df-border, #30363d);
+    margin-bottom: 0;
+    background:
+      linear-gradient(90deg, rgb(66 214 201 / 8%), transparent 34%), var(--df-panel, #161b22);
   }
 
-  .app-chrome img {
-    width: 2rem;
-    height: 2rem;
-  }
-
-  .app-chrome h1 {
-    /* Compact title -- the toolbar is a working row, not a hero. */
-    font-size: 1.25rem;
-    margin-right: 0.5rem;
+  .app-chrome .toolbar-brand {
+    margin: 0 6px 0 0;
   }
 
   .app-actions {
     display: flex;
     flex: 0 0 auto;
-    gap: 0.5rem;
+    gap: 3px;
     margin-left: auto;
     align-items: center;
   }
 
-  /*
-   * The connection-status paragraph and the workspace toolbar (Panels button
-   * plus workspace-status) sit on the header row. Compact them so a full row
-   * still fits on desktop.
-   */
+  /* Keep the workspace toolbar compact enough to fit on one desktop row. */
   .app-chrome-status,
   .app-workspace-slot {
     display: inline-flex;
     align-items: center;
-    gap: 0.5rem;
-    font-size: 0.85rem;
+    gap: 3px;
+    font-size: 12px;
     color: var(--df-muted, #8b949e);
   }
   .app-workspace-slot {
-    flex: 1 1 auto;
+    flex: 0 0 auto;
     min-width: 0;
     overflow: visible;
   }
-  /*
-   * Cap the connection status width so a text change from `Disconnected` to
-   * `Connected via ws` (and back) doesn't shift the header enough to flip
-   * between one and two wrapped rows. When the row wraps or unwraps mid-test,
-   * Dockview's tab drop targets sit at moving coordinates and drag helpers
-   * hit the wrong element.
-   */
   .app-chrome-status {
-    flex: 0 0 auto;
-    min-width: 12ch;
-    max-width: 12ch;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    margin: -1px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip: rect(0, 0, 0, 0);
     white-space: nowrap;
+    border: 0;
   }
   /*
    * Svelte prunes CSS whose left-hand match doesn't appear in this component's
@@ -643,18 +610,19 @@
     flex: 0 0 auto;
     width: auto;
   }
-  /*
-   * Cap the workspace status width so long transient messages (`Saved
-   * workspace is incompatible; using the default layout.`) don't inflate the
-   * header. Both min- and max-width pinned so the width stays constant across
-   * transitions.
-   */
+  /* Keep workspace save/recovery announcements available to assistive tech. */
   :global(.app-workspace-slot .workspace-status) {
-    min-width: 18ch;
-    max-width: 18ch;
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    margin: -1px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    clip: rect(0, 0, 0, 0);
     white-space: nowrap;
+    border: 0;
   }
 
   .app-actions button {
@@ -666,40 +634,107 @@
     margin: 0;
   }
 
-  .connection-form,
-  .reconnect-actions {
+  .connection-form {
     display: flex;
-    gap: 0.5rem;
     align-items: center;
   }
 
   .connection-form {
     flex: 0 0 auto;
     flex-wrap: nowrap;
+    gap: 2px;
   }
 
-  .reconnect-actions {
-    flex-wrap: wrap;
+  .connection-form input,
+  .connection-form select {
+    height: 26px;
+    min-height: 0;
+    padding: 3px 6px;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: 4px;
+    background: var(--df-bg, #0d1117);
+    color: var(--df-text, #c9d1d9);
+    font-family: inherit;
+    font-size: 12px;
   }
 
-  /* Inline label + input pairs so host/port/protocol/connect fit on one row. */
-  .connection-form label {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
-    font-size: 0.85rem;
-    color: var(--df-muted, #8b949e);
+  .connection-form #host {
+    width: 130px;
   }
 
-  @media (max-width: 1200px) {
-    .app-chrome {
-      flex-wrap: wrap;
+  .connection-form #port {
+    width: 64px;
+    appearance: textfield;
+  }
+
+  .connection-form #port::-webkit-inner-spin-button,
+  .connection-form #port::-webkit-outer-spin-button {
+    margin: 0;
+    appearance: none;
+  }
+
+  .connection-form button,
+  .app-chrome :global(.toolbar-icon-btn) {
+    min-height: 0;
+  }
+
+  #connect-btn {
+    width: 112px;
+    margin-left: 4px;
+  }
+
+  #connect-btn.disconnected {
+    background: var(--df-ok, #3fb950);
+    border-color: var(--df-ok, #3fb950);
+  }
+
+  #connect-btn.disconnected:hover {
+    background: color-mix(in srgb, var(--df-ok, #3fb950) 82%, white);
+  }
+
+  #connect-btn.connected {
+    background: linear-gradient(
+      90deg,
+      var(--df-accent-strong, #7ee7df),
+      var(--df-text-strong, #f0f6fc) 78%
+    );
+    border-color: var(--df-accent-strong, #7ee7df);
+    color: var(--df-bg, #0d1117);
+  }
+
+  #connect-btn.connecting {
+    background: linear-gradient(90deg, #4b5563 0 35%, #d1d5db 50%, #4b5563 65% 100%);
+    background-size: 200% 100%;
+    border-color: #8b949e;
+    opacity: 1;
+    animation: connection-sweep 1.1s linear infinite;
+  }
+
+  #connect-btn.retrying {
+    background: linear-gradient(90deg, #4b5563 0 35%, #d1d5db 50%, #4b5563 65% 100%);
+    background-size: 200% 100%;
+    border-color: #8b949e;
+    animation: connection-sweep 1.1s linear infinite reverse;
+  }
+
+  @keyframes connection-sweep {
+    from {
+      background-position: 100% 0;
     }
-
-    .app-chrome .connection-form {
-      flex: 1 0 100%;
-      order: 2;
+    to {
+      background-position: 0 0;
     }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #connect-btn.connecting,
+    #connect-btn.retrying {
+      animation: none;
+    }
+  }
+
+  .connection-separator {
+    color: var(--df-muted, #484f58);
   }
 
   /*
@@ -716,9 +751,13 @@
      */
     .app-chrome {
       flex-wrap: wrap;
+      height: auto;
+      padding: 6px 8px;
     }
     .app-chrome .connection-form {
-      flex-wrap: wrap;
+      flex: 1 0 100%;
+      flex-wrap: nowrap;
+      order: 2;
     }
     .app-actions {
       flex-shrink: 0;
@@ -746,6 +785,10 @@
      */
     .app-actions :global(.sound-widget-expanded) {
       right: 0;
+    }
+
+    .connection-form #host {
+      width: 100px;
     }
   }
 
@@ -775,39 +818,7 @@
     background: var(--df-panel, #161b22);
   }
 
-  .reconnect-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 4000;
-    display: grid;
-    place-items: center;
-    padding: 1rem;
-    background: rgb(0 0 0 / 65%);
-  }
-
-  .reconnect-dialog {
-    box-sizing: border-box;
-    width: min(28rem, 100%);
-    padding: 1.25rem;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.5rem;
-    background: var(--bg-secondary, #161b22);
-  }
-
   @media (max-width: 420px) {
-    .connection-form,
-    .reconnect-actions {
-      align-items: stretch;
-      flex-direction: column;
-    }
-
-    label,
-    input,
-    select,
-    button {
-      width: 100%;
-    }
-
     .update-banner {
       align-items: stretch;
       flex-direction: column;

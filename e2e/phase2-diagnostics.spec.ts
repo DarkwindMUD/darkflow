@@ -17,7 +17,7 @@ async function connect(page: Page): Promise<void> {
   await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 }
 
 test("connection health and RFC 2549 use the public session snapshot", async ({ page }) => {
@@ -75,10 +75,9 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
   await expect(page.getByLabel("RFC 2549 debug panel")).toHaveCount(0);
 
   endpoint.dropConnections();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
   await expect(health).not.toContainText("drift 4ms avg, 35ms max");
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   await expect(health).toContainText("drift 4ms avg, 35ms max");
   await expect(health).toContainText("1 reconnect(s)");
 

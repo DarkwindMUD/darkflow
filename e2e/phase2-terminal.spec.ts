@@ -18,7 +18,7 @@ async function connect(page: Page): Promise<void> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 }
 
 async function installAutomationDefinitions(page: Page): Promise<void> {
@@ -315,9 +315,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   expect(await output.textContent()).toBe(beforeLayout);
 
   endpoint.dropConnections();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   endpoint.sendText("delivered after reconnect\n");
   await expect(output).toContainText("delivered after reconnect");
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
@@ -377,7 +376,7 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 
   const input = page.getByLabel("Command input", { exact: true });
   for (const command of ["l", "fn", "vars"]) {
@@ -413,7 +412,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   await page.waitForTimeout(100);
   const persistedWorkspaceBefore = await page.evaluate(() =>
     localStorage.getItem("darkflow-session-core-v1"),
@@ -457,7 +456,7 @@ test("Phase 2 disposal cancels pending terminal work and rejects late events", a
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 
   const input = page.getByLabel("Command input", { exact: true });
   for (const command of ["pendingwait", "pendingtimer"]) {

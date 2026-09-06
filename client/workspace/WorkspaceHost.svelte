@@ -1,4 +1,9 @@
 <script lang="ts">
+  import LayoutPanelLeft from "@lucide/svelte/icons/layout-panel-left";
+  import PanelLeftClose from "@lucide/svelte/icons/panel-left-close";
+  import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
+  import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
+  import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
   import { onMount, tick } from "svelte";
   import { SvelteMap, SvelteSet } from "svelte/reactivity";
   import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
@@ -134,6 +139,49 @@
     title: "Chat",
     state: {},
   };
+
+  type PanelMenuGroupName = "Character" | "Progress" | "Social" | "System" | "World";
+  type PanelMenuItem = {
+    group: PanelMenuGroupName;
+    kind: "information" | "world" | "chat";
+    panel: WorkspacePanelSpec;
+  };
+  const informationPanelGroups: Record<InformationPanelId, PanelMenuGroupName> = {
+    achievements: "Progress",
+    avatar: "Character",
+    buffs: "Character",
+    "connection-health": "System",
+    cyberware: "Character",
+    group: "Social",
+    guildVitals: "Character",
+    inventory: "Character",
+    omens: "World",
+    quests: "Progress",
+    rfc2549: "System",
+    sky: "World",
+    stats: "Character",
+    status: "Character",
+    vitals: "Character",
+    worth: "Character",
+    xpmon: "Progress",
+  };
+  const panelMenuItems: readonly PanelMenuItem[] = [
+    ...informationPanels.map((panel): PanelMenuItem => ({
+      group: informationPanelGroups[panel.id],
+      kind: "information",
+      panel,
+    })),
+    ...worldPanels.map((panel): PanelMenuItem => ({ group: "World", kind: "world", panel })),
+    { group: "Social", kind: "chat", panel: chatPanel },
+  ];
+  const panelMenuGroups = (["Character", "Progress", "Social", "System", "World"] as const).map(
+    (title) => ({
+      title,
+      items: panelMenuItems
+        .filter(({ group }) => group === title)
+        .sort((left, right) => left.panel.title.localeCompare(right.panel.title)),
+    }),
+  );
 
   // Legacy "classic hybrid" default: terminal center, two ordered rails. Each
   // rail is its own Scrollview root, so cards size to their content under one
@@ -278,11 +326,19 @@
   let rightRailHost: HTMLElement;
   let leftRail: Scrollview | undefined;
   let rightRail: Scrollview | undefined;
+  let leftRailVisible = $state(true);
+  let rightRailVisible = $state(true);
   let workspace: Workspace | undefined;
   /** Set once the save pipeline exists; rail edits are not Dockview layout events. */
   let requestSave: (() => void) | undefined;
   let movePanel:
-    ((id: RailPanelId, destination: RailSide | "float", index?: number) => void) | undefined;
+    | ((
+        id: RailPanelId,
+        destination: RailSide | "float",
+        index?: number,
+        floatBounds?: typeof RAIL_FLOAT_BOUNDS,
+      ) => void)
+    | undefined;
   let cancelActiveDrag: (() => void) | undefined;
   let activeTransfers: ReadonlySet<string> | undefined;
   let terminalLineNavigator: ((lineId: number) => boolean) | undefined;
@@ -295,6 +351,22 @@
   let combatPanelOpen = $state(false);
   let chatPanelOpen = $state(false);
   let launcherOpen = $state(false);
+  let mobilePresentation = $state(false);
+
+  function toggleRail(side: RailSide): void {
+    if (!railsEnabled) return;
+    const rail = side === "left" ? leftRail : rightRail;
+    if (!rail) return;
+    const visible = side === "left" ? leftRailVisible : rightRailVisible;
+    rail.setInert(visible);
+    if (side === "left") leftRailVisible = !visible;
+    else rightRailVisible = !visible;
+  }
+
+  function togglePanels(): void {
+    if (mobilePresentation) openSheet();
+    else launcherOpen = !launcherOpen;
+  }
 
   function handleLauncherFocusOut(event: FocusEvent): void {
     const next = event.relatedTarget;
@@ -377,6 +449,18 @@
       if (activate) workspace.activatePanel(chatPanel.id);
     }
     syncVisiblePanels();
+  }
+
+  function panelMenuItemOpen(item: PanelMenuItem): boolean {
+    if (item.kind === "information") return informationPanelOpen(item.panel);
+    if (item.kind === "world") return worldPanelOpen(item.panel);
+    return chatPanelOpen;
+  }
+
+  function togglePanelMenuItem(item: PanelMenuItem): void {
+    if (item.kind === "information") void toggleInformationPanel(item.panel, false);
+    else if (item.kind === "world") void toggleWorldPanel(item.panel, false);
+    else void toggleChatPanel(false);
   }
 
   function focusTerminal(): void {
@@ -620,7 +704,14 @@
       const id = event.dataTransfer?.getData(RAIL_DRAG_TYPE);
       if (!id || !railEligible(id) || !railFor(id)) return;
       event.preventDefault();
-      movePanel?.(id, "float");
+      const hostBounds =
+        host.querySelector<HTMLElement>(".dv-floating-overlay-host")?.getBoundingClientRect() ??
+        host.getBoundingClientRect();
+      movePanel?.(id, "float", undefined, {
+        ...RAIL_FLOAT_BOUNDS,
+        left: event.clientX - hostBounds.left,
+        top: event.clientY - hostBounds.top,
+      });
     };
     host.addEventListener("dragover", onRailDragOver);
     host.addEventListener("drop", onRailDrop);
@@ -705,7 +796,7 @@
       railCallbacksFor(() => rightRail),
     );
 
-    movePanel = (id, destination, index) => {
+    movePanel = (id, destination, index, floatBounds = RAIL_FLOAT_BOUNDS) => {
       if (transferBusy) return;
       launcherOpen = false;
       const sourceRail = railFor(id);
@@ -728,7 +819,7 @@
             if (sourceRail) railOrigins.set(id, { rail: sourceRail, index: sourceIndex });
             currentWorkspace.addOrUpdatePanel({
               ...railPanelSpec(id, state),
-              placement: { kind: "floating", bounds: RAIL_FLOAT_BOUNDS },
+              placement: { kind: "floating", bounds: floatBounds },
             });
             currentWorkspace.activatePanel(id);
           } else {
@@ -1185,6 +1276,7 @@
     const applyResponsiveZone = async (): Promise<void> => {
       if (disposed || transferBusy) return;
       const next = zoneForWidth(window.innerWidth);
+      mobilePresentation = next === "mobile";
       if (next === responsiveZone) return;
       const leavingDesktop = responsiveZone === "desktop" && next !== "desktop";
       const enteringDesktop = responsiveZone !== "desktop" && next === "desktop";
@@ -1198,8 +1290,8 @@
         syncVisiblePanels();
       } else if (enteringDesktop) {
         railsEnabled = true;
-        leftRail?.setInert(false);
-        rightRail?.setInert(false);
+        leftRail?.setInert(!leftRailVisible);
+        rightRail?.setInert(!rightRailVisible);
         if (capturedDesktop) {
           const restoredRailIds = Object.values(capturedDesktop.layout.scrollviews).flat();
           await Promise.all(
@@ -1288,44 +1380,63 @@
     aria-label="Panels"
     data-tutorial-target="panels-menu"
   >
+    {#if railsEnabled}
+      <button
+        type="button"
+        class="toolbar-icon-btn"
+        class:active={leftRailVisible}
+        title="Left sidebar"
+        aria-label="Toggle left sidebar"
+        aria-controls="phase2-left-rail"
+        aria-pressed={leftRailVisible}
+        onclick={() => toggleRail("left")}
+      >
+        {#if leftRailVisible}<PanelLeftClose size={16} />{:else}<PanelLeftOpen size={16} />{/if}
+      </button>
+      <button
+        type="button"
+        class="toolbar-icon-btn"
+        class:active={rightRailVisible}
+        title="Right sidebar"
+        aria-label="Toggle right sidebar"
+        aria-controls="phase2-right-rail"
+        aria-pressed={rightRailVisible}
+        onclick={() => toggleRail("right")}
+      >
+        {#if rightRailVisible}<PanelRightClose size={16} />{:else}<PanelRightOpen size={16} />{/if}
+      </button>
+    {/if}
     <div class="df-panels-menu" onfocusout={handleLauncherFocusOut}>
       <button
         type="button"
-        class="df-panels-menu-trigger"
-        aria-haspopup="true"
-        aria-expanded={launcherOpen}
-        onclick={() => (launcherOpen = !launcherOpen)}>Panels</button
+        class="df-panels-menu-trigger toolbar-icon-btn"
+        class:active={launcherOpen}
+        title="Panels"
+        aria-label="Panels"
+        aria-controls={mobilePresentation ? "phase2-mobile-panels" : undefined}
+        aria-haspopup={mobilePresentation ? "dialog" : "true"}
+        aria-expanded={mobilePresentation ? sheetOpen : launcherOpen}
+        onclick={togglePanels}><LayoutPanelLeft size={16} /></button
       >
       {#if launcherOpen}
         <div class="df-panels-menu-list" aria-label="Panels">
-          {#each informationPanels as panel (panel.id)}
-            <label>
-              <input
-                type="checkbox"
-                checked={informationPanelOpen(panel)}
-                onchange={() => void toggleInformationPanel(panel, false)}
-              />
-              {panel.title}
-            </label>
-          {/each}
-          {#each worldPanels as panel (panel.id)}
-            <label>
-              <input
-                type="checkbox"
-                checked={worldPanelOpen(panel)}
-                onchange={() => void toggleWorldPanel(panel, false)}
-              />
-              {panel.title}
-            </label>
-          {/each}
-          <label>
-            <input
-              type="checkbox"
-              checked={chatPanelOpen}
-              onchange={() => void toggleChatPanel(false)}
-            />
-            Chat
-          </label>
+          <div class="df-panels-menu-groups">
+            {#each panelMenuGroups as group (group.title)}
+              <fieldset class="df-panels-menu-group">
+                <legend>{group.title}</legend>
+                {#each group.items as item (item.panel.id)}
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={panelMenuItemOpen(item)}
+                      onchange={() => togglePanelMenuItem(item)}
+                    />
+                    {item.panel.title}
+                  </label>
+                {/each}
+              </fieldset>
+            {/each}
+          </div>
         </div>
       {/if}
     </div>
@@ -1347,14 +1458,24 @@
     {status}
   </p>
   <div class="workspace-rails">
-    <div bind:this={leftRailHost} class="workspace-rail" data-rail="left"></div>
+    <div
+      bind:this={leftRailHost}
+      id="phase2-left-rail"
+      class="workspace-rail"
+      data-rail="left"
+    ></div>
     <div
       bind:this={host}
       id="phase2-workspace-host"
       class="workspace-host df-workspace"
       data-testid="workspace-host"
     ></div>
-    <div bind:this={rightRailHost} class="workspace-rail" data-rail="right"></div>
+    <div
+      bind:this={rightRailHost}
+      id="phase2-right-rail"
+      class="workspace-rail"
+      data-rail="right"
+    ></div>
   </div>
 </section>
 
@@ -1365,7 +1486,13 @@
   inert={!sheetOpen}
   onclick={handleSheetBackdrop}
 >
-  <div class="mobile-sheet" role="dialog" aria-modal="true" aria-labelledby="mobile-sheet-title">
+  <div
+    id="phase2-mobile-panels"
+    class="mobile-sheet"
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="mobile-sheet-title"
+  >
     <div class="mobile-sheet-header">
       <h2 id="mobile-sheet-title">Panels</h2>
       <button bind:this={sheetCloseButton} type="button" onclick={() => closeSheet()}
@@ -1428,7 +1555,7 @@
     gap: 0.75rem;
     flex: 1;
     min-height: 0;
-    margin-top: 0.75rem;
+    margin-top: 0;
   }
   .workspace-shell .workspace-rails {
     flex: 1;
@@ -1457,7 +1584,8 @@
      */
     z-index: 9500;
     top: calc(100% + 0.25rem);
-    left: 0;
+    left: auto;
+    right: 0;
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
@@ -1470,6 +1598,29 @@
     border-radius: 0.5rem;
     background: var(--df-panel, #161b22);
     box-shadow: 0 12px 30px rgb(0 0 0 / 45%);
+  }
+
+  .df-panels-menu-groups {
+    width: min(30rem, calc(100vw - 1rem));
+    columns: 2;
+    column-gap: 0.75rem;
+  }
+
+  .df-panels-menu-group {
+    break-inside: avoid;
+    padding: 0;
+    margin: 0 0 0.5rem;
+    border: 0;
+  }
+
+  .df-panels-menu-group legend {
+    width: 100%;
+    padding: 0.25rem 0.5rem;
+    color: var(--df-accent-strong, #7ee7df);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
   }
 
   .df-panels-menu-list label {
@@ -1543,14 +1694,8 @@
   }
 
   @media (max-width: 700px) {
-    .workspace-controls {
-      display: none;
-    }
-
     .mobile-panels-trigger {
-      display: inline-flex;
-      width: fit-content;
-      align-items: center;
+      display: none;
     }
 
     .mobile-sheet-overlay {

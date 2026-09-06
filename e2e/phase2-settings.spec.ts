@@ -18,7 +18,7 @@ async function connect(page: Page): Promise<void> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 }
 
 async function installDirectDefinitions(page: Page): Promise<void> {
@@ -297,6 +297,15 @@ function settingsDialog(page: Page) {
   return page.getByRole("dialog", { name: "Settings" });
 }
 
+async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: string): Promise<void> {
+  await dialog.getByRole("tab", { name, exact: true }).click();
+}
+
+async function settingsGroup(dialog: ReturnType<typeof settingsDialog>, tab: string, name: string) {
+  await settingsTab(dialog, tab);
+  return dialog.getByRole("group", { name });
+}
+
 test("Phase 2 settings save current preferences without replacing deferred fields", async ({
   page,
 }) => {
@@ -315,10 +324,13 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await settingsButton.click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
+  await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme").selectOption("nord");
+  await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").uncheck();
   await dialog.getByLabel("Complete aliases with Tab").uncheck();
   await dialog.getByLabel("Complete from history with Tab").check();
+  await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Add variable" }).click();
   await dialog.getByLabel("Name").fill("target");
   await dialog.getByLabel("Value").fill("goblin");
@@ -360,10 +372,13 @@ test("Phase 2 settings save current preferences without replacing deferred field
 
   await page.reload();
   await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
   await expect(dialog.getByLabel("Theme")).toHaveValue("nord");
+  await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Repeat last command")).not.toBeChecked();
   await expect(dialog.getByLabel("Complete aliases with Tab")).not.toBeChecked();
   await expect(dialog.getByLabel("Complete from history with Tab")).toBeChecked();
+  await settingsTab(dialog, "Variables");
   await expect(dialog.getByText("Variables last for this session only.")).toBeVisible();
   await expect(dialog.getByLabel("Name")).toHaveCount(0);
 });
@@ -376,9 +391,158 @@ test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => 
   const bounds = await dialog.boundingBox();
   expect(bounds).not.toBeNull();
   expect(bounds!.x).toBeGreaterThanOrEqual(0);
+  expect(bounds!.y).toBeGreaterThanOrEqual(0);
   expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width);
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
+});
+
+test("Phase 2 settings replaces legacy geometry with a tall right-anchored window", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop window only");
+  await page.goto("/phase2/");
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-settings-window",
+      JSON.stringify({ x: 0, y: 0, w: 560, h: 380, tab: "audio" }),
+    ),
+  );
+  await page.reload();
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  const buttonBounds = await settingsButton.boundingBox();
+  await settingsButton.click();
+  const dialog = settingsDialog(page);
+  const dialogBounds = await dialog.boundingBox();
+  expect(buttonBounds).not.toBeNull();
+  expect(dialogBounds).not.toBeNull();
+  expect(
+    Math.abs(dialogBounds!.x + dialogBounds!.width - (buttonBounds!.x + buttonBounds!.width)),
+  ).toBeLessThanOrEqual(8);
+  expect(dialogBounds!.y).toBeGreaterThan(buttonBounds!.y + buttonBounds!.height);
+  expect(dialogBounds!.height).toBeGreaterThanOrEqual(560);
+  expect(
+    await dialog
+      .getByRole("navigation", { name: "Settings sections" })
+      .evaluate((nav) => nav.scrollHeight <= nav.clientHeight),
+  ).toBe(true);
+  await expect(dialog.getByRole("tab", { name: "Audio", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}")),
+    )
+    .toMatchObject({ version: 1 });
+});
+
+test("Phase 2 settings use non-blocking grouped tabs with keyboard search and saved tab state", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/phase2/");
+  const host = page.getByLabel("Host");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  if (["chromium", "mobile-chromium"].includes(testInfo.project.name)) {
+    await expect(dialog).toHaveScreenshot(
+      `phase2-settings-${testInfo.project.name === "mobile-chromium" ? "mobile" : "desktop"}.png`,
+      { maxDiffPixels: 1 },
+    );
+  }
+  if (testInfo.project.name === "mobile-chromium") {
+    await expect(dialog.getByRole("tablist")).toHaveAttribute("aria-orientation", "horizontal");
+  } else {
+    await expect(dialog.getByRole("heading", { name: "Client", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Automation", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("heading", { name: "Help", exact: true })).toBeVisible();
+  }
+  await dialog.getByRole("tab", { name: "Connection", exact: true }).focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toBeFocused();
+  await expect(dialog.getByLabel("Theme")).toBeVisible();
+  await host.fill("example.test");
+  await dialog.getByLabel("Search settings").fill("Add variable");
+  await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "false",
+  );
+  await expect(dialog.getByRole("button", { name: "Add variable" })).toBeVisible();
+  await dialog.getByLabel("Search settings").fill("");
+  await expect(dialog.getByLabel("Theme")).toBeVisible();
+  await settingsTab(dialog, "Aliases");
+  await dialog.getByRole("button", { name: "Add aliases" }).click();
+  await dialog.getByRole("textbox", { name: "Trigger", exact: true }).fill("draft-alias");
+  await dialog.getByLabel("Search settings").fill("Connection");
+  await dialog.getByLabel("Search settings").fill("");
+  await settingsTab(dialog, "Aliases");
+  await expect(dialog.getByRole("textbox", { name: "Trigger", exact: true })).toHaveValue(
+    "draft-alias",
+  );
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+});
+
+test("Phase 2 settings restores moved, resized geometry and the active tab after reload", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop geometry only");
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await dialog.evaluate((element) => {
+    const dialog = element as HTMLDialogElement;
+    dialog.style.width = "720px";
+    dialog.style.height = "580px";
+  });
+  const beforeMove = await dialog.boundingBox();
+  const handle = page.getByTestId("settings-drag-handle");
+  const handleBounds = await handle.boundingBox();
+  expect(beforeMove).not.toBeNull();
+  expect(handleBounds).not.toBeNull();
+  await page.mouse.move(handleBounds!.x + 120, handleBounds!.y + 12);
+  await page.mouse.down();
+  await page.mouse.move(handleBounds!.x + 160, handleBounds!.y + 36);
+  await page.mouse.up();
+  await settingsTab(dialog, "Aliases");
+  await expect
+    .poll(() =>
+      page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}")),
+    )
+    .toMatchObject({ w: 720, h: 580, tab: "aliases" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}").x as number,
+      ),
+    )
+    .toBeGreaterThan(Math.round(beforeMove!.x));
+  const persisted = await page.evaluate(
+    () =>
+      JSON.parse(localStorage.getItem("darkwind-settings-window") ?? "{}") as Record<
+        string,
+        number | string
+      >,
+  );
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const restored = await dialog.boundingBox();
+  expect(restored).not.toBeNull();
+  expect(Math.round(restored!.x)).toBe(Math.round(persisted.x as number));
+  expect(Math.round(restored!.y)).toBe(Math.round(persisted.y as number));
+  expect(Math.round(restored!.width)).toBe(Math.round(persisted.w as number));
+  expect(Math.round(restored!.height)).toBe(Math.round(persisted.h as number));
+  await expect(dialog.getByRole("tab", { name: "Aliases", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
 });
 
 test("Phase 2 settings recovers from corrupted stored settings", async ({ page }) => {
@@ -391,6 +555,7 @@ test("Phase 2 settings recovers from corrupted stored settings", async ({ page }
   await expect(dialog.getByRole("status")).toHaveText(
     "Saved client settings are invalid. Fix or replace them before saving.",
   );
+  await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Repeat last command")).toBeChecked();
 
   await dialog.getByRole("button", { name: "Apply" }).click();
@@ -417,6 +582,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").uncheck();
   await dialog.getByRole("button", { name: "Apply" }).click();
   await expect(dialog).not.toBeVisible();
@@ -442,6 +608,7 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Appearance");
   await dialog.getByRole("button", { name: "Reset workspace", exact: true }).click();
 
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
@@ -495,7 +662,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = settingsDialog(page);
 
-  const keys = dialog.getByRole("group", { name: "Key mappings" });
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
   await keys.getByRole("button", { name: "Edit F2" }).click();
   let editor = keys.getByRole("region", { name: "Edit key mappings" });
   await editor.getByLabel("Command").fill("inventory");
@@ -520,7 +687,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save key mappings" }).click();
   await keys.getByRole("button", { name: "Delete F4" }).click();
 
-  const highlights = dialog.getByRole("group", { name: "Highlights" });
+  const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
   await highlights.getByRole("button", { name: "Edit glow" }).click();
   editor = highlights.getByRole("region", { name: "Edit highlights" });
   await editor.getByLabel("Foreground").fill("blue");
@@ -535,7 +702,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save highlights" }).click();
   await highlights.getByRole("button", { name: "Delete spark" }).click();
 
-  const functions = dialog.getByRole("group", { name: "Functions" });
+  const functions = await settingsGroup(dialog, "Functions", "Functions");
   await functions.getByRole("button", { name: "Edit greet" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
   await editor.getByLabel("Script", { exact: true }).fill("send salute");
@@ -583,7 +750,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
 
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const reloadedKeys = settingsDialog(page).getByRole("group", { name: "Key mappings" });
+  const reloadedKeys = await settingsGroup(settingsDialog(page), "Controls", "Key mappings");
   await reloadedKeys.getByRole("button", { name: "Edit F2" }).click();
   await expect(reloadedKeys.getByLabel("Command")).toHaveValue("inventory");
 });
@@ -595,7 +762,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await installDirectDefinitions(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = settingsDialog(page);
-  const keys = dialog.getByRole("group", { name: "Key mappings" });
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
   await expect(keys.getByText("Shared: Shared keys (revision 1)")).toBeVisible();
   await keys.getByRole("button", { name: "Edit F3" }).click();
   let editor = keys.getByRole("region", { name: "Edit key mappings" });
@@ -644,7 +811,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await editor.getByLabel("Command").fill("shared-after");
   await editor.getByRole("button", { name: "Save key mappings" }).click();
 
-  const highlights = dialog.getByRole("group", { name: "Highlights" });
+  const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
   await highlights.getByRole("button", { name: "Edit shimmer" }).click();
   editor = highlights.getByRole("region", { name: "Edit highlights" });
   await editor.getByLabel("Pattern").fill("");
@@ -654,7 +821,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await editor.getByLabel("Foreground").fill("blue");
   await editor.getByRole("button", { name: "Save highlights" }).click();
 
-  const functions = dialog.getByRole("group", { name: "Functions" });
+  const functions = await settingsGroup(dialog, "Functions", "Functions");
   await functions.getByRole("button", { name: "Edit sharedGreet" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
   await editor.getByLabel("Script", { exact: true }).fill("send shared-function-after");
@@ -701,7 +868,11 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     ["Highlights", "shimmer"],
     ["Functions", "sharedGreet"],
   ] as const) {
-    const group = settingsDialog(page).getByRole("group", { name: groupName });
+    const group = await settingsGroup(
+      settingsDialog(page),
+      groupName === "Key mappings" ? "Controls" : groupName,
+      groupName,
+    );
     await group.getByRole("button", { name: `Edit ${label}` }).click();
     const activeEditor = group.getByRole("region", { name: `Edit ${groupName.toLowerCase()}` });
     await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
@@ -724,7 +895,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = settingsDialog(page);
 
-  const aliases = dialog.getByRole("group", { name: "Aliases" });
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
   await expect(aliases.getByText("Shared: Shared aliases (revision 1)")).toBeVisible();
   await aliases.getByRole("button", { name: "Edit allsteps" }).click();
   let editor = aliases.getByRole("region", { name: "Edit aliases" });
@@ -763,7 +934,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "Delete temporary alias" }).click();
 
-  const triggers = dialog.getByRole("group", { name: "Triggers" });
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
   await triggers.getByRole("button", { name: "Edit danger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Template").fill("retreat");
@@ -780,7 +951,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByRole("button", { name: "Save triggers" }).click();
   await triggers.getByRole("button", { name: "Delete temporary trigger" }).click();
 
-  const timers = dialog.getByRole("group", { name: "Timers" });
+  const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
   await editor.getByLabel("Duration (milliseconds)").fill("50");
@@ -815,7 +986,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
 
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
-  const reloadedAliases = settingsDialog(page).getByRole("group", { name: "Aliases" });
+  const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
 });
@@ -826,7 +997,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   await connect(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = settingsDialog(page);
-  const aliases = dialog.getByRole("group", { name: "Aliases" });
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
   await aliases.getByRole("button", { name: "Edit sharedalias" }).click();
   let editor = aliases.getByRole("region", { name: "Edit aliases" });
   await editor.getByLabel("Template").fill("draft-shared-alias");
@@ -873,13 +1044,13 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   await editor.getByLabel("Template").fill("shared-alias-after");
   await editor.getByRole("button", { name: "Save aliases" }).click();
 
-  const triggers = dialog.getByRole("group", { name: "Triggers" });
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
   await triggers.getByRole("button", { name: "Edit shared danger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Template").fill("shared-trigger-after");
   await editor.getByRole("button", { name: "Save triggers" }).click();
 
-  const timers = dialog.getByRole("group", { name: "Timers" });
+  const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit shared pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
   await editor.getByLabel("Duration (milliseconds)").fill("50");
@@ -925,7 +1096,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     ["Triggers", "shared danger"],
     ["Timers", "shared pulse"],
   ] as const) {
-    const group = settingsDialog(page).getByRole("group", { name: groupName });
+    const group = await settingsGroup(settingsDialog(page), groupName, groupName);
     await group.getByRole("button", { name: `Edit ${label}` }).click();
     const activeEditor = group.getByRole("region", {
       name: `Edit ${groupName.toLowerCase()}`,

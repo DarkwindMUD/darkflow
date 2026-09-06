@@ -111,6 +111,7 @@ export function createWorkspace(
     { minimumWidth?: number; maximumWidth?: number; minimumHeight?: number }
   >();
   const collapsedPanes = new Set<string>();
+  const expandedFloatingHeights = new Map<string, number>();
   const pendingUnmounts = new Set<Promise<void>>();
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
   const panelDragSubscribers = new Set<(event: { cancel(): void; panelId: string }) => void>();
@@ -174,14 +175,47 @@ export function createWorkspace(
     singleTabMode: "fullwidth",
   });
 
+  const primeFloatingDragPosition = (event: PointerEvent): void => {
+    if (event.button !== 0 || event.shiftKey) return;
+    const frame = (event.currentTarget as HTMLElement).parentElement;
+    const container = frame?.offsetParent;
+    if (!frame || !container) return;
+    const frameBounds = frame.getBoundingClientRect();
+    const containerBounds = container.getBoundingClientRect();
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== event.pointerId) return;
+      frame.style.left = `${frameBounds.left - containerBounds.left + moveEvent.clientX - event.clientX}px`;
+      frame.style.top = `${frameBounds.top - containerBounds.top + moveEvent.clientY - event.clientY}px`;
+      frame.style.right = "auto";
+      frame.style.bottom = "auto";
+      cleanup();
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", cleanup, true);
+      window.removeEventListener("pointercancel", cleanup, true);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", cleanup, true);
+    window.addEventListener("pointercancel", cleanup, true);
+  };
+
   const annotateFloatingTitlebars = () => {
     const floatingPanels = api.panels.filter((panel) => panel.api.location.type === "floating");
     const titlebars = host.querySelectorAll<HTMLElement>(".dv-floating-titlebar");
     for (const [index, titlebar] of [...titlebars].entries()) {
       titlebar.dataset.floatingDragHandle = "true";
+      if (!titlebar.dataset.dragOriginFixed) {
+        titlebar.dataset.dragOriginFixed = "true";
+        titlebar.addEventListener("pointerdown", primeFloatingDragPosition, true);
+      }
       const panel = floatingPanels[index];
       if (panel) {
         titlebar.dataset.panelId = panel.group.activePanel?.id ?? panel.id;
+        const resizeGrip = titlebar.parentElement?.querySelector<HTMLElement>(
+          ".dv-resize-handle-bottomright",
+        );
+        if (resizeGrip) resizeGrip.title = `Resize ${panel.title ?? panel.id}`;
       } else {
         delete titlebar.dataset.panelId;
       }
@@ -372,11 +406,25 @@ export function createWorkspace(
 
   const COLLAPSED_HEIGHT = 30;
 
+  const pinFloatingTopLeft = (panel: DockviewPanelLike): void => {
+    const frame = panel.group.element.closest<HTMLElement>(".dv-resize-container");
+    if (!frame) return;
+    const frameBounds = frame.getBoundingClientRect();
+    const containerBounds =
+      frame.offsetParent?.getBoundingClientRect() ?? host.getBoundingClientRect();
+    frame.style.top = `${frameBounds.top - containerBounds.top}px`;
+    frame.style.left = `${frameBounds.left - containerBounds.left}px`;
+    frame.style.right = "auto";
+    frame.style.bottom = "auto";
+  };
+
   /** Collapse hides the pane body but keeps the header and the mounted content. */
   const toggleCollapse = (id: string): boolean => {
     const panel = api.getPanel(id) as DockviewPanelLike | undefined;
     if (!panel) return false;
     const stored = paneConstraints.get(id) ?? {};
+    const floating = panel.api.location.type === "floating";
+    if (floating) pinFloatingTopLeft(panel);
     if (collapsedPanes.has(id)) {
       collapsedPanes.delete(id);
       panel.group.element.removeAttribute("data-collapsed");
@@ -385,7 +433,13 @@ export function createWorkspace(
         minimumHeight: stored.minimumHeight ?? 0,
         maximumHeight: 100_000,
       });
+      const expandedHeight = expandedFloatingHeights.get(id);
+      if (floating && expandedHeight !== undefined) panel.api.setSize({ height: expandedHeight });
+      expandedFloatingHeights.delete(id);
     } else {
+      if (floating) {
+        expandedFloatingHeights.set(id, panel.group.element.getBoundingClientRect().height);
+      }
       collapsedPanes.add(id);
       panel.group.element.setAttribute("data-collapsed", "true");
       panel.group.api.setConstraints({
@@ -580,6 +634,7 @@ export function createWorkspace(
 
     const renderer = renderers.get(id);
     records.delete(id);
+    expandedFloatingHeights.delete(id);
     api.removePanel(panel);
     trackUnmount(renderer);
     queueMicrotask(annotateFloatingTitlebars);

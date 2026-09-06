@@ -19,7 +19,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   return endpoint;
 }
 
@@ -245,8 +245,8 @@ test("IDE edits, saves, diagnoses, replaces, reconnects, and preserves its hidde
   );
   await expect(editor(page)).toHaveText("local dirty reconnect");
   await expect(ide(page).getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   await expect(ide(page).locator(".ide-status-text")).toHaveText(
     "Waiting for a fresh server document.",
   );

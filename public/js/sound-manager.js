@@ -6,6 +6,7 @@ const DEFAULT_VOLUME = 0.7;
 const SUPPRESSED_SOUND_CATEGORIES = new Set(['discussion']);
 const STREAMING_SOUND_KEYS = new Set([
   'ambient/darkwind-theme',
+  'music/darkwind-theme',
   'ambient/combat-music',
   'combat/combat-music',
 ]);
@@ -50,6 +51,7 @@ const DEFAULT_CATEGORY_ENABLED = {
   ambient: true,
   fishing: true,
   ui: true,
+  music: true,
 };
 
 export const SOUND_MAP = {
@@ -97,6 +99,7 @@ export const SOUND_MAP = {
   'ambient/wind': '/assets/sounds/ambient-wind.mp3',
   'ambient/combat-music': '/assets/sounds/ambient-combat-music.mp3',
   'ambient/darkwind-theme': '/assets/sounds/darkwind-theme.mp3',
+  'music/darkwind-theme': '/assets/sounds/darkwind-theme.mp3',
   'fishing/cast': '/assets/sounds/fishing-cast.mp3',
   'fishing/splash': '/assets/sounds/fishing-splash.mp3',
   'fishing/hook': '/assets/sounds/fishing-hook.mp3',
@@ -276,7 +279,7 @@ export class SoundManager {
   }
 
   _isCategory(category) {
-    return SOUND_CATEGORIES.includes(category);
+    return category === 'music' || SOUND_CATEGORIES.includes(category);
   }
 
   _resolveSoundPath(category, sound) {

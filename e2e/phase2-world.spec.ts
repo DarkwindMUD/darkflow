@@ -19,7 +19,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   return endpoint;
 }
 
@@ -237,8 +237,20 @@ test("map and room image reset across reconnect and remount after session dispos
   await expect(page.locator('[data-world-instance="map-old"]')).toHaveCount(1);
   await expect(page.locator('[data-world-instance="image-old"]')).toHaveCount(1);
 
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  await expect
+    .poll(() =>
+      endpoint.gmcpMessages
+        .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+        .at(-1),
+    )
+    .toContain('"map":true');
+  expect(
+    endpoint.gmcpMessages
+      .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+      .at(-1),
+  ).toContain('"roomImage":true');
   endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0));
   endpoint.sendGmcp("Room.Info", { num: 101, name: "Atrium", exits: {} });
   endpoint.sendGmcp("Darkwind.Room.Image", {
@@ -820,8 +832,8 @@ test("playlist State stays closed while Open owns focus and player lifecycle", a
   });
   expect(endpoint.gmcpMessages).toHaveLength(reportsBeforeLateCallback);
 
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   await expect(jukebox.getByRole("button", { name: /Vote to skip/ })).toBeDisabled();
   endpoint.sendGmcp("Room.Info", { num: 101, name: "Atrium", exits: {} });
   await expect(jukebox.getByRole("button", { name: /Vote to skip/ })).toBeDisabled();

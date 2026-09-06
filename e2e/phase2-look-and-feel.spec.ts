@@ -71,6 +71,52 @@ for (const viewport of DESKTOP_VIEWPORTS) {
     });
 
     await page.getByRole("button", { name: "Panels", exact: true }).click();
+    const panelMenu = page.locator(".df-panels-menu-list");
+    const panelTrigger = page.getByRole("button", { name: "Panels", exact: true });
+    const [menuBounds, triggerBounds] = await Promise.all([
+      panelMenu.boundingBox(),
+      panelTrigger.boundingBox(),
+    ]);
+    expect(menuBounds).not.toBeNull();
+    expect(triggerBounds).not.toBeNull();
+    expect(menuBounds!.x + menuBounds!.width).toBeLessThanOrEqual(viewport.width);
+    expect(menuBounds!.x + menuBounds!.width).toBeCloseTo(
+      triggerBounds!.x + triggerBounds!.width,
+      0,
+    );
+    await expect(panelMenu.locator(".df-panels-menu-groups")).toHaveCSS("column-count", "2");
+    expect(
+      await panelMenu.locator(".df-panels-menu-group").evaluateAll((groups) =>
+        groups.map((group) => ({
+          items: [...group.querySelectorAll("label")].map((label) => label.textContent?.trim()),
+          title: group.querySelector("legend")?.textContent,
+        })),
+      ),
+    ).toEqual([
+      {
+        title: "Character",
+        items: [
+          "Avatar",
+          "Buffs",
+          "Cyberware",
+          "Guild vitals",
+          "Inventory",
+          "Stats",
+          "Status",
+          "Vitals",
+          "Worth",
+        ],
+      },
+      { title: "Progress", items: ["Achievements", "Quests", "XP monitor"] },
+      { title: "Social", items: ["Chat", "Group"] },
+      { title: "System", items: ["Connection health"] },
+      { title: "World", items: ["Jukebox", "Map", "Omens", "Room", "Room Image", "Sky"] },
+    ]);
+    if (viewport.name === "wide-1440x900" && testInfo.project.name === "chromium") {
+      await expect(panelMenu).toHaveScreenshot("phase2-panels-menu.png", {
+        animations: "disabled",
+      });
+    }
     expect(
       await page.getByRole("checkbox", { name: "Avatar", exact: true }).evaluate((checkbox) => {
         const label = checkbox.closest("label");
@@ -316,11 +362,17 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
     }),
   ).toBeLessThanOrEqual(2);
 
-  await expect(avatarTab.getByRole("button", { name: "Close Avatar" })).toBeVisible();
+  const closeAvatar = avatarTab.getByRole("button", { name: "Close Avatar" });
+  const collapseAvatar = avatarTab.getByRole("button", { name: "Collapse Avatar" });
+  await expect(closeAvatar.locator(".lucide-x")).toBeVisible();
+  await expect(collapseAvatar.locator(".lucide-chevrons-down-up")).toBeVisible();
+  await expect(collapseAvatar.locator(".lucide-chevrons-up-down")).toBeHidden();
 
   // Collapse hides the body, keeps the header, and never remounts the terminal.
-  await avatarTab.getByRole("button", { name: "Collapse Avatar" }).click();
-  await expect(avatarTab.getByRole("button", { name: "Expand Avatar" })).toBeVisible();
+  await collapseAvatar.click();
+  const expandAvatar = avatarTab.getByRole("button", { name: "Expand Avatar" });
+  await expect(expandAvatar.locator(".lucide-chevrons-up-down")).toBeVisible();
+  await expect(expandAvatar.locator(".lucide-chevrons-down-up")).toBeHidden();
   await expect(avatarBody).toBeHidden();
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(identity);
 
@@ -328,9 +380,91 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   await expect(avatarBody).toBeVisible();
 
   // Float via keyboard, then dock back; the terminal island survives both.
-  await avatarTab.getByRole("button", { name: "Float Avatar" }).focus();
+  const floatAvatar = avatarTab.getByRole("button", { name: "Float Avatar" });
+  await expect(floatAvatar.locator(".lucide-square-square")).toBeVisible();
+  await expect(floatAvatar.locator(".lucide-dock")).toBeHidden();
+  await floatAvatar.focus();
   await page.keyboard.press("Enter");
   await expect(avatarFloating).toBeVisible();
+  await expect(
+    avatarTab.getByRole("button", { name: "Dock Avatar" }).locator(".lucide-dock"),
+  ).toBeVisible();
+  await expect(
+    avatarTab.getByRole("button", { name: "Dock Avatar" }).locator(".lucide-square-square"),
+  ).toBeHidden();
+  const floatingFrame = avatarFloating.locator("..");
+  const resizeGrip = floatingFrame.locator(".dv-resize-handle-bottomright");
+  await expect(resizeGrip).toBeVisible();
+  await expect(resizeGrip).toHaveAttribute("title", "Resize Avatar");
+  await expect(resizeGrip).toHaveCSS("width", "4px");
+  await expect(avatarFloating).toHaveCSS("height", "12px");
+  await expect(floatingFrame).toHaveCSS("border-top-width", "0px");
+  expect(await floatingFrame.evaluate((frame) => getComputedStyle(frame).boxShadow)).toContain(
+    "inset",
+  );
+  expect(
+    await resizeGrip.evaluate((grip) => getComputedStyle(grip, "::before").backgroundImage),
+  ).toContain("linear-gradient");
+  const floatingGroup = floatingFrame.locator(".dv-groupview");
+  await expect(floatingGroup).toHaveCSS("border-top-left-radius", "0px");
+  await expect(floatingGroup).toHaveCSS("border-bottom-left-radius", "5px");
+  const floatingTabHeight = await avatarTab.evaluate((tab) => tab.getBoundingClientRect().height);
+  const dockedTabHeight = await page
+    .locator('.dv-default-tab[data-panel-id="terminal"]')
+    .evaluate((tab) => tab.getBoundingClientRect().height);
+  expect(floatingTabHeight).toBeCloseTo(dockedTabHeight, 0);
+  const titlebarColor = await avatarFloating.evaluate(
+    (titlebar) => getComputedStyle(titlebar).backgroundColor,
+  );
+  await avatarFloating.hover();
+  expect(
+    await avatarFloating.evaluate((titlebar) => getComputedStyle(titlebar).backgroundColor),
+  ).not.toBe(titlebarColor);
+  if (testInfo.project.name === "chromium") {
+    await expect(floatingFrame).toHaveScreenshot("phase2-floating-panel.png", {
+      animations: "disabled",
+    });
+  }
+  const expandedBounds = await floatingFrame.boundingBox();
+  expect(expandedBounds).not.toBeNull();
+  const gripBounds = await resizeGrip.boundingBox();
+  expect(gripBounds).not.toBeNull();
+  await page.mouse.move(
+    gripBounds!.x + gripBounds!.width / 2,
+    gripBounds!.y + gripBounds!.height / 2,
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    gripBounds!.x + gripBounds!.width / 2 + 2,
+    gripBounds!.y + gripBounds!.height / 2 + 2,
+  );
+  const resizedBounds = await floatingFrame.boundingBox();
+  await page.mouse.up();
+  expect(resizedBounds!.x).toBeCloseTo(expandedBounds!.x, 0);
+  expect(resizedBounds!.y).toBeCloseTo(expandedBounds!.y, 0);
+  const titlebarBounds = await avatarFloating.boundingBox();
+  const dragX = titlebarBounds!.x + titlebarBounds!.width / 2;
+  const dragY = titlebarBounds!.y + titlebarBounds!.height / 2;
+  await page.mouse.move(dragX, dragY);
+  await page.mouse.down();
+  await page.mouse.move(dragX + 1, dragY + 1);
+  await page.mouse.move(dragX + 80, dragY + 40);
+  await page.mouse.up();
+  const draggedFrame = avatarFloating.locator("..");
+  const draggedBounds = await draggedFrame.boundingBox();
+  expect(draggedBounds!.x).toBeCloseTo(resizedBounds!.x + 80, 0);
+  expect(draggedBounds!.y).toBeCloseTo(resizedBounds!.y + 40, 0);
+  await avatarTab.getByRole("button", { name: "Collapse Avatar" }).click();
+  const collapsedBounds = await draggedFrame.boundingBox();
+  expect(collapsedBounds).not.toBeNull();
+  expect(collapsedBounds!.height).toBeLessThan(expandedBounds!.height);
+  expect(collapsedBounds!.y).toBeCloseTo(draggedBounds!.y, 0);
+  await avatarTab.getByRole("button", { name: "Expand Avatar" }).click();
+  await expect
+    .poll(async () => (await draggedFrame.boundingBox())?.height ?? 0)
+    .toBeGreaterThanOrEqual(expandedBounds!.height - 2);
+  expect((await draggedFrame.boundingBox())!.y).toBeCloseTo(collapsedBounds!.y, 0);
+  await expect(avatarBody).toBeVisible();
   await page
     .locator('.dv-default-tab[data-panel-id="avatar"]')
     .getByRole("button", { name: "Dock Avatar" })
@@ -347,7 +481,7 @@ test("rail cards size to content under one scrollbar and reorder by drag", async
   page,
 }, testInfo) => {
   test.skip(isMobileProject(testInfo), "rails are a desktop affordance");
-  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.setViewportSize({ width: 1440, height: 700 });
   await openPhase2(page);
 
   const rail = page.locator('[data-rail="left"]');
@@ -369,7 +503,7 @@ test("rail cards size to content under one scrollbar and reorder by drag", async
   ]);
 
   // The defect this replaced: ten panels needed 1000px of grid slices in a
-  // ~643px rail, so the last three were clipped and unreachable. The rail is
+  // short rail, so the last three were clipped and unreachable. The rail is
   // now the only scroller and every card sizes to its own content.
   expect(await rail.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
   expect(
@@ -427,7 +561,12 @@ test("rail card drags to the other rail and to the grid as a float", async ({ pa
   // Rail-to-grid: drop Avatar onto the terminal area. It leaves the rail and
   // becomes a floating pane in the Dockview host.
   const terminalArea = page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first();
+  const terminalBounds = await terminalArea.boundingBox();
   await page.locator('[data-panel-drag-handle][data-panel-id="avatar"]').dragTo(terminalArea);
   expect(await leftIds()).not.toContain("avatar");
-  await expect(page.locator('.dv-floating-titlebar[data-panel-id="avatar"]')).toBeVisible();
+  const avatarTitlebar = page.locator('.dv-floating-titlebar[data-panel-id="avatar"]');
+  await expect(avatarTitlebar).toBeVisible();
+  const avatarBounds = await avatarTitlebar.boundingBox();
+  expect(avatarBounds!.x).toBe(Math.floor(terminalBounds!.x + terminalBounds!.width / 2));
+  expect(avatarBounds!.y).toBe(Math.floor(terminalBounds!.y + terminalBounds!.height / 2));
 });

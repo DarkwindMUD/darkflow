@@ -1,3 +1,8 @@
+import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
+import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
+import Dock from "@lucide/svelte/icons/dock";
+import SquareSquare from "@lucide/svelte/icons/square-square";
+import X from "@lucide/svelte/icons/x";
 import { mount, unmount } from "svelte";
 import type { Writable } from "svelte/store";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
@@ -17,12 +22,15 @@ export interface TabActions {
   floatDock?: (() => boolean) | undefined;
 }
 
+type IconComponent = typeof X;
+
 export class PanelCardHeader {
   readonly element = document.createElement("div");
   readonly #label = document.createElement("span");
   readonly #closeButton: HTMLButtonElement | undefined = undefined;
   readonly #collapseButton: HTMLButtonElement | undefined = undefined;
   readonly #floatButton: HTMLButtonElement | undefined = undefined;
+  readonly #iconRoots: Record<string, unknown>[] = [];
   protected titleSubscription: { dispose(): void } | undefined;
   protected locationSubscription: { dispose(): void } | undefined;
   #title = "";
@@ -43,32 +51,40 @@ export class PanelCardHeader {
     this.element.appendChild(this.#label);
 
     if (actions.collapse) {
-      this.#collapseButton = this.#createAction("–", () => {
+      this.#collapseButton = this.#createAction([ChevronsDownUp, ChevronsUpDown], () => {
         this.#collapsed = actions.collapse!();
         this.#refreshLabels();
       });
     }
     if (actions.floatDock) {
-      this.#floatButton = this.#createAction("❐", () => {
+      this.#floatButton = this.#createAction([SquareSquare, Dock], () => {
         this.#floating = actions.floatDock!();
         this.#refreshLabels();
       });
     }
     if (actions.close) {
-      this.#closeButton = this.#createAction("×", actions.close);
+      this.#closeButton = this.#createAction([X], actions.close);
     }
   }
 
-  #createAction(glyph: string, handler: () => void): HTMLButtonElement {
+  #createAction(icons: readonly IconComponent[], handler: () => void): HTMLButtonElement {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "dv-default-tab-action df-tab-action";
-    button.textContent = glyph;
     button.style.background = "none";
     button.style.border = "0";
     button.style.color = "inherit";
     button.style.cursor = "pointer";
     button.style.font = "inherit";
+    for (const [index, icon] of icons.entries()) {
+      const slot = document.createElement("span");
+      slot.style.alignItems = "center";
+      slot.style.display = index === 0 ? "inline-flex" : "none";
+      slot.style.paddingTop = "2px";
+      button.appendChild(slot);
+      const root = mount(icon, { target: slot, props: { size: 14 } });
+      this.#iconRoots.push(root);
+    }
     button.addEventListener("pointerdown", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -87,6 +103,7 @@ export class PanelCardHeader {
     this.titleSubscription = undefined;
     this.locationSubscription?.dispose();
     this.locationSubscription = undefined;
+    for (const root of this.#iconRoots) void unmount(root);
     this.onDispose?.();
     this.element.remove();
   }
@@ -127,6 +144,8 @@ export class PanelCardHeader {
     const close = `Close ${this.#title}`;
     const collapse = `${this.#collapsed ? "Expand" : "Collapse"} ${this.#title}`;
     const floatDock = `${this.#floating ? "Dock" : "Float"} ${this.#title}`;
+    this.#showActionIcon(this.#collapseButton, this.#collapsed ? 1 : 0);
+    this.#showActionIcon(this.#floatButton, this.#floating ? 1 : 0);
     for (const [btn, label] of [
       [this.#closeButton, close],
       [this.#collapseButton, collapse],
@@ -135,6 +154,13 @@ export class PanelCardHeader {
       if (!btn) continue;
       btn.setAttribute("aria-label", label);
       btn.setAttribute("title", label);
+    }
+  }
+
+  #showActionIcon(button: HTMLButtonElement | undefined, index: number): void {
+    if (!button) return;
+    for (const [childIndex, child] of [...button.children].entries()) {
+      (child as HTMLElement).style.display = childIndex === index ? "inline-flex" : "none";
     }
   }
 }

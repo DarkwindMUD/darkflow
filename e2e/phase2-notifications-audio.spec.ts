@@ -18,7 +18,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   return endpoint;
 }
 
@@ -194,12 +194,15 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await page.route("**/assets/sounds/**", (route) => route.abort());
   const endpoint = await connect(page);
   const audioRoot = page.locator("#audio-widget-root");
-  await expect(audioRoot).toBeHidden();
+  const indicator = page.getByTitle("Audio controls");
+  await expect(audioRoot).toBeVisible();
+  await expect(indicator).toBeDisabled();
 
   endpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Sound 1"]);
-  await expect(audioRoot).toBeVisible();
+  await expect(indicator).toBeDisabled();
 
   endpoint.sendGmcp("Char.Status", { name: "Nacho" });
+  await expect(indicator).toBeEnabled();
   const output = page.getByLabel("Terminal output", { exact: true });
   endpoint.sendText("[gossip] Alice: audio focus @Nacho\n");
   await expect(output).toContainText("audio focus @Nacho");
@@ -217,7 +220,6 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await expect(pause).toHaveAttribute("aria-pressed", "true");
   await expect(mentionTarget).toContainText("audio focus @Nacho");
 
-  const indicator = page.getByTitle("Audio controls");
   const controls = page.locator(".sound-widget-expanded");
 
   await deferAudioUnlock(page);
@@ -236,6 +238,8 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await indicator.click();
   await expect(controls).toBeVisible();
   await expect(page.locator(".sound-widget")).not.toHaveClass(/locked/);
+  await expect(page.locator(".sound-widget-compact > button")).toHaveCount(1);
+  await expect(indicator).toHaveText("");
 
   const volume = controls.locator('input[type="range"]');
   await volume.focus();
@@ -255,16 +259,78 @@ test("audio controls follow support, settings, activity, disposal, and remount",
     expect(box!.y + box!.height).toBeLessThanOrEqual(844);
   }
 
-  const mute = page.getByRole("button", { name: "Toggle audio" });
+  const mute = controls.locator(".sound-widget-mute");
+  await expect(controls.locator(".sound-widget-volume > :first-child")).toHaveClass(
+    /sound-widget-mute/,
+  );
+  await expect(controls.locator(".sound-widget-volume > :nth-child(2)")).toHaveClass(
+    /sound-widget-volume-slider/,
+  );
+  await expect(mute).toHaveAccessibleName("Mute audio");
+  await expect(indicator.locator("svg")).toHaveAttribute("width", "18");
+  await expect(mute.locator("svg")).toHaveAttribute("width", "18");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume-1")).toBeVisible();
+  }
   await mute.click();
-  await expect(page.locator(".sound-widget")).toHaveClass(/muted/);
-  await expect(indicator).toContainText("Muted");
+  await expect(page.locator(".sound-widget")).toHaveCSS("opacity", "1");
+  await expect(volume).toHaveClass(/muted/);
+  await expect(volume).toHaveCSS("accent-color", "rgb(139, 148, 158)");
+  await expect(indicator).toHaveAttribute("aria-label", "Audio controls: Muted");
+  await expect(mute).toHaveAccessibleName("Unmute audio");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume-x")).toBeVisible();
+  }
   await mute.click();
+  await expect(volume).not.toHaveClass(/muted/);
 
+  await volume.fill("0");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume")).toBeVisible();
+    await expect(control.locator(".lucide-volume-x")).toHaveCount(0);
+  }
+  await volume.fill("10");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume")).toBeVisible();
+  }
+  await volume.fill("11");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume-1")).toBeVisible();
+  }
+  await volume.fill("70");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume-1")).toBeVisible();
+  }
+  await volume.fill("71");
+  for (const control of [indicator, mute]) {
+    await expect(control.locator(".lucide-volume-2")).toBeVisible();
+  }
   await volume.fill("35");
-  await expect(controls.locator(".sound-widget-volume-value")).toHaveText("35%");
+  await expect(mute.locator(".lucide-volume-1")).toBeVisible();
+  await expect(controls.locator(".sound-widget-volume-value")).toHaveCount(0);
   const categoryButtons = controls.locator(".sound-widget-category");
-  await expect(categoryButtons).toHaveCount(11);
+  await expect(categoryButtons).toHaveCount(12);
+  for (const [label, icon] of [
+    ["Combat", "swords"],
+    ["Spell", "wand"],
+    ["Skill", "hand-fist"],
+    ["Potion", "flask-round"],
+    ["Quest", "scroll"],
+    ["Celebration", "party-popper"],
+    ["Discuss", "messages-square"],
+    ["Alert", "triangle-alert"],
+    ["Ambient", "dessert"],
+    ["Fishing", "fish"],
+    ["Interface", "monitor-check"],
+    ["Music", "piano"],
+  ]) {
+    await expect(
+      controls.getByRole("button", { name: label }).locator(`.lucide-${icon}`),
+    ).toBeVisible();
+  }
+  const musicCategory = controls.getByRole("button", { name: "Music" });
+  await musicCategory.click();
+  await expect(musicCategory).toHaveAttribute("aria-pressed", "false");
   const alertCategory = controls.getByRole("button", { name: "Alert" });
   await alertCategory.click();
   await expect(alertCategory).toHaveAttribute("aria-pressed", "false");
@@ -277,7 +343,11 @@ test("audio controls follow support, settings, activity, disposal, and remount",
         return value ? JSON.parse(value) : null;
       }),
     )
-    .toMatchObject({ enabled: true, volume: 0.35, categoryEnabled: { alert: true } });
+    .toMatchObject({
+      enabled: true,
+      volume: 0.35,
+      categoryEnabled: { alert: true, music: false },
+    });
 
   endpoint.sendGmcp("Darkwind.Sound", {
     type: "play",
@@ -285,24 +355,25 @@ test("audio controls follow support, settings, activity, disposal, and remount",
     sound: "ping",
   });
   await expect(page.locator(".sound-widget")).toHaveClass(/active/);
-  await expect(indicator).toContainText("Alert");
+  await expect(indicator).toHaveAttribute("aria-label", "Audio controls: Alert");
   endpoint.sendGmcp("Darkwind.Sound", {
     type: "loop",
     category: "ambient",
     sound: "rain",
     id: "fixture-rain",
   });
-  await expect(indicator).toContainText("Ambient");
+  await expect(indicator).toHaveAttribute("aria-label", "Audio controls: Ambient");
   endpoint.sendGmcp("Darkwind.Sound", {
     type: "stop",
     category: "ambient",
     id: "fixture-rain",
   });
   await expect(page.locator(".sound-widget")).not.toHaveClass(/active/);
-  await expect(indicator).toContainText("Ready");
+  await expect(indicator).toHaveAttribute("aria-label", "Audio controls: Ready");
 
   endpoint.sendGmcp("Core.Supports.Remove", ["Darkwind.Sound 1"]);
-  await expect(audioRoot).toBeHidden();
+  await expect(audioRoot).toBeVisible();
+  await expect(indicator).toBeDisabled();
   await expect(controls).toBeHidden();
 
   await page.evaluate(() => {
@@ -315,9 +386,12 @@ test("audio controls follow support, settings, activity, disposal, and remount",
 
   const remountedEndpoint = await connect(page);
   await expect(page.locator("#audio-widget-root")).toHaveCount(1);
-  await expect(page.locator("#audio-widget-root")).toBeHidden();
-  remountedEndpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Sound 1"]);
   await expect(page.locator("#audio-widget-root")).toBeVisible();
+  await expect(page.getByTitle("Audio controls")).toBeDisabled();
+  remountedEndpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Sound 1"]);
+  await expect(page.getByTitle("Audio controls")).toBeDisabled();
+  remountedEndpoint.sendGmcp("Char.Status", { name: "Nacho" });
+  await expect(page.getByTitle("Audio controls")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Notifications", exact: true })).toHaveCount(1);
 });
 

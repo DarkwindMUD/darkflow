@@ -123,6 +123,7 @@ class FakeWebSocket {
   }
 
   close(code = 1000, reason = "") {
+    if (this.readyState === WS_CLOSED) return;
     this.readyState = WS_CLOSED;
     this.onclose?.({ code, reason, wasClean: true });
   }
@@ -424,6 +425,7 @@ test("disconnect suppresses auto reconnect until retryNow", async (t) => {
   harness.latestSocket()?.open();
   harness.transport.disconnect();
   harness.latestSocket()?.close(1000, "User disconnect");
+  assert.equal(harness.events.at(-1)?.payload.userDisconnected, true);
 
   const socketsBefore = FakeWebSocket.instances.length;
   harness.advance(30000);
@@ -447,19 +449,21 @@ test("online event retries during backoff when autoReconnect is enabled", async 
   assert.equal(FakeWebSocket.instances.length, socketsBefore + 1);
 });
 
-test("live endpoint and autoReconnect callbacks are re-read on each attempt", async (t) => {
+test("live endpoint and transport ladder are re-read on each attempt", async (t) => {
   const modules = await loadTransportModules(t);
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
   FakeWebSocket.reset();
 
-  const harness = createHarness(modules, t, { endpoint: { host: "127.0.0.1", port: "1111", protocol: "ws" } });
+  const harness = createHarness(modules, t, {
+    endpoint: { host: "old.example", port: "1111", protocol: "wss" },
+  });
   harness.transport.connect();
-  assert.match(harness.latestSocket()?.url ?? "", /1111/);
-  harness.latestSocket()?.close(1006, "lost");
+  assert.equal(harness.latestSocket()?.url, "wss://old.example:1111/");
+  harness.latestSocket()?.close(1006, "failed before open");
 
-  harness.endpoint = { host: "127.0.0.1", port: "2222", protocol: "ws" };
-  harness.transport.retryNow();
-  assert.match(harness.latestSocket()?.url ?? "", /2222/);
+  harness.endpoint = { host: "new.example", port: "2222", protocol: "wss" };
+  harness.advance(modules.WS_FORCE_RECONNECT_DELAY_MS);
+  assert.equal(harness.latestSocket()?.url, "ws://new.example:2222/");
 });
 
 test("handshake guard and lost-transmission events fire at legacy delays", async (t) => {

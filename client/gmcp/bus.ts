@@ -357,7 +357,6 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
   reset(): void {
     this.#enabled = false;
     this.#serverSupports = {};
-    this.#subscriptions = normalizeSubscriptionPayload();
     const setHandlers = this.#handlers["Core.Supports.Set"];
     if (setHandlers) {
       for (const cb of [...setHandlers]) {

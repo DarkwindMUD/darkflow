@@ -376,6 +376,22 @@ test("subscription panel updates merge and survive handshake restart", async (t)
   assert.deepEqual(restart.panels, { charStatus: true, map: false, roomImage: false });
 });
 
+test("subscription panel updates survive a disconnect reset", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const spy = createSendSpy();
+  const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
+
+  bus.sendSubscriptions({ panels: { map: true, roomImage: true } });
+  bus.reset();
+  bus.sendSubscriptions({ reason: "reconnect", full: true });
+
+  const reconnect = JSON.parse(spy.calls.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(reconnect.reason, "reconnect");
+  assert.equal(reconnect.full, true);
+  assert.deepEqual(reconnect.panels, { map: true, roomImage: true });
+});
+
 test("world send helpers validate and emit exact package directions", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadGmcpModules(t);
   const diagnostics = new SessionDiagnostics(sessionId);

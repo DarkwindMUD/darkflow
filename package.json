@@ -55,6 +55,7 @@
     "format:check": "prettier --check \"client/app/**/*.{ts,svelte}\" \"client/model/**/*.ts\" \"client/storage/**/*.ts\" \"client/configuration/**/*.ts\" \"client/runtime/**/*.ts\" \"client/transport/**/*.ts\" \"client/gmcp/**/*.ts\" \"client/workspace/**/*.{js,ts,svelte}\" \"client/phase0/**/*.{js,ts,svelte}\" \"e2e/**/*.ts\" \"*.config.{mjs,ts}\" \"tsconfig*.json\""
   },
   "dependencies": {
+    "@lucide/svelte": "^1.41.0",
     "electron-updater": "^6.8.9",
     "express": "^4.21.0",
     "howler": "2.2.4",

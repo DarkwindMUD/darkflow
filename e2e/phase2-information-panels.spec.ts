@@ -17,7 +17,7 @@ async function connect(page: Page): Promise<void> {
   await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 }
 
 /**
@@ -171,13 +171,12 @@ test("wire data survives malformed frames and resets across reconnect and dispos
   await expect(cyberwareRow).toBeFocused();
 
   endpoint.dropConnections();
-  await expect(page.getByRole("alertdialog")).toBeVisible();
   await expect(inventory).toContainText("Empty");
   await expect(page.locator('.information-panel[data-panel-id="quests"]')).toContainText(
     "No quest data",
   );
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 
   endpoint.sendGmcp("Char.Items.List", {
     location: "inv",

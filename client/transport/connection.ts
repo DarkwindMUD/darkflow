@@ -145,13 +145,13 @@ export function createSessionTransport(
     health.resetSocketFields();
   }
 
-  function emitIdleIfNeeded(): void {
-    reconnect.emitReconnectStatus({ status: "idle" });
-  }
-
   function maybeScheduleReconnect(reason?: string): void {
-    if (userDisconnected || !callbacks.getAutoReconnect()) {
-      emitIdleIfNeeded();
+    if (userDisconnected) {
+      reconnect.emitReconnectStatus({ status: "idle", userDisconnected: true });
+      return;
+    }
+    if (!callbacks.getAutoReconnect()) {
+      reconnect.emitReconnectStatus({ status: "idle" });
       return;
     }
     reconnect.scheduleReconnect();
@@ -226,7 +226,7 @@ export function createSessionTransport(
       const endpoint = callbacks.getEndpoint();
       const selected = endpoint.protocol || "wss";
       const transport = reconnect.nextTransport();
-      const url = buildConnectionUrl(endpoint, appOrigin);
+      const url = buildConnectionUrl({ ...endpoint, protocol: transport }, appOrigin);
 
       setTransportState("connecting");
       reconnect.emitReconnectStatus({ status: "connecting", transport, url });

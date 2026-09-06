@@ -18,7 +18,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   await page.getByLabel("Port").fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   return endpoint;
 }
 
@@ -79,8 +79,8 @@ test("generic windows submit login, preserve reconnect input, update, and close"
   await expect(dialog.locator(".dw-conn-strip-label")).toContainText(/Reconnecting|Disconnected/);
   await expect(dialog.locator(".dw-button-primary")).toBeDisabled();
   await expect(username).toHaveValue("Nacho");
-  await page.getByRole("button", { name: "Retry now", exact: true }).click();
-  await expect(page.getByTestId("connection-status")).toHaveText("Connected via ws");
+  await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   endpoint.sendGmcp("Darkwind.Window.Update", {
     id: "charselect",
     updates: [{ id: "status", text: "Still stale" }],

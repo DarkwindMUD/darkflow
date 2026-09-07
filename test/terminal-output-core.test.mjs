@@ -292,6 +292,23 @@ test("clear invalidates IDs without reusing them and reports clear", (t) => {
   assert.equal(harness.clears, 1);
 });
 
+test("screen reader announcements are opt-in and clear immediately when disabled", (t) => {
+  const harness = createHarness(t);
+  harness.core.appendOutput("quiet\n");
+  assert.equal(harness.scheduler.timers.size, 0);
+
+  harness.core.configure({ screenReaderMode: true });
+  harness.core.appendOutput("spoken\n");
+  assert.equal(harness.scheduler.timers.size, 1);
+  for (const callback of harness.scheduler.timers.values()) callback();
+  assert.equal(harness.announcer.textContent, "spoken\n");
+
+  harness.core.appendOutput("queued\n");
+  harness.core.configure({ screenReaderMode: false });
+  assert.equal(harness.announcer.textContent, "");
+  harness.core.dispose();
+});
+
 test("navigation renders pending output, locks near 35 percent, and returns live", (t) => {
   const harness = createHarness(t);
   harness.core.appendOutput(`${Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n")}\n`);
@@ -316,6 +333,7 @@ test("navigation renders pending output, locks near 35 percent, and returns live
 
 test("dispose cancels pending work, clears targets, and removes listeners", (t) => {
   const harness = createHarness(t);
+  harness.core.configure({ screenReaderMode: true });
   harness.core.appendOutput("first\n");
   assert.equal(harness.scheduler.frames.size, 1);
   assert.equal(harness.scheduler.timers.size, 1);

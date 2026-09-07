@@ -1,8 +1,12 @@
 import type { SessionVisualEffectPreferences } from "../runtime/visual-effects.ts";
 // @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
 import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
+// @ts-expect-error Retained background data has no declaration file.
+import { normalizeBackgroundKey } from "../../public/js/background-manager.js";
+// @ts-expect-error Retained theme data has no declaration file.
+import { BUILTIN_THEMES, normalizeTheme } from "../../public/js/theme-manager.js";
 
-const STORAGE_KEY = "darkwind-client-settings";
+export const CLIENT_SETTINGS_STORAGE_KEY = "darkwind-client-settings";
 const SETTINGS_WINDOW_STATE_KEY = "darkwind-settings-window";
 const SETTINGS_WINDOW_STATE_VERSION = 1;
 const SETTINGS_WINDOW_MIN_WIDTH = 560;
@@ -20,6 +24,17 @@ export interface SettingsWindowState {
 export type ScrollbackBehavior = "pause" | "split";
 export type OutputScrollbackPreset = "low" | "normal" | "high";
 
+export interface CustomTheme {
+  key: string;
+  label: string;
+  type: "dark" | "light";
+  bg: string;
+  fg: string;
+  accent: string;
+  ansi: string[];
+  ui: Record<string, string>;
+}
+
 export interface Phase2ClientSettings {
   repeatLastCommand: boolean;
   aliasTabCompletionEnabled: boolean;
@@ -31,6 +46,14 @@ export interface Phase2ClientSettings {
   lagMonitorEnabled: boolean;
   visualEffectsEnabled: boolean;
   visualEffectPreferences: SessionVisualEffectPreferences;
+  background: string;
+  sideRailOpacity: number;
+  terminalBackgroundOpacity: number;
+  customThemes: Record<string, CustomTheme>;
+  autoReconnect: boolean;
+  settingsBackupPromptEnabled: boolean;
+  terminalWidthColumns: number | null;
+  screenReaderMode: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -44,6 +67,14 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   lagMonitorEnabled: true,
   visualEffectsEnabled: false,
   visualEffectPreferences: visualEffectSettings.createDefaultVisualEffectPreferences(),
+  background: "none",
+  sideRailOpacity: 82,
+  terminalBackgroundOpacity: 55,
+  customThemes: {},
+  autoReconnect: true,
+  settingsBackupPromptEnabled: true,
+  terminalWidthColumns: null,
+  screenReaderMode: false,
 };
 
 export type ClientSettingsResult =
@@ -51,7 +82,7 @@ export type ClientSettingsResult =
   | { success: false; message: string; settings: Phase2ClientSettings };
 
 function readObject(storage: Pick<Storage, "getItem">): Record<string, unknown> {
-  const raw = storage.getItem(STORAGE_KEY);
+  const raw = storage.getItem(CLIENT_SETTINGS_STORAGE_KEY);
   if (raw === null) return {};
   const parsed: unknown = JSON.parse(raw);
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
@@ -83,7 +114,242 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     visualEffectPreferences: visualEffectSettings.normalizeVisualEffectPreferences(
       settings.visualEffectPreferences,
     ),
+    background: normalizeBackgroundKey(settings.background),
+    sideRailOpacity:
+      typeof settings.sideRailOpacity === "number" && Number.isFinite(settings.sideRailOpacity)
+        ? Math.round(Math.max(0, Math.min(100, settings.sideRailOpacity)))
+        : 82,
+    terminalBackgroundOpacity:
+      typeof settings.terminalBackgroundOpacity === "number" &&
+      Number.isFinite(settings.terminalBackgroundOpacity)
+        ? Math.round(Math.max(0, Math.min(100, settings.terminalBackgroundOpacity)))
+        : 55,
+    customThemes: normalizeCustomThemes(settings.customThemes),
+    autoReconnect: settings.autoReconnect !== false,
+    settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
+    terminalWidthColumns: normalizeTerminalWidth(settings.terminalWidthColumns),
+    screenReaderMode: settings.screenReaderMode === true,
   };
+}
+
+const HEX_COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const VSCODE_THEME_COLOR_KEYS = new Set([
+  "terminal.background",
+  "editor.background",
+  "editorPane.background",
+  "terminal.foreground",
+  "editor.foreground",
+  "foreground",
+  "focusBorder",
+  "button.background",
+  "textLink.foreground",
+  "progressBar.background",
+  "activityBarBadge.background",
+  "sideBar.background",
+  "panel.background",
+  "editorGroupHeader.tabsBackground",
+  "panel.border",
+  "editorGroup.border",
+  "sideBar.border",
+  "contrastBorder",
+  "descriptionForeground",
+  "disabledForeground",
+  "tab.inactiveForeground",
+  "button.foreground",
+  "input.background",
+  "dropdown.background",
+  "editorWidget.background",
+  "editor.selectionBackground",
+  "selection.background",
+  ...[
+    "ansiBlack",
+    "ansiRed",
+    "ansiGreen",
+    "ansiYellow",
+    "ansiBlue",
+    "ansiMagenta",
+    "ansiCyan",
+    "ansiWhite",
+    "ansiBrightBlack",
+    "ansiBrightRed",
+    "ansiBrightGreen",
+    "ansiBrightYellow",
+    "ansiBrightBlue",
+    "ansiBrightMagenta",
+    "ansiBrightCyan",
+    "ansiBrightWhite",
+  ].map((name) => `terminal.${name}`),
+]);
+
+export function validateVsCodeTheme(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return false;
+  const colors = (value as { colors?: unknown }).colors;
+  if (typeof colors !== "object" || colors === null || Array.isArray(colors)) return false;
+  return Object.entries(colors).every(
+    ([key, color]) =>
+      !VSCODE_THEME_COLOR_KEYS.has(key) || (typeof color === "string" && HEX_COLOR.test(color)),
+  );
+}
+
+export function normalizeTerminalWidth(value: unknown): number | null {
+  return Number.isInteger(value) && (value as number) >= 40 && (value as number) <= 240
+    ? (value as number)
+    : null;
+}
+
+function normalizeCustomTheme(value: unknown): CustomTheme | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  try {
+    const theme = normalizeTheme(value);
+    if (
+      typeof theme.key !== "string" ||
+      !theme.key ||
+      theme.key.length > 80 ||
+      typeof theme.label !== "string" ||
+      theme.label.length > 100 ||
+      ![theme.bg, theme.fg, theme.accent, ...theme.ansi].every((color) => HEX_COLOR.test(color)) ||
+      typeof theme.ui !== "object" ||
+      theme.ui === null ||
+      Array.isArray(theme.ui) ||
+      !Object.values(theme.ui).every((color) => typeof color === "string" && HEX_COLOR.test(color))
+    )
+      return null;
+    return theme;
+  } catch {
+    return null;
+  }
+}
+
+export function normalizeCustomThemes(value: unknown): Record<string, CustomTheme> {
+  const entries = Array.isArray(value)
+    ? value.map((entry) => [
+        typeof entry === "object" && entry !== null ? (entry as { key?: unknown }).key : "",
+        entry,
+      ])
+    : typeof value === "object" && value !== null
+      ? Object.entries(value)
+      : [];
+  const themes: Record<string, CustomTheme> = {};
+  for (const [storedKey, entry] of entries) {
+    const theme = normalizeCustomTheme(entry);
+    if (
+      theme &&
+      typeof storedKey === "string" &&
+      storedKey === theme.key &&
+      themes[theme.key] === undefined &&
+      Object.keys(themes).length < 32
+    )
+      themes[theme.key] = theme;
+  }
+  return themes;
+}
+
+export type ClientSettingsDocumentResult =
+  { success: true; data: Record<string, unknown> } | { success: false; message: string };
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/** Validates persisted settings strictly for imports while retaining unknown JSON fields. */
+export function validateClientSettingsDocument(
+  value: unknown,
+  theme?: string,
+): ClientSettingsDocumentResult {
+  if (!isObject(value)) return { success: false, message: "Client settings must be an object." };
+  const booleanKeys = [
+    "repeatLastCommand",
+    "aliasTabCompletionEnabled",
+    "historyTabCompletionEnabled",
+    "emojiPickerEnabled",
+    "lagMonitorEnabled",
+    "visualEffectsEnabled",
+    "autoReconnect",
+    "screenReaderMode",
+    "settingsBackupPromptEnabled",
+  ] as const;
+  for (const key of booleanKeys) {
+    if (key in value && typeof value[key] !== "boolean")
+      return { success: false, message: `Client setting ${key} must be true or false.` };
+  }
+  if (
+    "scrollbackBehavior" in value &&
+    value.scrollbackBehavior !== "pause" &&
+    value.scrollbackBehavior !== "split"
+  )
+    return { success: false, message: "Client setting scrollbackBehavior is invalid." };
+  if (
+    "scrollbackSplitRatio" in value &&
+    (typeof value.scrollbackSplitRatio !== "number" ||
+      !Number.isFinite(value.scrollbackSplitRatio) ||
+      value.scrollbackSplitRatio < 0.2 ||
+      value.scrollbackSplitRatio > 0.8)
+  )
+    return { success: false, message: "Client setting scrollbackSplitRatio is invalid." };
+  if (
+    "outputScrollbackPreset" in value &&
+    !["low", "normal", "high"].includes(String(value.outputScrollbackPreset))
+  )
+    return { success: false, message: "Client setting outputScrollbackPreset is invalid." };
+  for (const key of ["sideRailOpacity", "terminalBackgroundOpacity"] as const) {
+    if (
+      key in value &&
+      (typeof value[key] !== "number" ||
+        !Number.isInteger(value[key]) ||
+        value[key] < 0 ||
+        value[key] > 100)
+    )
+      return { success: false, message: `Client setting ${key} is invalid.` };
+  }
+  if (
+    "terminalWidthColumns" in value &&
+    value.terminalWidthColumns !== null &&
+    normalizeTerminalWidth(value.terminalWidthColumns) !== value.terminalWidthColumns
+  )
+    return { success: false, message: "Client setting terminalWidthColumns is invalid." };
+  if ("background" in value && normalizeBackgroundKey(value.background) !== value.background)
+    return { success: false, message: "Client setting background is invalid." };
+  if ("theme" in value && (typeof value.theme !== "string" || !value.theme))
+    return { success: false, message: "Client setting theme is invalid." };
+  if ("visualEffectPreferences" in value) {
+    if (!isObject(value.visualEffectPreferences))
+      return { success: false, message: "Client setting visualEffectPreferences is invalid." };
+    for (const key of visualEffectSettings.VISUAL_EFFECT_KEYS as string[]) {
+      if (
+        key in value.visualEffectPreferences &&
+        typeof value.visualEffectPreferences[key] !== "boolean"
+      )
+        return { success: false, message: `Client visual effect ${key} is invalid.` };
+    }
+  }
+  if ("customThemes" in value) {
+    const customThemes = value.customThemes;
+    if (!isObject(customThemes))
+      return { success: false, message: "Client setting customThemes is invalid." };
+    const normalized = normalizeCustomThemes(customThemes);
+    if (
+      Object.keys(normalized).length !== Object.keys(customThemes).length ||
+      Object.keys(normalized).some((key) => !Object.hasOwn(customThemes, key))
+    )
+      return { success: false, message: "A custom theme is invalid." };
+  }
+  const settings = normalize(value);
+  const nextTheme = theme ?? (typeof value.theme === "string" ? value.theme : "");
+  if (!nextTheme) return { success: false, message: "Client settings must include a theme." };
+  if (!Object.hasOwn(BUILTIN_THEMES, nextTheme) && !Object.hasOwn(settings.customThemes, nextTheme))
+    return { success: false, message: "Client setting theme is not available." };
+  return { success: true, data: { ...value, ...settings, theme: nextTheme } };
+}
+
+export function readClientSettingsDocument(
+  storage: Pick<Storage, "getItem">,
+  theme: string,
+): ClientSettingsDocumentResult {
+  try {
+    return validateClientSettingsDocument(readObject(storage), theme);
+  } catch {
+    return { success: false, message: "Saved client settings are invalid." };
+  }
 }
 
 export function loadClientSettings(storage: Pick<Storage, "getItem">): ClientSettingsResult {
@@ -110,7 +376,10 @@ export function saveClientSettings(
     } catch {
       // Applying the visible defaults replaces an unreadable legacy value.
     }
-    storage.setItem(STORAGE_KEY, JSON.stringify({ ...current, ...settings, theme }));
+    storage.setItem(
+      CLIENT_SETTINGS_STORAGE_KEY,
+      JSON.stringify({ ...current, ...settings, theme }),
+    );
     return { success: true };
   } catch {
     return { success: false, message: "Client settings could not be saved." };

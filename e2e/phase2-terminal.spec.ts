@@ -21,6 +21,53 @@ async function connect(page: Page): Promise<void> {
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
 }
 
+function gmcpPayload(messages: string[], packageName: string): Record<string, unknown> | null {
+  const message = [...messages].reverse().find((entry) => entry.startsWith(`${packageName} `));
+  return message
+    ? (JSON.parse(message.slice(packageName.length + 1)) as Record<string, unknown>)
+    : null;
+}
+
+test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  await expect
+    .poll(() => gmcpPayload(endpoint.gmcpMessages, "Darkwind.Client.NAWS"))
+    .not.toBeNull();
+  const automatic = gmcpPayload(endpoint.gmcpMessages, "Darkwind.Client.NAWS")!;
+  expect(automatic.width).toBeGreaterThanOrEqual(40);
+  expect(automatic.height).toBeGreaterThanOrEqual(8);
+
+  const beforeFixed = endpoint.gmcpMessages.length;
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await dialog.getByLabel("Terminal width").fill("75");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect
+    .poll(() => gmcpPayload(endpoint.gmcpMessages.slice(beforeFixed), "Darkwind.Client.NAWS"))
+    .toMatchObject({ width: 75, height: automatic.height });
+  const unchangedCount = endpoint.gmcpMessages.filter((message) =>
+    message.startsWith("Darkwind.Client.NAWS "),
+  ).length;
+  await page.waitForTimeout(250);
+  expect(
+    endpoint.gmcpMessages.filter((message) => message.startsWith("Darkwind.Client.NAWS ")),
+  ).toHaveLength(unchangedCount);
+
+  endpoint.dropConnections();
+  await expect(page.getByTestId("connection-status")).toContainText("Retry scheduled");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected", { timeout: 4_000 });
+  expect(gmcpPayload(endpoint.gmcpMessages, "Core.Hello")).toMatchObject({
+    width: 75,
+    height: automatic.height,
+  });
+  expect(gmcpPayload(endpoint.gmcpMessages, "Darkwind.Client.NAWS")).toMatchObject({
+    width: 75,
+    height: automatic.height,
+  });
+});
+
 async function installAutomationDefinitions(page: Page): Promise<void> {
   await page.goto("/phase2/");
   await expect
@@ -254,7 +301,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   endpoint.sendText("\x1b[31mphase two ANSI\x1b[0m\n");
   await expect(output).toContainText("phase two ANSI");
   await expect(output.locator(".ansi-fg-red")).toContainText("phase two ANSI");
-  await expect(page.getByTestId("terminal-announcer")).toContainText("phase two ANSI");
+  await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
 
   const beforeLayout = await output.textContent();
   // A rail-local reorder is the layout edit here. Rails are their own root now,
@@ -430,6 +477,9 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await expect(page.getByLabel("Live output", { exact: true })).toBeVisible();
   await expect(output).toBeHidden();
   const divider = page.getByRole("separator", { name: "Resize terminal history" });
+  await expect
+    .poll(() => divider.evaluate((element) => getComputedStyle(element).backgroundImage))
+    .not.toBe("none");
   const shellBox = await page.locator(".terminal-output-shell").boundingBox();
   const dividerBox = await divider.boundingBox();
   expect(shellBox).not.toBeNull();
@@ -498,9 +548,23 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await expect(output.locator(".ansi-fg-red")).toContainText("zero view trigger");
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
 
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await page.getByLabel("Screen reader announcements").check();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+
   endpoint.sendText(" announced live\n");
   await expect(output).toContainText("pending prompt announced live");
   await expect(page.getByTestId("terminal-announcer")).toContainText("announced live");
+
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await page.getByLabel("Screen reader announcements").uncheck();
+  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
+  endpoint.sendText(" silent live\n");
+  await expect(output).toContainText("silent live");
+  await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
   expect(endpoint.commands.filter((command) => command === "zero-view-command")).toHaveLength(1);
   await page.waitForTimeout(100);
   expect(await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1"))).toBe(

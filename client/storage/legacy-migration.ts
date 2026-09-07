@@ -12,6 +12,7 @@ import type {
   FunctionDefinition,
   HighlightDefinition,
   KeyMappingDefinition,
+  LocalDefinitions,
   TimerDefinition,
   TriggerDefinition,
 } from "../model/configuration.ts";
@@ -308,6 +309,44 @@ function buildLocalDefinitions(scopeKey: string, stores: ScopeStoreBundle) {
   return localDefinitions;
 }
 
+/** Converts one legacy export scope without silently dropping malformed entries. */
+export function convertLegacyLocalDefinitions(
+  scope: Record<string, unknown>,
+  settings: Record<string, unknown>,
+): LocalDefinitions | null {
+  const convertEntries = <T>(
+    value: unknown,
+    convert: (entry: Record<string, unknown>, index: number) => T | null,
+  ): T[] | null => {
+    if (!Array.isArray(value)) return null;
+    const output: T[] = [];
+    for (const [index, entry] of value.entries()) {
+      if (!isObject(entry)) return null;
+      const converted = convert(entry, index);
+      if (converted === null) return null;
+      output.push(converted);
+    }
+    return output;
+  };
+  if (
+    !Object.hasOwn(scope, "aliases") ||
+    !Object.hasOwn(scope, "triggers") ||
+    !Object.hasOwn(scope, "rules") ||
+    !Object.hasOwn(scope, "functions") ||
+    !Object.hasOwn(scope, "timers") ||
+    !Object.hasOwn(settings, "keyMappings")
+  )
+    return null;
+  const aliases = convertEntries(scope.aliases, convertAlias);
+  const triggers = convertEntries(scope.triggers, convertTrigger);
+  const highlights = convertEntries(scope.rules, convertHighlight);
+  const functions = convertEntries(scope.functions, convertFunction);
+  const timers = convertEntries(scope.timers, convertTimer);
+  const keyMappings = convertEntries(settings.keyMappings, normalizeKeyMapping);
+  if (!aliases || !triggers || !highlights || !functions || !timers || !keyMappings) return null;
+  return { aliases, triggers, highlights, functions, timers, keyMappings };
+}
+
 function extractAliases(scope: Record<string, unknown> | undefined): AliasDefinition[] {
   if (!scope || !Array.isArray(scope.aliases)) {
     return [];
@@ -588,7 +627,7 @@ function createDefaultAudio(): CharacterAudioControls {
   };
 }
 
-function mapLegacySoundToCharacterAudio(raw: unknown): CharacterAudioControls {
+export function mapLegacySoundToCharacterAudio(raw: unknown): CharacterAudioControls {
   const defaults = createDefaultAudio();
   if (!isObject(raw)) {
     return defaults;

@@ -673,11 +673,13 @@ test("public terminal owns text, commands, completion, configuration, and automa
     "getMappedCommand",
     "requestCompletion",
     "sendCommand",
+    "setOutputRecordLimit",
     "startProcessing",
     "subscribeCompletion",
     "subscribeConfiguration",
     "subscribeOutput",
     "subscribeText",
+    "updateGeometry",
   ]);
   assert.equal("transport" in harness.session, false);
   assert.equal(harness.session.terminal.automation, harness.automation);
@@ -922,7 +924,7 @@ test("connect sends handshake packages with login then reconnect reason", async 
   let packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
   assert.deepEqual(
     packages.map((item) => item.packageName),
-    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"],
+    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions", "Darkwind.Client.RefreshMedia"],
   );
   assert.equal(packages[2]?.data?.reason, "login");
   assert.equal(packages[2]?.data?.panels?.avatar, true);
@@ -936,9 +938,37 @@ test("connect sends handshake packages with login then reconnect reason", async 
   packages = decodeSentGmcpPackages(harness.latestSocket().sentPayloads(), modules.decodeGmcpWireFrame);
   assert.deepEqual(
     packages.map((item) => item.packageName),
-    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"],
+    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions", "Darkwind.Client.RefreshMedia"],
   );
   assert.equal(packages[2]?.data?.reason, "reconnect");
+});
+
+test("terminal geometry updates NAWS immediately and is reused by reconnect handshakes", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
+  FakeWebSocket.reset();
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  harness.session.terminal.updateGeometry(100, 30);
+  harness.session.connect();
+  const socket = harness.latestSocket();
+  socket?.open();
+  let packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(packages[0]?.data, { client: "Darkflow", version: "test", width: 100, height: 30 });
+  assert.deepEqual(packages.find((item) => item.packageName === "Darkwind.Client.NAWS")?.data, { width: 100, height: 30 });
+
+  socket.clearSent();
+  harness.session.terminal.updateGeometry(101, 31);
+  packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(packages, [{ packageName: "Darkwind.Client.NAWS", data: { width: 101, height: 31 } }]);
+
+  socket.close(1006, "lost");
+  harness.advance(1000);
+  const reconnectSocket = harness.latestSocket();
+  reconnectSocket?.open();
+  packages = decodeSentGmcpPackages(reconnectSocket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(packages[0]?.data, { client: "Darkflow", version: "test", width: 101, height: 31 });
+  assert.deepEqual(packages.find((item) => item.packageName === "Darkwind.Client.NAWS")?.data, { width: 101, height: 31 });
 });
 
 test("handshake guard resends handshake packages", async (t) => {
@@ -960,13 +990,21 @@ test("handshake guard resends handshake packages", async (t) => {
 
   const packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
   const handshakePackages = packages.filter((item) =>
-    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"].includes(
-      item.packageName,
-    ),
+    [
+      "Core.Hello",
+      "Core.Supports.Set",
+      "Darkwind.Client.Subscriptions",
+      "Darkwind.Client.RefreshMedia",
+    ].includes(item.packageName),
   );
   assert.deepEqual(
     handshakePackages.map((item) => item.packageName),
-    ["Core.Hello", "Core.Supports.Set", "Darkwind.Client.Subscriptions"],
+    [
+      "Core.Hello",
+      "Core.Supports.Set",
+      "Darkwind.Client.Subscriptions",
+      "Darkwind.Client.RefreshMedia",
+    ],
   );
 });
 

@@ -6,8 +6,8 @@
  * never touched here.
  */
 
-.df-workspace :is(.dv-dockview, .dv-floating-overlay-host) {
-  --dv-group-view-background-color: var(--df-panel, #161b22);
+html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating-overlay-host) {
+  --dv-group-view-background-color: color-mix(in srgb, var(--df-panel, #161b22) 82%, transparent);
   --dv-tabs-and-actions-container-background-color: var(--df-elevated, #1c2333);
   --dv-tabs-and-actions-container-height: 20px;
   --dv-tab-font-size: 0.72rem;
@@ -40,6 +40,13 @@
     transparent
   );
   --dv-drag-over-border-color: var(--df-accent-blue, #58a6ff);
+}
+
+/* Let the terminal's own opacity setting reach the workspace background. */
+.df-workspace .dv-dockview,
+.df-workspace .dv-groupview[data-terminal-active],
+.df-workspace .dv-resize-container:has(> .dv-groupview[data-terminal-active]) {
+  background-color: transparent;
 }
 
 /* 1px themed border + 6px radius around every pane. */

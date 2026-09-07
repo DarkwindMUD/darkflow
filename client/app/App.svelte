@@ -25,6 +25,8 @@
   import { formatUpdateMessage } from "../../public/js/desktop-integration.js";
   // @ts-expect-error Legacy UI module has no declaration file.
   import { applyTheme, BUILTIN_THEMES, DEFAULT_THEME_KEY } from "../../public/js/theme-manager.js";
+  // @ts-expect-error Retained background data has no declaration file.
+  import { applyBackground } from "../../public/js/background-manager.js";
 
   type UpdateStatus = {
     state: string;
@@ -34,7 +36,7 @@
   };
 
   type DesktopApi = {
-    getInfo(): Promise<{ updateStatus?: UpdateStatus }>;
+    getInfo(): Promise<{ updateStatus?: UpdateStatus; version?: string }>;
     checkForUpdates(): Promise<unknown> | unknown;
     installUpdate(): Promise<unknown> | unknown;
     onUpdateStatus(callback: (status: UpdateStatus) => void): () => void;
@@ -124,9 +126,29 @@
     return "Disconnected";
   });
 
+  function applyAppearance(): void {
+    const settings = loadClientSettings(localStorage).settings;
+    const customTheme = settings.customThemes[themeKey];
+    applyTheme(customTheme ?? BUILTIN_THEMES[themeKey] ?? BUILTIN_THEMES[DEFAULT_THEME_KEY]);
+    applyBackground(settings.background);
+    document.documentElement.style.setProperty(
+      "--df-side-rail-opacity",
+      `${settings.sideRailOpacity}%`,
+    );
+    document.documentElement.style.setProperty(
+      "--df-terminal-background-alpha",
+      String(settings.terminalBackgroundOpacity / 100),
+    );
+  }
+
   $effect(() => {
-    applyTheme(BUILTIN_THEMES[themeKey] ?? BUILTIN_THEMES[DEFAULT_THEME_KEY]);
+    applyAppearance();
     document.title = gameTitle(shell.gameName);
+  });
+
+  $effect(() => {
+    window.addEventListener("darkflow:client-settings-changed", applyAppearance);
+    return () => window.removeEventListener("darkflow:client-settings-changed", applyAppearance);
   });
 
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
@@ -213,7 +235,10 @@
       const unsubscribe = desktop.onUpdateStatus(render);
       void desktop
         .getInfo()
-        .then((info) => info.updateStatus && render(info.updateStatus))
+        .then((info) => {
+          if (info.version) clientVersion = info.version;
+          if (info.updateStatus) render(info.updateStatus);
+        })
         .catch(() => {});
       return () => {
         disposed = true;
@@ -342,6 +367,7 @@
   data-session-id={session.sessionId}
   tabindex="-1"
 >
+  <div class="workspace-background" aria-hidden="true"></div>
   <header class="app-chrome">
     <h1 class="toolbar-brand">
       <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
@@ -460,6 +486,7 @@
 </main>
 
 <SettingsDialog
+  {clientVersion}
   open={settingsOpen}
   {session}
   onclose={() => {
@@ -542,9 +569,34 @@
     padding: 0;
     background: var(--df-bg, #0d1117);
     color: var(--df-text, #c9d1d9);
+    position: relative;
+    isolation: isolate;
+  }
+  .workspace-background {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(
+        rgb(0 0 0 / var(--df-background-dim, 0)),
+        rgb(0 0 0 / var(--df-background-dim, 0))
+      ),
+      var(--df-background-image, none);
+    background-position: center, var(--df-background-position);
+    background-repeat: no-repeat, repeat-x;
+    background-size:
+      100% 100%,
+      auto 100%;
+  }
+  .app-chrome,
+  :global(.workspace-shell) {
+    position: relative;
+    z-index: 1;
   }
 
   .app-chrome {
+    z-index: 2;
     display: flex;
     gap: 8px;
     align-items: center;

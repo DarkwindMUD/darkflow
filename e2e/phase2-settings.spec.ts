@@ -306,6 +306,12 @@ async function settingsGroup(dialog: ReturnType<typeof settingsDialog>, tab: str
   return dialog.getByRole("group", { name });
 }
 
+async function skipChangedSettingsBackup(dialog: ReturnType<typeof settingsDialog>): Promise<void> {
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  if (await backup.count()) await backup.getByRole("button", { name: "Skip", exact: true }).click();
+}
+
 test("Phase 2 settings save current preferences without replacing deferred fields", async ({
   page,
 }) => {
@@ -323,6 +329,23 @@ test("Phase 2 settings save current preferences without replacing deferred field
         outputScrollbackPreset: "invalid",
         scrollbackBehavior: "invalid",
         scrollbackSplitRatio: null,
+        background: "retired",
+        sideRailOpacity: "invalid",
+        terminalBackgroundOpacity: "invalid",
+        terminalWidthColumns: 39,
+        customThemes: {
+          saved: {
+            key: "saved",
+            label: "Saved",
+            type: "dark",
+            bg: "#000000",
+            fg: "#ffffff",
+            accent: "#123456",
+            ansi: Array(16).fill("#123456"),
+            ui: {},
+          },
+          invalid: { key: "invalid", ansi: [] },
+        },
       }),
     ),
   );
@@ -332,7 +355,11 @@ test("Phase 2 settings save current preferences without replacing deferred field
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
   await settingsTab(dialog, "Appearance");
-  await dialog.getByLabel("Theme").selectOption("nord");
+  await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("82");
+  await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("55");
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
+  await dialog.getByLabel("Side panel opacity").fill("67");
+  await dialog.getByLabel("Terminal background opacity").fill("43");
   await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Show emoji picker")).toBeChecked();
   await dialog.getByLabel("Repeat last command").uncheck();
@@ -350,6 +377,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByLabel("Name").fill("target");
   await dialog.getByLabel("Value").fill("goblin");
   await dialog.getByRole("button", { name: "Apply" }).click();
+  await skipChangedSettingsBackup(dialog);
 
   await expect(dialog).not.toBeVisible();
   await expect(settingsButton).toBeFocused();
@@ -384,14 +412,60 @@ test("Phase 2 settings save current preferences without replacing deferred field
     scrollbackBehavior: "split",
     outputScrollbackPreset: "high",
     theme: "nord",
+    background: "none",
+    sideRailOpacity: 67,
+    terminalBackgroundOpacity: 43,
+    terminalWidthColumns: null,
   });
+  expect(saved.settings.customThemes).toMatchObject({ saved: { key: "saved", label: "Saved" } });
+  expect(saved.settings.customThemes.invalid).toBeUndefined();
   expect(saved.variables).toMatchObject({ target: "goblin" });
   expect(loadedScripts.some((url) => url.endsWith("/js/app.js"))).toBe(false);
 
   await page.reload();
   await settingsButton.click();
   await settingsTab(dialog, "Appearance");
-  await expect(dialog.getByLabel("Theme")).toHaveValue("nord");
+  await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("nord");
+  await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("67");
+  await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("43");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue("--df-side-rail-opacity"),
+      ),
+    )
+    .toBe("67%");
+  await expect
+    .poll(() =>
+      page.locator("#phase2-left-rail").evaluate((rail) => getComputedStyle(rail).backgroundColor),
+    )
+    .toContain("0.67");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+      ),
+    )
+    .toBe("0.43");
+  await expect
+    .poll(() =>
+      page
+        .locator(".terminal-output-shell")
+        .evaluate((terminal) => getComputedStyle(terminal).backgroundColor),
+    )
+    .toContain("0.43");
+  await expect
+    .poll(() =>
+      page
+        .locator(".dv-groupview[data-terminal-active]")
+        .evaluate((group) => getComputedStyle(group).backgroundColor),
+    )
+    .toBe("rgba(0, 0, 0, 0)");
+  await expect(
+    dialog.getByLabel("Theme", { exact: true }).locator("option", { hasText: "Saved" }),
+  ).toHaveCount(1);
   await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Repeat last command")).not.toBeChecked();
   await expect(dialog.getByLabel("Complete aliases with Tab")).not.toBeChecked();
@@ -419,6 +493,331 @@ test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => 
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
+});
+
+test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on Apply", async ({
+  page,
+}) => {
+  await page.goto("/phase2/");
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({
+        background: "moonlit-forest",
+        sideRailOpacity: 67,
+        terminalBackgroundOpacity: 43,
+      }),
+    ),
+  );
+  await page.reload();
+
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  const dialog = settingsDialog(page);
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Side panel opacity").fill("20");
+  await dialog.getByLabel("Terminal background opacity").fill("10");
+  await expect
+    .poll(() =>
+      page.locator("#phase2-left-rail").evaluate((rail) => getComputedStyle(rail).backgroundColor),
+    )
+    .toContain("0.2");
+  await expect
+    .poll(() =>
+      page
+        .locator(".terminal-output-shell")
+        .evaluate((terminal) => getComputedStyle(terminal).backgroundColor),
+    )
+    .toContain("0.1");
+
+  const storedBeforeCancel = await page.evaluate(() =>
+    localStorage.getItem("darkwind-client-settings"),
+  );
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        sideRail: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-side-rail-opacity",
+        ),
+        terminal: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+      })),
+    )
+    .toEqual({ sideRail: "67%", terminal: "0.43" });
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    storedBeforeCancel,
+  );
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Side panel opacity").fill("60");
+  await dialog.getByLabel("Terminal background opacity").fill("30");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        sideRail: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-side-rail-opacity",
+        ),
+        terminal: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-background-alpha",
+        ),
+        settings: JSON.parse(localStorage.getItem("darkwind-client-settings")!),
+      })),
+    )
+    .toMatchObject({
+      sideRail: "60%",
+      terminal: "0.3",
+      settings: { sideRailOpacity: 60, terminalBackgroundOpacity: 30 },
+    });
+});
+
+test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme imports without writes", async ({
+  page,
+}, testInfo) => {
+  await page.goto("/phase2/");
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByRole("radio", { name: "Moonlit Forest" }).check();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("moonlit-forest");
+  if (testInfo.project.name === "mobile-chromium") {
+    await expect(page.getByLabel("Terminal output", { exact: true })).toBeVisible();
+  } else {
+    await expect(page.getByText("Avatar", { exact: true })).toBeVisible();
+    await expect(page.getByText("No guild vitals", { exact: true })).toBeVisible();
+  }
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: "test-results/phase2-appearance-background-active.png" });
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("moonlit-forest");
+
+  await page.evaluate(() =>
+    localStorage.setItem("darkwind-client-settings", JSON.stringify({ background: "retired" })),
+  );
+  await page.reload();
+  await expect
+    .poll(() => page.evaluate(() => document.documentElement.dataset.background))
+    .toBe("none");
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  const input = dialog.getByLabel("Upload theme JSON");
+  const beforeInvalid = await page.evaluate(() => localStorage.getItem("darkwind-client-settings"));
+  await input.setInputFiles({
+    name: "bad.json",
+    mimeType: "application/json",
+    buffer: Buffer.from('{"colors":{"editor.background":"#12345"}}'),
+  });
+  await expect(dialog.getByRole("status")).toContainText("Choose a valid");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+  await input.setInputFiles({
+    name: "large.json",
+    mimeType: "application/json",
+    buffer: Buffer.alloc(1024 * 1024 + 1),
+  });
+  await expect(dialog.getByRole("status")).toContainText("1 MiB");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+
+  await input.setInputFiles({
+    name: "fixture.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(
+      JSON.stringify({
+        name: "Fixture",
+        colors: { "editor.background": "#112233", "editor.foreground": "#ddeeff" },
+      }),
+    ),
+  });
+  await expect(dialog.getByRole("status")).toContainText("Theme imported.");
+  await page.reload();
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("fixture");
+});
+
+test("Phase 3 exports portable settings, previews imports, and backs up changed drafts", async ({
+  page,
+}, testInfo) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, "darkflowDesktop", {
+      configurable: true,
+      value: {
+        checkForUpdates: () => undefined,
+        getInfo: () => Promise.resolve({ version: "9.8.7" }),
+        installUpdate: () => undefined,
+        onUpdateStatus: () => () => undefined,
+      },
+    });
+  });
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await page.evaluate(() =>
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ deferredExportField: { keep: true } }),
+    ),
+  );
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
+  const dialog = settingsDialog(page);
+  const downloadPromise = page.waitForEvent("download");
+  await dialog.getByRole("button", { name: "Export settings", exact: true }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^darkflow-settings-.*\.json$/);
+  const stream = await download.createReadStream();
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream!) chunks.push(chunk);
+  const downloadedBundle = JSON.parse(Buffer.concat(chunks).toString());
+  expect(downloadedBundle.clientVersion).toBe("9.8.7");
+  expect(downloadedBundle.data.clientSettings.deferredExportField).toEqual({
+    keep: true,
+  });
+  const exported = await page.evaluate(() => {
+    const applicationState = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character =
+      applicationState.characterProfiles[applicationState.defaults.defaultCharacterProfileId];
+    character.commandHistory = ["imported-history"];
+    character.workspace.payload.importedPanelSizeMarker = { terminal: 731, map: 213 };
+    return {
+      format: "darkwind-client-settings-export",
+      formatVersion: 2,
+      exportedAt: new Date().toISOString(),
+      clientVersion: "test",
+      data: {
+        applicationState,
+        clientSettings: { theme: applicationState.defaults.themeKey },
+        sound: {},
+      },
+    };
+  });
+
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "settings.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  const confirmation = dialog.getByRole("dialog", { name: "Import settings" });
+  await expect(confirmation).toContainText("profiles");
+  await expect(
+    confirmation.getByRole("button", { name: "Import and reload", exact: true }),
+  ).toBeFocused();
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: testInfo.outputPath("phase3-import-preview.png") });
+  await page.keyboard.press("Escape");
+  await expect(confirmation).not.toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Import settings", exact: true })).toBeFocused();
+  const beforeInvalid = await page.evaluate(() => localStorage.getItem("darkwind-client-settings"));
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "unsupported.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify({ ...exported, formatVersion: 99 })),
+  });
+  await expect(dialog.getByRole("status")).toContainText("not supported");
+  expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
+    beforeInvalid,
+  );
+
+  exported.data.clientSettings.repeatLastCommand = false;
+  await dialog.locator(".hidden-file-input").setInputFiles({
+    name: "settings.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(exported)),
+  });
+  const recoveryDownload = page.waitForEvent("download");
+  const reload = page.waitForEvent("load");
+  await dialog
+    .getByRole("dialog", { name: "Import settings" })
+    .getByRole("button", { name: "Import and reload", exact: true })
+    .click();
+  expect((await recoveryDownload).suggestedFilename()).toMatch(/-recovery\.json$/);
+  await reload;
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+        return {
+          history: character.commandHistory,
+          marker: character.workspace.payload.importedPanelSizeMarker,
+          repeatLastCommand: JSON.parse(localStorage.getItem("darkwind-client-settings")!)
+            .repeatLastCommand,
+        };
+      }),
+    )
+    .toEqual({
+      history: ["imported-history"],
+      marker: { terminal: 731, map: 213 },
+      repeatLastCommand: false,
+    });
+
+  await settingsButton.click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
+  await settingsTab(dialog, "Controls");
+  await dialog.getByLabel("Repeat last command").check();
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await expect(backup.getByRole("button", { name: "Download backup", exact: true })).toBeFocused();
+  if (testInfo.project.name === "chromium")
+    await page.screenshot({ path: testInfo.outputPath("phase3-backup-prompt.png") });
+  await backup.getByRole("button", { name: "Never ask again", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() => page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-client-settings")!)))
+    .toMatchObject({
+      theme: "darkflow-default",
+      repeatLastCommand: false,
+      settingsBackupPromptEnabled: false,
+    });
+});
+
+test("Phase 2 auto-reconnect follows the saved setting and cancellation is immediate", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  endpoint.dropConnections();
+  await expect(page.getByTestId("connection-status")).toContainText("Retry scheduled");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await settingsTab(dialog, "Connection");
+  await dialog.getByLabel("Auto-reconnect").uncheck();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  await page.waitForTimeout(1_200);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  expect(
+    await page.evaluate(
+      () => JSON.parse(localStorage.getItem("darkwind-client-settings")!).autoReconnect,
+    ),
+  ).toBe(false);
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  endpoint.dropConnections();
+  await page.waitForTimeout(1_200);
+  await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(page.getByRole("dialog", { name: "Settings" }), "Connection");
+  await expect(page.getByLabel("Auto-reconnect")).not.toBeChecked();
 });
 
 test("Phase 2 settings replaces legacy geometry with a tall right-anchored window", async ({
@@ -484,7 +883,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await dialog.getByRole("tab", { name: "Connection", exact: true }).focus();
   await page.keyboard.press("ArrowDown");
   await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toBeFocused();
-  await expect(dialog.getByLabel("Theme")).toBeVisible();
+  await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
   await host.fill("example.test");
   await dialog.getByLabel("Search settings").fill("Add variable");
   await expect(dialog.getByRole("tab", { name: "Appearance", exact: true })).toHaveAttribute(
@@ -493,7 +892,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   );
   await expect(dialog.getByRole("button", { name: "Add variable" })).toBeVisible();
   await dialog.getByLabel("Search settings").fill("");
-  await expect(dialog.getByLabel("Theme")).toBeVisible();
+  await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
   await settingsTab(dialog, "Aliases");
   await dialog.getByRole("button", { name: "Add aliases" }).click();
   await dialog.getByRole("textbox", { name: "Trigger", exact: true }).fill("draft-alias");
@@ -505,6 +904,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   );
   await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Close settings" }).click();
+  await skipChangedSettingsBackup(dialog);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
     "aria-selected",
@@ -581,6 +981,7 @@ test("Phase 2 settings recovers from corrupted stored settings", async ({ page }
   await expect(dialog.getByLabel("Repeat last command")).toBeChecked();
 
   await dialog.getByRole("button", { name: "Apply" }).click();
+  await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
   const saved = await page.evaluate(() =>
@@ -607,6 +1008,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
   await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").uncheck();
   await dialog.getByRole("button", { name: "Apply" }).click();
+  await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
   await input.fill("score");
@@ -760,6 +1162,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   ]);
 
   await dialog.getByRole("button", { name: "Close settings" }).click();
+  await skipChangedSettingsBackup(dialog);
   await page.keyboard.press("F2");
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("fn");
@@ -871,7 +1274,9 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   });
 
   await dialog.getByRole("button", { name: "Close settings" }).click();
+  await skipChangedSettingsBackup(dialog);
   await connect(page);
+  await page.getByLabel("Command input", { exact: true }).focus();
   await page.keyboard.press("F3");
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedfn");
@@ -997,6 +1402,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   expect(persisted).not.toContain("automationVariables");
 
   await dialog.getByRole("button", { name: "Close settings" }).click();
+  await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("quick");
   await input.press("Enter");
@@ -1095,6 +1501,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   );
 
   await dialog.getByRole("button", { name: "Close settings" }).click();
+  await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedalias");
   await input.press("Enter");

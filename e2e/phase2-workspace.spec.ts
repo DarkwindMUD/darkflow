@@ -127,6 +127,47 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
 });
 
+test("Phase 2 preserves center panel proportions across reload", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop Dockview sizing only");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+
+  const terminal = page.locator('.phase0-terminal-panel[data-panel-id="terminal"]');
+  const map = page.locator('.map-panel[data-panel-id="map"]');
+  await expect(map).toBeVisible();
+  const sash = page
+    .locator(
+      ".dv-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled",
+    )
+    .first();
+  const sashBounds = await sash.boundingBox();
+  expect(sashBounds).not.toBeNull();
+  await page.mouse.move(sashBounds!.x + sashBounds!.width / 2, sashBounds!.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(sashBounds!.x + 120, sashBounds!.y + 20, { steps: 8 });
+  await page.mouse.up();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+
+  const ratio = async () => {
+    const [terminalBounds, mapBounds] = await Promise.all([
+      terminal.boundingBox(),
+      map.boundingBox(),
+    ]);
+    expect(terminalBounds).not.toBeNull();
+    expect(mapBounds).not.toBeNull();
+    return terminalBounds!.width / (terminalBounds!.width + mapBounds!.width);
+  };
+  const beforeReload = await ratio();
+  expect(Math.abs(beforeReload - 0.5)).toBeGreaterThan(0.08);
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  await expect(map).toBeVisible();
+  expect(await ratio()).toBeCloseTo(beforeReload, 1);
+});
+
 test("eligible docked tabs move directly into either rail", async ({ page }, testInfo) => {
   test.slow();
   test.skip(testInfo.project.name === "mobile-chromium", "desktop rails only");

@@ -230,12 +230,18 @@ export function createWorkspace(
       }
     }
   };
+  const markTerminalGroup = () => {
+    for (const group of api.groups) {
+      group.element.toggleAttribute("data-terminal-active", group.activePanel?.id === "terminal");
+    }
+  };
   const emitLayout = () => {
     if (disposed || suppressLayoutEvents) {
       return;
     }
     removeEmptyFloatingGroups();
     annotateFloatingTitlebars();
+    markTerminalGroup();
 
     const snapshot: WorkspaceSnapshot = { layout: api.toJSON(), version: 1 };
     for (const listener of layoutSubscribers) {
@@ -244,6 +250,8 @@ export function createWorkspace(
   };
   const releaseLayoutListener = diagnostics.trackResource("listener");
   const layoutListener = api.onDidLayoutChange(emitLayout);
+  const releaseActivePanelListener = diagnostics.trackResource("listener");
+  const activePanelListener = api.onDidActivePanelChange(markTerminalGroup);
   const publishPanelDrag = (panelId: string, nativeEvent: PointerEvent) => {
     const cancel = () => {
       const event = new PointerEvent("pointercancel", {
@@ -773,11 +781,13 @@ export function createWorkspace(
       panelDragSubscribers.clear();
       api.dispose();
       layoutListener.dispose();
+      activePanelListener.dispose();
       panelDragListener.dispose();
       releasePanelDragListener();
       groupDragListener.dispose();
       releaseGroupDragListener();
       releaseLayoutListener();
+      releaseActivePanelListener();
       resizeObserver.disconnect();
       releaseResizeObserver();
       for (const renderer of renderers.values()) {

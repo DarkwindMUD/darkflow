@@ -306,7 +306,7 @@ export async function runBootTransaction(
         storage: deps.storage,
         uuidFactory: deps.uuidFactory,
         registry,
-        getAutoReconnect: () => state.settings.autoReconnect !== false,
+        getAutoReconnect: () => loadClientSettings(deps.storage).settings.autoReconnect,
         getLagMonitorEnabled: () => loadClientSettings(deps.storage).settings.lagMonitorEnabled,
         getClientInfo: () => ({
           client: "Darkflow",

@@ -225,6 +225,9 @@ test("map and room image reset across reconnect and remount after session dispos
   const roomImage = page.locator('.room-image-panel[data-panel-id="roomImage"]');
   await expect(map.getByRole("button", { name: "Speedwalk to Atrium" })).toBeVisible();
   await expect(roomImage.getByRole("img", { name: "Atrium" })).toBeVisible();
+  const refreshesBeforeReconnect = endpoint.gmcpMessages.filter(
+    (message) => message === "Darkwind.Client.RefreshMedia",
+  ).length;
   await map.evaluate((element) =>
     element.closest("[data-workspace-root-id]")?.setAttribute("data-world-instance", "map-old"),
   );
@@ -251,6 +254,13 @@ test("map and room image reset across reconnect and remount after session dispos
       .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
       .at(-1),
   ).toContain('"roomImage":true');
+  await expect
+    .poll(
+      () =>
+        endpoint.gmcpMessages.filter((message) => message === "Darkwind.Client.RefreshMedia")
+          .length,
+    )
+    .toBeGreaterThan(refreshesBeforeReconnect);
   endpoint.sendGmcp("Darkwind.Session.Recovered", { mode: "linkdead" });
   await expect
     .poll(() =>

@@ -336,6 +336,7 @@ test("connection button cancels connecting and scheduled retries", async ({ page
   await page.goto("/phase2/");
 
   const connectionButton = page.locator("#connect-btn");
+  await page.getByLabel("Host").fill("fixture.example");
   await connectionButton.click();
   await expect(connectionButton).toHaveText("Connecting");
   await expect(connectionButton).toHaveAttribute("title", "Cancel connection attempt");

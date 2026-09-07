@@ -39,6 +39,7 @@ export function createTerminalOutputCore({
   let targetLine = null;
   let targetOutput = output;
   let announceText = '';
+  let screenReaderMode = false;
   let behavior = 'pause';
   let splitActive = false;
   let splitRatio = 0.6;
@@ -88,6 +89,7 @@ export function createTerminalOutputCore({
     });
   };
   const announce = (text) => {
+    if (!screenReaderMode) return;
     announceText = `${announceText}${text}`.slice(-1000);
     if (announceTimer) return;
     announceTimer = window.setTimeout(() => {
@@ -277,9 +279,16 @@ export function createTerminalOutputCore({
     appendOutput: model.appendOutput,
     appendSystemMessage: model.appendSystemMessage,
     clear,
-    configure({ scrollbackBehavior, scrollbackSplitRatio } = {}) {
+    configure({ scrollbackBehavior, scrollbackSplitRatio, screenReaderMode: nextScreenReaderMode } = {}) {
       behavior = scrollbackBehavior === 'split' ? 'split' : 'pause';
       splitRatio = clampSplitRatio(scrollbackSplitRatio);
+      screenReaderMode = nextScreenReaderMode === true;
+      if (!screenReaderMode) {
+        if (announceTimer) window.clearTimeout(announceTimer);
+        announceTimer = 0;
+        announceText = '';
+        announcer.textContent = '';
+      }
       if (!isSplitMode()) deactivateSplit();
       syncControls();
     },

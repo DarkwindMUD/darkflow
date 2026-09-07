@@ -4,10 +4,12 @@ import { loadCommandHistory, saveCommandHistory } from "./history.ts";
 import { loadClientSettings } from "../app/client-settings.ts";
 import { createMentionPicker } from "./mention-picker.ts";
 // @ts-expect-error Shared emoji picker is legacy JavaScript without declarations.
-import { handleEmojiPickerKeydown, initEmojiPicker, updateEmojiPicker } from "../../public/js/emoji-picker.js";
+import * as emojiPicker from "../../public/js/emoji-picker.js";
 
 // @ts-expect-error Shared legacy/Phase 2 completion core is JavaScript.
 import { createCompletionController } from "../../public/js/completion-core.mjs";
+
+const { handleEmojiPickerKeydown, initEmojiPicker, updateEmojiPicker } = emojiPicker;
 
 const BATCH_COMMAND_DELAY_MS = 75;
 
@@ -59,6 +61,7 @@ export function createTerminalInputController({
   let historyIndex = history.length;
   let savedInput = "";
   let saveTimer: number | undefined;
+  let persistencePaused = false;
   const batchTimers = new Set<number>();
   let aliases: EffectiveConfigurationSnapshot["aliases"] = [];
 
@@ -67,7 +70,15 @@ export function createTerminalInputController({
       window.clearTimeout(saveTimer);
       saveTimer = undefined;
     }
+    if (persistencePaused) return;
     saveCommandHistory(localStorage, session.characterProfileId, history);
+  };
+  const pausePersistence = () => {
+    flushHistory();
+    persistencePaused = true;
+  };
+  const resumePersistence = () => {
+    persistencePaused = false;
   };
   const saveHistory = () => {
     if (saveTimer === undefined) saveTimer = window.setTimeout(flushHistory, 500);
@@ -237,6 +248,8 @@ export function createTerminalInputController({
   batchForm.addEventListener("submit", onBatchSubmit);
   document.addEventListener("keydown", onDocumentKeydown);
   window.addEventListener("pagehide", flushHistory);
+  window.addEventListener("darkflow:settings-import-start", pausePersistence);
+  window.addEventListener("darkflow:settings-import-abort", resumePersistence);
   window.addEventListener("darkflow:client-settings-changed", onSettingsChanged);
 
   return {
@@ -247,6 +260,8 @@ export function createTerminalInputController({
       batchForm.removeEventListener("submit", onBatchSubmit);
       document.removeEventListener("keydown", onDocumentKeydown);
       window.removeEventListener("pagehide", flushHistory);
+      window.removeEventListener("darkflow:settings-import-start", pausePersistence);
+      window.removeEventListener("darkflow:settings-import-abort", resumePersistence);
       window.removeEventListener("darkflow:client-settings-changed", onSettingsChanged);
       unsubscribeConfiguration();
       unsubscribeConnection();

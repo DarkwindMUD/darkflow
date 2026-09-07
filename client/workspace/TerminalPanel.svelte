@@ -92,8 +92,59 @@
         OUTPUT_SCROLLBACK_PRESETS[settings.outputScrollbackPreset],
       );
     };
+    let geometryFrame = 0;
+    let characterWidth = 0;
+    let lineHeight = 0;
+    const updateGeometry = () => {
+      geometryFrame = 0;
+      if (!output) return;
+      const activeOutput =
+        output.parentElement?.classList.contains("split-active") && liveOutput
+          ? liveOutput
+          : output;
+      const rect = activeOutput.getBoundingClientRect();
+      const style = getComputedStyle(activeOutput);
+      const probe = document.createElement("span");
+      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      probe.textContent = "MMMMMMMMMM";
+      activeOutput.append(probe);
+      characterWidth = probe.getBoundingClientRect().width / 10;
+      lineHeight = probe.getBoundingClientRect().height;
+      probe.remove();
+      if (!characterWidth || !lineHeight) return;
+      const settings = loadClientSettings(localStorage).settings;
+      const width =
+        settings.terminalWidthColumns ??
+        Math.max(
+          40,
+          Math.floor(
+            (rect.width - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)) /
+              characterWidth,
+          ),
+        );
+      const height = Math.max(
+        8,
+        Math.floor(
+          (rect.height - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom)) /
+            lineHeight,
+        ),
+      );
+      session.terminal.updateGeometry(width, height);
+    };
+    const scheduleGeometry = () => {
+      if (!geometryFrame) geometryFrame = requestAnimationFrame(updateGeometry);
+    };
+    const geometryObserver = new ResizeObserver(scheduleGeometry);
+    geometryObserver.observe(output);
+    geometryObserver.observe(output.parentElement!);
+    if (liveOutput) geometryObserver.observe(liveOutput);
     applyTerminalSettings();
-    window.addEventListener("darkflow:client-settings-changed", applyTerminalSettings);
+    scheduleGeometry();
+    const refreshTerminalSettings = () => {
+      applyTerminalSettings();
+      scheduleGeometry();
+    };
+    window.addEventListener("darkflow:client-settings-changed", refreshTerminalSettings);
     const unregisterLineNavigator = registerLineNavigator?.(terminal.navigateToLine);
     const input = createTerminalInputController({
       session,
@@ -111,7 +162,9 @@
     });
 
     return () => {
-      window.removeEventListener("darkflow:client-settings-changed", applyTerminalSettings);
+      window.removeEventListener("darkflow:client-settings-changed", refreshTerminalSettings);
+      geometryObserver.disconnect();
+      if (geometryFrame) cancelAnimationFrame(geometryFrame);
       unregisterLineNavigator?.();
       input.dispose();
       terminal.dispose();
@@ -209,7 +262,7 @@
     flex-direction: column;
     height: 100%;
     min-height: 0;
-    background: #000;
+    background: rgb(0 0 0 / var(--df-terminal-background-alpha, 1));
     overflow: hidden;
   }
 
@@ -250,6 +303,12 @@
 
   .terminal-output-divider {
     flex: 0 0 10px;
+    background: linear-gradient(
+      to bottom,
+      transparent 3px,
+      var(--df-border-muted, #484f58) 3px 7px,
+      transparent 7px
+    );
     cursor: row-resize;
     touch-action: none;
   }

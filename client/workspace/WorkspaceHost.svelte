@@ -1314,9 +1314,19 @@
     };
     reconcileResponsive = onResize;
     const flushOnLeave = () => flush();
+    const pausePersistenceForImport = () => {
+      flush();
+      suppressPersistence = true;
+      cancelPendingSave();
+    };
+    const resumePersistenceAfterImport = () => {
+      suppressPersistence = false;
+    };
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
+    window.addEventListener("darkflow:settings-import-start", pausePersistenceForImport);
+    window.addEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
     window.addEventListener("darkflow:reset-workspace", resetWorkspace);
     shell.addEventListener("darkflow:map-panel-state", saveMapPanelState);
     onResize();
@@ -1326,6 +1336,8 @@
       window.removeEventListener("resize", onResize);
       document.removeEventListener("visibilitychange", flushOnLeave);
       window.removeEventListener("pagehide", flushOnLeave);
+      window.removeEventListener("darkflow:settings-import-start", pausePersistenceForImport);
+      window.removeEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       shell.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
@@ -1652,6 +1664,11 @@
     min-height: 0;
     border: 1px solid var(--border-color, #30363d);
     border-radius: 0.5rem;
+    background: color-mix(
+      in srgb,
+      var(--df-panel, #161b22) var(--df-side-rail-opacity, 82%),
+      transparent
+    );
   }
 
   .workspace-host {

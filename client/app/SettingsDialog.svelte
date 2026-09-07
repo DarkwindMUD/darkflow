@@ -8,16 +8,38 @@
     loadSettingsWindowState,
     saveClientSettings,
     saveSettingsWindowState,
+    validateVsCodeTheme,
     type Phase2ClientSettings,
   } from "./client-settings.ts";
+  import {
+    MAX_SETTINGS_BUNDLE_BYTES,
+    applySettingsImport,
+    buildSettingsBundle,
+    prepareSettingsImport,
+    settingsBundleFilename,
+    type PreparedSettingsBundle,
+  } from "./settings-bundle.ts";
   import type { SessionVisualEffectKey } from "../runtime/visual-effects.ts";
   // @ts-expect-error Legacy theme data has no declaration file.
   import { BUILTIN_THEMES } from "../../public/js/theme-manager.js";
+  // @ts-expect-error Retained background data has no declaration file.
+  import { BACKGROUND_PRESETS } from "../../public/js/background-manager.js";
+  // @ts-expect-error Retained theme converter has no declaration file.
+  import { convertVsCodeTheme } from "../../public/js/theme-manager.js";
   // @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
   import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
 
-  let { open, session, onclose }: { open: boolean; session: Session; onclose: () => void } =
-    $props();
+  let {
+    clientVersion,
+    open,
+    session,
+    onclose,
+  }: {
+    clientVersion: string | null;
+    open: boolean;
+    session: Session;
+    onclose: () => void;
+  } = $props();
   const tabs = [
     { id: "connection", group: "Client", label: "Connection" },
     { id: "appearance", group: "Client", label: "Appearance" },
@@ -34,7 +56,7 @@
   ] as const;
   type TabId = (typeof tabs)[number]["id"];
   const groups = ["Client", "Automation", "Help"] as const;
-  const themes = Object.values(BUILTIN_THEMES) as Array<{ key: string; label: string }>;
+  const builtinThemes = Object.values(BUILTIN_THEMES) as Array<{ key: string; label: string }>;
   const visualEffectOptions = visualEffectSettings.VISUAL_EFFECT_OPTIONS as readonly {
     key: SessionVisualEffectKey;
     label: string;
@@ -56,11 +78,26 @@
   let connection = $state(untrack(() => session.getConnectionSnapshot()));
   let health = $state(untrack(() => session.connectionHealth.getSnapshot()));
   let drag: { x: number; y: number } | null = null;
+  let originalOpacity: { sideRail: number; terminal: number } | null = null;
+  let importInput = $state<HTMLInputElement>();
+  let preparedImport = $state<PreparedSettingsBundle | null>(null);
+  let closeIntent = $state<"discard" | "apply" | null>(null);
+  let closePrompt = $state(false);
+  let backupButton = $state<HTMLButtonElement>();
+  let importAction = $state<HTMLButtonElement>();
+  let importConfirm = $state<HTMLButtonElement>();
+  let closeReturnFocus: HTMLElement | null = null;
+  let importing = $state(false);
+  let baseline = "";
   const audioCategories = $derived(Object.entries(audio.categoryEnabled));
 
   function loadDraft(): void {
     const result = loadClientSettings(localStorage);
     settings = { ...result.settings };
+    originalOpacity = {
+      sideRail: result.settings.sideRailOpacity,
+      terminal: result.settings.terminalBackgroundOpacity,
+    };
     theme = session.configuration.getSnapshot().themeKey;
     variables = session.terminal.automation
       .listVariableNames()
@@ -68,6 +105,119 @@
     gmcpVariables = session.terminal.automation.getGmcpVariables();
     invalidStoredSettings = !result.success;
     status = result.success ? "" : result.message;
+    baseline = settingsFingerprint();
+  }
+
+  function soundSettings(): Record<string, unknown> {
+    return {
+      enabled: audio.enabled,
+      volume: audio.volume,
+      categoryEnabled: { ...audio.categoryEnabled },
+    };
+  }
+  function settingsFingerprint(): string {
+    const configuration = session.configuration.getSnapshot();
+    return JSON.stringify({
+      settings,
+      theme,
+      localDefinitions: configuration.localDefinitions,
+      attachedConfigurationSets: configuration.attachedConfigurationSets,
+      sound: soundSettings(),
+    });
+  }
+  function download(text: string, recovery = false): void {
+    const url = URL.createObjectURL(new Blob([text], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = settingsBundleFilename(recovery);
+    try {
+      document.body.append(link);
+      link.click();
+    } finally {
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url));
+    }
+  }
+  function exportSettings(recovery = false): boolean {
+    try {
+      const result = buildSettingsBundle(localStorage, {
+        clientVersion: clientVersion ?? "unknown",
+        clientSettings: { ...settings },
+        theme,
+        sound: soundSettings(),
+      });
+      if (!result.success) {
+        status = result.message;
+        return false;
+      }
+      download(result.data.text, recovery);
+      status = recovery ? "Recovery backup downloaded." : "Settings exported.";
+      return true;
+    } catch {
+      status = "Settings backup could not be downloaded.";
+      return false;
+    }
+  }
+  function openImport(): void {
+    importInput?.click();
+  }
+  async function selectImport(file: File | undefined): Promise<void> {
+    preparedImport = null;
+    if (!file) return;
+    if (file.size > MAX_SETTINGS_BUNDLE_BYTES) {
+      status = "Settings files must be 10 MiB or smaller.";
+      return;
+    }
+    try {
+      const endpoint = session.getConnectionSnapshot().endpoint;
+      const result = prepareSettingsImport(await file.text(), localStorage, {
+        characterProfileId: session.characterProfileId,
+        endpoint,
+      });
+      if (!result.success) {
+        status = result.message;
+        return;
+      }
+      preparedImport = result.data;
+      status = "Review the import before replacing local settings.";
+      queueMicrotask(() => importConfirm?.focus());
+    } catch {
+      status = "Settings file could not be read.";
+    }
+  }
+  async function confirmImport(): Promise<void> {
+    if (!preparedImport || importing) return;
+    const nextImport = preparedImport;
+    importing = true;
+    window.dispatchEvent(new Event("darkflow:settings-import-start"));
+    if (!exportSettings(true)) {
+      window.dispatchEvent(new Event("darkflow:settings-import-abort"));
+      importing = false;
+      return;
+    }
+    await new Promise<void>((resolve) => setTimeout(resolve));
+    if (!dialog?.open) {
+      window.dispatchEvent(new Event("darkflow:settings-import-abort"));
+      importing = false;
+      return;
+    }
+    const result = applySettingsImport(localStorage, nextImport);
+    if (!result.success) {
+      window.dispatchEvent(new Event("darkflow:settings-import-abort"));
+      status = result.recoveryFailedOwner
+        ? `${result.message} Recovery restoration also failed for ${result.recoveryFailedOwner}; use the downloaded backup.`
+        : `${result.message} Original settings were restored.`;
+      preparedImport = null;
+      importing = false;
+      queueMicrotask(() => importAction?.focus());
+      return;
+    }
+    window.location.reload();
+  }
+  function dismissImport(): void {
+    if (importing) return;
+    preparedImport = null;
+    queueMicrotask(() => importAction?.focus());
   }
 
   function windowState(): void {
@@ -142,21 +292,148 @@
       return;
     }
     session.visualEffects.configure(settings);
+    if (!settings.autoReconnect && connection.reconnect?.status === "scheduled")
+      session.disconnect();
     const runtime = session.terminal.automation;
     const nextNames = new Set(variables.map(({ name }) => name.trim()).filter(Boolean));
     for (const name of runtime.listVariableNames())
       if (!nextNames.has(name)) runtime.removeVariable(name);
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
+    originalOpacity = null;
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
     dialog?.close();
   }
-  function close(): void {
+  async function importTheme(file: File | undefined): Promise<void> {
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      status = "Theme files must be 1 MiB or smaller.";
+      return;
+    }
+    try {
+      const parsed: unknown = JSON.parse(await file.text());
+      if (!validateVsCodeTheme(parsed)) throw new Error();
+      if (Object.keys(settings.customThemes).length >= 32) throw new Error("Theme limit reached");
+      const label =
+        String((parsed as { name?: unknown }).name ?? file.name.replace(/\.json$/i, "")).slice(
+          0,
+          100,
+        ) || "Imported theme";
+      const stem =
+        label
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-|-$/g, "")
+          .slice(0, 72) || "imported-theme";
+      const keys = new Set([
+        ...builtinThemes.map((item) => item.key),
+        ...Object.keys(settings.customThemes),
+      ]);
+      let key = stem;
+      let suffix = 2;
+      while (keys.has(key)) key = `${stem.slice(0, 76)}-${suffix++}`.slice(0, 80);
+      const imported = convertVsCodeTheme(parsed, { key, label });
+      const previousSettings = settings;
+      const previousActiveTheme = session.configuration.getSnapshot().themeKey;
+      const previousStoredSettings = localStorage.getItem("darkwind-client-settings");
+      const nextSettings = {
+        ...settings,
+        customThemes: { ...settings.customThemes, [imported.key]: imported },
+      };
+      const saved = saveClientSettings(
+        localStorage,
+        originalOpacity
+          ? {
+              ...nextSettings,
+              sideRailOpacity: originalOpacity.sideRail,
+              terminalBackgroundOpacity: originalOpacity.terminal,
+            }
+          : nextSettings,
+        key,
+      );
+      if (!saved.success || !session.configuration.setThemeKey(key).success) {
+        if (previousStoredSettings === null) localStorage.removeItem("darkwind-client-settings");
+        else localStorage.setItem("darkwind-client-settings", previousStoredSettings);
+        session.configuration.setThemeKey(previousActiveTheme);
+        settings = previousSettings;
+        throw new Error();
+      }
+      settings = nextSettings;
+      theme = key;
+      window.dispatchEvent(new Event("darkflow:client-settings-changed"));
+      previewSideRailOpacity(String(settings.sideRailOpacity));
+      previewTerminalOpacity(String(settings.terminalBackgroundOpacity));
+      status = "Theme imported.";
+    } catch (error) {
+      status =
+        error instanceof Error && error.message === "Theme limit reached"
+          ? error.message
+          : "Choose a valid VS Code theme JSON file.";
+    }
+  }
+  function closeNow(): void {
     persistWindow();
     dialog?.close();
   }
+  function close(): void {
+    requestClose("discard");
+  }
+  function requestClose(intent: "discard" | "apply"): void {
+    closeIntent = intent;
+    closeReturnFocus =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (settings.settingsBackupPromptEnabled && baseline !== settingsFingerprint()) {
+      closePrompt = true;
+      queueMicrotask(() => backupButton?.focus());
+      return;
+    }
+    finishClose();
+  }
+  function finishClose(): void {
+    const intent = closeIntent;
+    closeIntent = null;
+    closePrompt = false;
+    if (intent === "apply") save();
+    else closeNow();
+  }
+  function neverAskAgain(): void {
+    const current = loadClientSettings(localStorage).settings;
+    const saved = saveClientSettings(
+      localStorage,
+      { ...current, settingsBackupPromptEnabled: false },
+      session.configuration.getSnapshot().themeKey,
+    );
+    if (!saved.success) {
+      status = saved.message;
+      return;
+    }
+    settings.settingsBackupPromptEnabled = false;
+    finishClose();
+  }
   function handleDialogClose(): void {
+    if (originalOpacity) {
+      document.documentElement.style.setProperty(
+        "--df-side-rail-opacity",
+        `${originalOpacity.sideRail}%`,
+      );
+      document.documentElement.style.setProperty(
+        "--df-terminal-background-alpha",
+        String(originalOpacity.terminal / 100),
+      );
+      originalOpacity = null;
+    }
     onclose();
+  }
+  function previewSideRailOpacity(value: string): void {
+    settings.sideRailOpacity = Number(value);
+    document.documentElement.style.setProperty("--df-side-rail-opacity", `${value}%`);
+  }
+  function previewTerminalOpacity(value: string): void {
+    settings.terminalBackgroundOpacity = Number(value);
+    document.documentElement.style.setProperty(
+      "--df-terminal-background-alpha",
+      String(Number(value) / 100),
+    );
   }
   function resetWorkspace(): void {
     window.dispatchEvent(new Event("darkflow:reset-workspace"));
@@ -212,7 +489,17 @@
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== "Escape" || !dialog?.open) return;
     event.preventDefault();
-    close();
+    if (preparedImport) {
+      if (importing) return;
+      dismissImport();
+      return;
+    }
+    if (closePrompt) {
+      closePrompt = false;
+      queueMicrotask(() => closeReturnFocus?.focus());
+      return;
+    }
+    requestClose("discard");
   }
   function panelHidden(tab: TabId): boolean {
     return search.trim() ? !matches(tab) : selectedTab !== tab;
@@ -246,9 +533,10 @@
   onclose={handleDialogClose}
 >
   <form
+    inert={preparedImport !== null || closePrompt}
     onsubmit={(event) => {
       event.preventDefault();
-      save();
+      requestClose("apply");
     }}
   >
     <!-- svelte-ignore a11y_no_static_element_interactions -->
@@ -309,6 +597,8 @@
           </div>
           <label class="settings-check"
             ><input type="checkbox" bind:checked={settings.lagMonitorEnabled} /> Measure connection health</label
+          ><label class="settings-check"
+            ><input type="checkbox" bind:checked={settings.autoReconnect} /> Auto-reconnect</label
           ><button
             class="settings-action"
             type="button"
@@ -326,10 +616,60 @@
           <h3>Appearance</h3>
           <label class="settings-row"
             ><span>Theme</span>
-            <select bind:value={theme}
-              >{#each themes as item (item.key)}<option value={item.key}>{item.label}</option
+            <select aria-label="Theme" bind:value={theme}
+              >{#each [...builtinThemes, ...Object.values(settings.customThemes)] as item (item.key)}<option
+                  value={item.key}>{item.label}</option
                 >{/each}</select
             ></label
+          >
+          <label class="settings-row"
+            >Import VS Code theme<input
+              aria-label="Upload theme JSON"
+              type="file"
+              accept=".json,application/json"
+              onchange={(event) => importTheme(event.currentTarget.files?.[0])}
+            /></label
+          >
+          <fieldset>
+            <legend>Background</legend>
+            <div class="background-gallery" role="radiogroup" aria-label="Background">
+              {#each BACKGROUND_PRESETS as preset (preset.key)}
+                <label class="background-choice">
+                  <input
+                    type="radio"
+                    name="background"
+                    value={preset.key}
+                    bind:group={settings.background}
+                  />
+                  {#if preset.thumbnail}<img src={preset.thumbnail} alt="" />{/if}
+                  <span>{preset.label}</span>
+                </label>
+              {/each}
+            </div>
+          </fieldset>
+          <label class="settings-row"
+            ><span>Side panel opacity ({settings.sideRailOpacity}%)</span>
+            <input
+              aria-label="Side panel opacity"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={settings.sideRailOpacity}
+              oninput={(event) => previewSideRailOpacity(event.currentTarget.value)}
+            /></label
+          >
+          <label class="settings-row"
+            ><span>Terminal background opacity ({settings.terminalBackgroundOpacity}%)</span>
+            <input
+              aria-label="Terminal background opacity"
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              value={settings.terminalBackgroundOpacity}
+              oninput={(event) => previewTerminalOpacity(event.currentTarget.value)}
+            /></label
           >
           <fieldset>
             <legend>Visual effects</legend><label class="settings-check"
@@ -409,6 +749,9 @@
             history with Tab</label
           ><label class="settings-check"
             ><input type="checkbox" bind:checked={settings.emojiPickerEnabled} /> Show emoji picker</label
+          ><label class="settings-check"
+            ><input type="checkbox" bind:checked={settings.settingsBackupPromptEnabled} /> Ask before
+            closing changed settings</label
           >{#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
         </div>
         <div
@@ -440,6 +783,24 @@
               oninput={(event) =>
                 (settings.scrollbackSplitRatio = Number(event.currentTarget.value) / 100)}
             /></label
+          >
+          <label class="settings-row"
+            >Terminal width<input
+              aria-label="Terminal width"
+              type="number"
+              min="40"
+              max="240"
+              step="1"
+              placeholder="Automatic"
+              value={settings.terminalWidthColumns ?? ""}
+              oninput={(event) =>
+                (settings.terminalWidthColumns = event.currentTarget.value
+                  ? Number(event.currentTarget.value)
+                  : null)}
+            /></label
+          >
+          <label class="settings-check"
+            ><input type="checkbox" bind:checked={settings.screenReaderMode} /> Screen reader announcements</label
           >
         </div>
         <div
@@ -531,9 +892,77 @@
     </div>
     <p class:error={invalidStoredSettings} role="status" aria-live="polite">{status}</p>
     <footer>
-      <button type="button" onclick={close}>Cancel</button><button type="submit">Apply</button>
+      <div class="settings-portable-actions">
+        <button type="button" onclick={() => exportSettings()}>Export settings</button>
+        <button bind:this={importAction} type="button" onclick={openImport}>Import settings</button>
+      </div>
+      <div>
+        <button type="button" onclick={close}>Cancel</button><button type="submit">Apply</button>
+      </div>
     </footer>
   </form>
+  <input
+    bind:this={importInput}
+    class="hidden-file-input"
+    type="file"
+    accept=".json,application/json"
+    onchange={(event) => {
+      selectImport(event.currentTarget.files?.[0]);
+      event.currentTarget.value = "";
+    }}
+  />
+  {#if preparedImport}
+    <div class="settings-overlay" role="dialog" aria-labelledby="import-title">
+      <div class="settings-confirmation">
+        <h3 id="import-title">Import settings</h3>
+        <p>
+          Version {preparedImport.preview.formatVersion}: {preparedImport.preview.profiles} profiles and
+          {preparedImport.preview.configurationSets} shared configuration sets. Includes
+          {preparedImport.preview.owners.join(", ")}.
+        </p>
+        {#if preparedImport.preview.legacyLayoutWarning}<p>
+            {preparedImport.preview.legacyLayoutWarning}
+          </p>{/if}
+        <p>
+          Importing replaces profiles, layouts, automations, client preferences, and sound settings.
+          Darkflow will download a recovery backup, disconnect, and reload after the import
+          succeeds.
+        </p>
+        <div>
+          <button type="button" disabled={importing} onclick={dismissImport}>Cancel</button><button
+            bind:this={importConfirm}
+            type="button"
+            disabled={importing}
+            onclick={confirmImport}>Import and reload</button
+          >
+        </div>
+      </div>
+    </div>
+  {/if}
+  {#if closePrompt}
+    <div class="settings-overlay" role="dialog" aria-labelledby="backup-title">
+      <div class="settings-confirmation">
+        <h3 id="backup-title">Download changed settings?</h3>
+        <p>Settings changed in this session. Download a backup before closing?</p>
+        <div>
+          <button
+            type="button"
+            onclick={() => {
+              closePrompt = false;
+              queueMicrotask(() => closeReturnFocus?.focus());
+            }}>Continue editing</button
+          >
+          <button type="button" onclick={finishClose}>Skip</button>
+          <button type="button" onclick={neverAskAgain}>Never ask again</button>
+          <button
+            bind:this={backupButton}
+            type="button"
+            onclick={() => exportSettings() && finishClose()}>Download backup</button
+          >
+        </div>
+      </div>
+    </div>
+  {/if}
 </dialog>
 
 <style>
@@ -587,12 +1016,57 @@
     border-top: 1px solid var(--border-color, #30363d);
     border-bottom: 0;
   }
+  footer > div {
+    display: flex;
+    gap: 0.5rem;
+  }
+  .hidden-file-input {
+    display: none;
+  }
+  .settings-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+    background: var(--df-overlay, rgba(0, 0, 0, 0.6));
+  }
+  .settings-confirmation {
+    display: grid;
+    gap: 0.75rem;
+    max-width: 34rem;
+    padding: 1rem;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: 0.5rem;
+    background: var(--df-panel, #161b22);
+  }
+  .settings-confirmation > div {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
   .settings-layout {
     display: grid;
     grid-template-columns: 176px minmax(0, 1fr);
     min-height: 0;
     gap: 12px;
     padding: 12px;
+  }
+  .background-gallery {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 0.5rem;
+  }
+  .background-choice {
+    display: grid;
+    gap: 0.25rem;
+    font-size: 0.8rem;
+  }
+  .background-choice img {
+    width: 100%;
+    aspect-ratio: 16 / 9;
+    object-fit: cover;
   }
   nav {
     min-width: 0;

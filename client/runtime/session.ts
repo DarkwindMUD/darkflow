@@ -80,6 +80,7 @@ export interface SessionTerminal {
   requestCompletion(request: CompletionRequest): boolean;
   subscribeCompletion(listener: (result: CompletionResult) => void): Unsubscribe;
   subscribeConfiguration(listener: (snapshot: EffectiveConfigurationSnapshot) => void): Unsubscribe;
+  updateGeometry(width: number, height: number): void;
 }
 
 /** Composed live session owning transport, GMCP, configuration, and runtime state. */
@@ -179,6 +180,7 @@ export function createSession(parts: SessionParts): Session {
   let reconnect: TransportReconnectStatusPayload | null = null;
   let terminalProcessing: TerminalProcessing | null = null;
   let terminalProcessingPromise: Promise<void> | null = null;
+  let terminalGeometry: { width: number; height: number } | null = null;
   const completionListeners = new Set<(result: CompletionResult) => void>();
 
   const completionHandler = (result: CompletionResult): void => {
@@ -230,13 +232,17 @@ export function createSession(parts: SessionParts): Session {
   });
 
   function sendConnectHandshake(reason: "login" | "reconnect"): void {
-    gmcp.sendHandshake(getClientInfo());
+    gmcp.sendHandshake({ ...getClientInfo(), ...terminalGeometry });
+    if (terminalGeometry) gmcp.sendTerminalGeometry(terminalGeometry);
     gmcp.sendSubscriptions({ reason, full: true });
+    gmcp.requestMediaRefresh();
   }
 
   function sendHandshakeGuardResend(): void {
-    gmcp.sendHandshake(getClientInfo());
+    gmcp.sendHandshake({ ...getClientInfo(), ...terminalGeometry });
+    if (terminalGeometry) gmcp.sendTerminalGeometry(terminalGeometry);
     gmcp.sendSubscriptions({ full: true });
+    gmcp.requestMediaRefresh();
   }
 
   scope.own(
@@ -332,6 +338,18 @@ export function createSession(parts: SessionParts): Session {
       }
       listener(runtimeState.getEffectiveConfiguration());
       return scope.own("subscription", subscribeConfiguration(listener));
+    },
+    updateGeometry(width, height) {
+      if (
+        !Number.isInteger(width) ||
+        !Number.isInteger(height) ||
+        width < 1 ||
+        height < 1 ||
+        (terminalGeometry?.width === width && terminalGeometry.height === height)
+      )
+        return;
+      terminalGeometry = { width, height };
+      if (transport.state === "connected") gmcp.sendTerminalGeometry(terminalGeometry);
     },
   };
 

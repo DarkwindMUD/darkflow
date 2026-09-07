@@ -2,6 +2,7 @@ import type { SessionId } from "../model/ids.ts";
 import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
 import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame.ts";
 import type { CoreHello } from "./contracts/core.ts";
+import type { DarkwindClientNaws } from "./contracts/darkwind-client.ts";
 import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
 import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2.ts";
 import type {
@@ -124,6 +125,7 @@ export interface SessionGmcpBus {
   dispatch(packageName: string, data: unknown): void;
   serverSupportsPackage(packageName: string): boolean;
   sendHandshake(clientInfo: CoreHello): boolean;
+  sendTerminalGeometry(payload: DarkwindClientNaws): boolean;
   sendSubscriptions(payload?: Partial<GmcpSubscriptionPayload>): boolean;
   requestMediaRefresh(): boolean;
   sendMapData2Sync(payload: MapData2Sync): boolean;
@@ -352,6 +354,10 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
     this.send("Core.Supports.Set", [...CLIENT_SUPPORTS_SET]);
     this.#enabled = true;
     return true;
+  }
+
+  sendTerminalGeometry(payload: DarkwindClientNaws): boolean {
+    return this.send("Darkwind.Client.NAWS", payload);
   }
 
   reset(): void {

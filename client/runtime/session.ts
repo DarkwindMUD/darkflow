@@ -28,6 +28,7 @@ import type { SessionIde } from "./ide";
 import type { SessionNotifications } from "./notifications";
 import type { SessionAudio } from "./audio";
 import type { SessionCombat } from "./combat";
+import type { SessionDps } from "./dps";
 import type { SessionTutorial } from "./tutorial";
 import type { SessionVisualEffects } from "./visual-effects";
 import type { TerminalProcessing } from "./terminal-processing";
@@ -102,6 +103,7 @@ export interface Session {
   readonly notifications: SessionNotifications;
   readonly audio: SessionAudio;
   readonly combat: SessionCombat;
+  readonly dps: SessionDps;
   readonly tutorial: SessionTutorial;
   readonly visualEffects: SessionVisualEffects;
   readonly gmcpDiagnostics: SessionGmcpDiagnostics;
@@ -148,6 +150,7 @@ export interface SessionParts {
   notifications: SessionNotifications;
   audio: SessionAudio;
   combat: SessionCombat;
+  dps: SessionDps;
   tutorial: SessionTutorial;
   visualEffects: SessionVisualEffects;
   gmcpDiagnostics: SessionGmcpDiagnostics;
@@ -179,6 +182,7 @@ export function createSession(parts: SessionParts): Session {
     notifications,
     audio,
     combat,
+    dps,
     tutorial,
     visualEffects,
     gmcpDiagnostics,
@@ -429,6 +433,8 @@ export function createSession(parts: SessionParts): Session {
     audio,
 
     combat,
+
+    dps,
 
     tutorial,
 

@@ -44,6 +44,7 @@ export interface Phase2ClientSettings {
   scrollbackSplitRatio: number;
   outputScrollbackPreset: OutputScrollbackPreset;
   lagMonitorEnabled: boolean;
+  gmcpDebugEnabled: boolean;
   visualEffectsEnabled: boolean;
   visualEffectPreferences: SessionVisualEffectPreferences;
   background: string;
@@ -65,6 +66,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   scrollbackSplitRatio: 0.6,
   outputScrollbackPreset: "normal",
   lagMonitorEnabled: true,
+  gmcpDebugEnabled: false,
   visualEffectsEnabled: false,
   visualEffectPreferences: visualEffectSettings.createDefaultVisualEffectPreferences(),
   background: "none",
@@ -110,6 +112,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
         ? settings.outputScrollbackPreset
         : "normal",
     lagMonitorEnabled: settings.lagMonitorEnabled !== false,
+    gmcpDebugEnabled: settings.gmcpDebugEnabled === true,
     visualEffectsEnabled: settings.visualEffectsEnabled === true,
     visualEffectPreferences: visualEffectSettings.normalizeVisualEffectPreferences(
       settings.visualEffectPreferences,
@@ -263,6 +266,7 @@ export function validateClientSettingsDocument(
     "historyTabCompletionEnabled",
     "emojiPickerEnabled",
     "lagMonitorEnabled",
+    "gmcpDebugEnabled",
     "visualEffectsEnabled",
     "autoReconnect",
     "screenReaderMode",

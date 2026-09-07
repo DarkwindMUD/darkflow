@@ -31,6 +31,7 @@ import type { SessionCombat } from "./combat.ts";
 import type { SessionTutorial } from "./tutorial.ts";
 import type { SessionVisualEffects } from "./visual-effects.ts";
 import type { TerminalProcessing } from "./terminal-processing.ts";
+import type { SessionGmcpDiagnostics } from "./gmcp-diagnostics.ts";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -100,6 +101,7 @@ export interface Session {
   readonly combat: SessionCombat;
   readonly tutorial: SessionTutorial;
   readonly visualEffects: SessionVisualEffects;
+  readonly gmcpDiagnostics: SessionGmcpDiagnostics;
   readonly configuration: SessionConfiguration;
   connect(): void;
   disconnect(): void;
@@ -144,6 +146,7 @@ export interface SessionParts {
   combat: SessionCombat;
   tutorial: SessionTutorial;
   visualEffects: SessionVisualEffects;
+  gmcpDiagnostics: SessionGmcpDiagnostics;
 }
 
 /** Wires transport and GMCP event subscriptions into one session lifecycle. */
@@ -174,6 +177,7 @@ export function createSession(parts: SessionParts): Session {
     combat,
     tutorial,
     visualEffects,
+    gmcpDiagnostics,
   } = parts;
 
   let disposed = false;
@@ -404,6 +408,8 @@ export function createSession(parts: SessionParts): Session {
     tutorial,
 
     visualEffects,
+
+    gmcpDiagnostics,
 
     configuration,
 

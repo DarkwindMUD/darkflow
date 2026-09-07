@@ -52,6 +52,7 @@
     { id: "functions", group: "Automation", label: "Functions" },
     { id: "highlights", group: "Automation", label: "Highlights" },
     { id: "variables", group: "Automation", label: "Variables" },
+    { id: "debug", group: "Help", label: "Debug" },
     { id: "about", group: "Help", label: "About" },
   ] as const;
   type TabId = (typeof tabs)[number]["id"];
@@ -877,6 +878,18 @@
           {#each Object.entries(gmcpVariables) as [name, value] (name)}<p>
               {name}: {value}
             </p>{:else}<p>No GMCP variables received.</p>{/each}
+        </div>
+        <div
+          class="settings-panel"
+          id="settings-panel-debug"
+          role="tabpanel"
+          aria-labelledby="settings-tab-debug"
+          hidden={panelHidden("debug")}
+        >
+          <h3>Debug</h3>
+          <label class="settings-check"
+            ><input type="checkbox" bind:checked={settings.gmcpDebugEnabled} /> Enable GMCP Debug</label
+          >
         </div>
         <div
           class="settings-panel"

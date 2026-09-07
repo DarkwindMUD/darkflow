@@ -331,6 +331,20 @@ function createSessionHarness(modules, t, graph, characterProfileId, options = {
   };
 }
 
+test("Session exposes GMCP diagnostics without exposing its GMCP bus", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+
+  harness.gmcp.dispatch("Fixture.Diagnostics", { secret: "hidden", nested: { token: "also hidden" } });
+  const entry = harness.session.gmcpDiagnostics.getSnapshot().entries.at(-1);
+  assert.equal(entry?.packageName, "Fixture.Diagnostics");
+  assert.match(entry?.payload ?? "", /\[redacted\]/);
+  assert.doesNotMatch(entry?.payload ?? "", /hidden/);
+  assert.equal(typeof harness.session.gmcpDiagnostics.appendMapSummary, "function");
+  assert.equal("gmcp" in harness.session.gmcpDiagnostics, false);
+});
+
 test("runtime state tracks login reason and vitals receipt", async (t) => {
   const modules = await loadSessionRuntimeModules(t);
   const graph = buildMinimalGraph(modules);

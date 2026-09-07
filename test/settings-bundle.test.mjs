@@ -64,7 +64,7 @@ test("settings bundle validates, round-trips three owners, and keeps unknown cli
   };
   const store = storage(initial);
   const exported = bundle.buildSettingsBundle(store, {
-    clientSettings: { repeatLastCommand: false },
+    clientSettings: { repeatLastCommand: false, gmcpDebugEnabled: true },
   });
   assert.equal(exported.success, true);
   assert.equal(JSON.parse(exported.data.text).formatVersion, 2);
@@ -72,6 +72,7 @@ test("settings bundle validates, round-trips three owners, and keeps unknown cli
   assert.equal(prepared.success, true, prepared.success ? "" : prepared.message);
   assert.deepEqual(prepared.data.clientSettings.deferred, { keep: true });
   assert.equal(prepared.data.clientSettings.repeatLastCommand, false);
+  assert.equal(prepared.data.clientSettings.gmcpDebugEnabled, true);
   assert.deepEqual(bundle.applySettingsImport(store, prepared.data), { success: true });
   assert.deepEqual(JSON.parse(store.getItem("darkwind-sound-settings")).categoryEnabled.combat, false);
 });
@@ -104,6 +105,7 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
   for (const [field, value] of [
     ["applicationState", {}],
     ["clientSettings", { ...validBundle.data.clientSettings, repeatLastCommand: "bad" }],
+    ["clientSettings", { ...validBundle.data.clientSettings, gmcpDebugEnabled: "bad" }],
     ["sound", { ...validBundle.data.sound, volume: 2 }],
   ]) {
     const invalid = structuredClone(validBundle);

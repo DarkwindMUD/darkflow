@@ -28,6 +28,7 @@ import { createSessionAudio, type RetainedSoundManager } from "./audio.ts";
 import { createSessionCombat } from "./combat.ts";
 import { createSessionTutorial } from "./tutorial.ts";
 import { createSessionVisualEffects } from "./visual-effects.ts";
+import { createSessionGmcpDiagnostics } from "./gmcp-diagnostics.ts";
 import type { SessionEventBus } from "./event-bus.ts";
 import type { ResourceScope } from "./resource-scope.ts";
 import type { StorageLike } from "../storage/repository.ts";
@@ -216,6 +217,9 @@ export function createSessionFromState(
     (command) =>
       transport.send(command, { kind: "command", size: command.length, preview: command }),
   );
+  const gmcpDiagnostics = createSessionGmcpDiagnostics(gmcp, scope, world, {
+    ...(deps.now !== undefined ? { now: deps.now } : {}),
+  });
   const ide = createSessionIde(gmcp, scope, eventBus, transport, {
     createTransferId: deps.uuidFactory,
   });
@@ -273,6 +277,7 @@ export function createSessionFromState(
     combat,
     tutorial,
     visualEffects,
+    gmcpDiagnostics,
   });
 
   return {

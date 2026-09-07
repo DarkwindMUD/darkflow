@@ -2,6 +2,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
 
 let fixtures: TransportFixtureOwner;
+const CLEAR_MAP_CONFIRMATION =
+  "Clear the authoritative map cache for this world? This affects other characters on the same world and cannot be undone locally. Map Export can preserve a diagnostic copy, but it cannot restore the cache.";
 
 test.beforeAll(async () => {
   fixtures = await TransportFixtureOwner.start();
@@ -13,6 +15,14 @@ test.afterAll(async () => {
 
 async function connect(page: Page): Promise<void> {
   await page.goto("/phase2/?rfc2549=1");
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+}
+
+async function connectCurrentPage(page: Page): Promise<void> {
   await page.getByLabel("Host").fill("127.0.0.1");
   await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
@@ -35,9 +45,17 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
     hb_processed_pct: 100,
     obj_processed_pct: 100,
   });
+  const mobile = (page.viewportSize()?.width ?? Infinity) <= 700;
   await page.getByRole("button", { name: "Panels", exact: true }).click();
-  await page.getByRole("checkbox", { name: "Connection health", exact: true }).check();
-  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (mobile) {
+    await page
+      .getByRole("dialog", { name: "Panels", exact: true })
+      .getByRole("button", { name: "Open Connection health", exact: true })
+      .click();
+  } else {
+    await page.getByRole("checkbox", { name: "Connection health", exact: true }).check();
+    await page.getByRole("button", { name: "Panels", exact: true }).click();
+  }
 
   const health = page.locator('.connection-health-panel[data-panel-id="connection-health"]');
   await expect(health).toContainText("Collecting samples");
@@ -101,4 +119,101 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
   });
   await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
   await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
+});
+
+test("GMCP debug is Settings-gated, bounded, and uses only public diagnostics actions", async ({
+  page,
+}) => {
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await expect(page.getByText("GMCP Debug", { exact: true })).toHaveCount(0);
+  if ((page.viewportSize()?.width ?? Infinity) <= 700)
+    await page.getByRole("button", { name: "Close panels", exact: true }).click();
+  else await page.getByRole("button", { name: "Panels", exact: true }).click();
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  const debugTab = settings.getByRole("tab", { name: "Debug", exact: true });
+  if ((page.viewportSize()?.width ?? Infinity) > 700)
+    await expect(settings.getByRole("heading", { name: "Help", exact: true })).toBeVisible();
+  await debugTab.click();
+  await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).not.toBeChecked();
+  await settings.getByLabel("Enable GMCP Debug", { exact: true }).check();
+  await settings.getByRole("button", { name: "Apply", exact: true }).click();
+  await settings
+    .getByRole("dialog", { name: "Download changed settings?", exact: true })
+    .getByRole("button", { name: "Skip", exact: true })
+    .click();
+
+  const panel = page.locator('.gmcp-debug-panel[data-panel-id="gmcp-debug"]');
+  await expect(panel).toBeVisible();
+  await connectCurrentPage(page);
+  fixtures.endpoints.ws.sendGmcp("Fixture.Secret", {
+    nested: { authorization: "Bearer must-not-render", visible: "safe" },
+  });
+  await expect(panel).toContainText("Fixture.Secret");
+  await expect(panel).toContainText("[redacted]");
+  await expect(panel).not.toContainText("must-not-render");
+
+  await panel.getByRole("button", { name: "Copy All" }).click();
+  await expect(panel.getByRole("status")).toContainText(
+    /Copied all entries|Clipboard access failed/,
+  );
+  await panel.getByRole("button", { name: "Map Summary" }).click();
+  await expect(panel).toContainText("Map Summary");
+  await panel.getByRole("button", { name: "Map Export" }).click();
+  await expect(panel.getByRole("status")).toContainText(
+    /Copied map export|Clipboard access failed/,
+  );
+
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toBe(CLEAR_MAP_CONFIRMATION);
+    await dialog.dismiss();
+  });
+  await panel.getByRole("button", { name: "Clear Map" }).click();
+  await expect(panel.getByRole("status")).not.toContainText("Map cache cleared");
+  page.once("dialog", async (dialog) => {
+    expect(dialog.type()).toBe("confirm");
+    expect(dialog.message()).toBe(CLEAR_MAP_CONFIRMATION);
+    await dialog.accept();
+  });
+  await panel.getByRole("button", { name: "Clear Map" }).click();
+  await expect(panel.getByRole("status")).toContainText("Map cache cleared");
+
+  const mobile = ((await page.viewportSize())?.width ?? 0) < 700;
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  if (mobile) {
+    const sheet = page.locator("#phase2-mobile-panels");
+    await sheet.getByRole("button", { name: "Close GMCP Debug", exact: true }).click();
+    await page.getByRole("button", { name: "Panels", exact: true }).click();
+    await sheet.getByRole("button", { name: "Open GMCP Debug", exact: true }).click();
+  } else {
+    await page.getByRole("checkbox", { name: "GMCP Debug", exact: true }).uncheck();
+    await page.getByRole("checkbox", { name: "GMCP Debug", exact: true }).check();
+  }
+  await expect(panel).toContainText("Fixture.Secret");
+  await page.waitForTimeout(100);
+  await expect
+    .poll(() => page.evaluate(() => JSON.stringify(localStorage)))
+    .not.toContain("gmcp-debug");
+  await page.goto("/phase2/");
+  await expect(panel).toBeVisible();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await debugTab.click();
+  await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).toBeChecked();
+  await settings.getByLabel("Enable GMCP Debug", { exact: true }).uncheck();
+  await settings.getByRole("button", { name: "Apply", exact: true }).click();
+  await settings
+    .getByRole("dialog", { name: "Download changed settings?", exact: true })
+    .getByRole("button", { name: "Skip", exact: true })
+    .click();
+  await expect(page.locator('.gmcp-debug-panel[data-panel-id="gmcp-debug"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await expect(page.getByText("GMCP Debug", { exact: true })).toHaveCount(0);
+  await page.reload();
+  await expect(page.locator('.gmcp-debug-panel[data-panel-id="gmcp-debug"]')).toHaveCount(0);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await debugTab.click();
+  await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).not.toBeChecked();
 });

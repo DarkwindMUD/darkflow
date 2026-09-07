@@ -25,6 +25,7 @@
   import RoomImagePanel from "./RoomImagePanel.svelte";
   import RoomPanel from "./RoomPanel.svelte";
   import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
+  import GmcpDebugPanel from "./GmcpDebugPanel.svelte";
   import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
   import ServerWindowPanel from "./ServerWindowPanel.svelte";
@@ -44,11 +45,13 @@
   let {
     characterProfileId,
     presentationAllowed,
+    debugGmcp,
     session,
     workspaceToolbar,
   }: {
     characterProfileId: CharacterProfileId;
     presentationAllowed: boolean;
+    debugGmcp: boolean;
     session: Session;
     workspaceToolbar?: HTMLElement | undefined;
   } = $props();
@@ -139,11 +142,17 @@
     title: "Chat",
     state: {},
   };
+  const gmcpDebugPanel: WorkspacePanelSpec = {
+    id: "gmcp-debug",
+    kind: "gmcp-debug",
+    title: "GMCP Debug",
+    state: {},
+  };
 
   type PanelMenuGroupName = "Character" | "Progress" | "Social" | "System" | "World";
   type PanelMenuItem = {
     group: PanelMenuGroupName;
-    kind: "information" | "world" | "chat";
+    kind: "information" | "world" | "chat" | "gmcp-debug";
     panel: WorkspacePanelSpec;
   };
   const informationPanelGroups: Record<InformationPanelId, PanelMenuGroupName> = {
@@ -165,7 +174,7 @@
     worth: "Character",
     xpmon: "Progress",
   };
-  const panelMenuItems: readonly PanelMenuItem[] = [
+  const panelMenuItems = $derived<readonly PanelMenuItem[]>([
     ...informationPanels.map((panel): PanelMenuItem => ({
       group: informationPanelGroups[panel.id],
       kind: "information",
@@ -173,14 +182,17 @@
     })),
     ...worldPanels.map((panel): PanelMenuItem => ({ group: "World", kind: "world", panel })),
     { group: "Social", kind: "chat", panel: chatPanel },
-  ];
-  const panelMenuGroups = (["Character", "Progress", "Social", "System", "World"] as const).map(
-    (title) => ({
+    ...(debugGmcp
+      ? [{ group: "System" as const, kind: "gmcp-debug" as const, panel: gmcpDebugPanel }]
+      : []),
+  ]);
+  const panelMenuGroups = $derived(
+    (["Character", "Progress", "Social", "System", "World"] as const).map((title) => ({
       title,
       items: panelMenuItems
         .filter(({ group }) => group === title)
         .sort((left, right) => left.panel.title.localeCompare(right.panel.title)),
-    }),
+    })),
   );
 
   // Legacy "classic hybrid" default: terminal center, two ordered rails. Each
@@ -350,6 +362,7 @@
   let sheetTrigger: HTMLButtonElement | undefined;
   let combatPanelOpen = $state(false);
   let chatPanelOpen = $state(false);
+  let gmcpDebugOpen = $state(false);
   let launcherOpen = $state(false);
   let mobilePresentation = $state(false);
 
@@ -451,15 +464,42 @@
     syncVisiblePanels();
   }
 
+  async function toggleGmcpDebugPanel(activate = true): Promise<void> {
+    if (!workspace || (!debugGmcp && !workspace.hasPanel(gmcpDebugPanel.id))) return;
+    if (workspace.hasPanel(gmcpDebugPanel.id)) await workspace.removePanel(gmcpDebugPanel.id);
+    else {
+      // The layout subscription may publish synchronously, so mark this
+      // transient before adding it to keep the saved workspace untouched.
+      gmcpDebugOpen = true;
+      workspace.addOrUpdatePanel({
+        ...gmcpDebugPanel,
+        placement:
+          innerWidth < 940
+            ? { kind: "grid", direction: "right", referencePanelId: terminal.id }
+            : { kind: "floating", bounds: { left: 40, top: 40, width: 520, height: 320 } },
+      });
+      if (activate) workspace.activatePanel(gmcpDebugPanel.id);
+    }
+    gmcpDebugOpen = workspace.hasPanel(gmcpDebugPanel.id);
+  }
+
+  $effect(() => {
+    const enabled = debugGmcp;
+    if (!workspace || enabled === workspace.hasPanel(gmcpDebugPanel.id)) return;
+    void toggleGmcpDebugPanel();
+  });
+
   function panelMenuItemOpen(item: PanelMenuItem): boolean {
     if (item.kind === "information") return informationPanelOpen(item.panel);
     if (item.kind === "world") return worldPanelOpen(item.panel);
+    if (item.kind === "gmcp-debug") return gmcpDebugOpen;
     return chatPanelOpen;
   }
 
   function togglePanelMenuItem(item: PanelMenuItem): void {
     if (item.kind === "information") void toggleInformationPanel(item.panel, false);
     else if (item.kind === "world") void toggleWorldPanel(item.panel, false);
+    else if (item.kind === "gmcp-debug") void toggleGmcpDebugPanel(false);
     else void toggleChatPanel(false);
   }
 
@@ -664,6 +704,13 @@
         component: ChatPanel,
         floatable: true,
         preserveDomWhenHidden: true,
+        session,
+      },
+      "gmcp-debug": {
+        canClose: () => true,
+        collapsible: true,
+        component: GmcpDebugPanel,
+        floatable: true,
         session,
       },
       ...Object.fromEntries(
@@ -943,6 +990,9 @@
     }
     reclaimDockedRailPanels(currentWorkspace);
     syncVisiblePanels();
+    if (debugGmcp) {
+      void toggleGmcpDebugPanel();
+    }
 
     let pending: CompositeWorkspaceSnapshot | undefined;
     let timer: number | undefined;
@@ -971,7 +1021,8 @@
       fishingPanelOpen ||
       areaMapPanelOpen ||
       idePanelOpen ||
-      combatPanelOpen;
+      combatPanelOpen ||
+      gmcpDebugOpen;
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -1231,6 +1282,9 @@
       if (idePanelOpen && !currentWorkspace.hasPanel("ide")) {
         idePanelOpen = false;
         session.ide.close();
+      }
+      if (gmcpDebugOpen && !currentWorkspace.hasPanel(gmcpDebugPanel.id)) {
+        gmcpDebugOpen = false;
       }
       if (transferring.size > 0) {
         cancelPendingSave();
@@ -1531,6 +1585,14 @@
           {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
         </button>
       {/each}
+      {#if debugGmcp}
+        <button
+          type="button"
+          aria-pressed={gmcpDebugOpen}
+          onclick={() => selectPanel(() => void toggleGmcpDebugPanel())}
+          >{gmcpDebugOpen ? "Close GMCP Debug" : "Open GMCP Debug"}</button
+        >
+      {/if}
       <button
         type="button"
         aria-pressed={chatPanelOpen}

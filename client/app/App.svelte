@@ -73,6 +73,7 @@
     untrack(() => session.connectionHealth.getSnapshot()),
   );
   let rfc2549Enabled = $state(false);
+  let debugGmcp = $state(untrack(() => loadClientSettings(localStorage).settings.gmcpDebugEnabled));
   let rfc2549QosOverride = $state<string | null>(null);
   let manualRedMarks = $state<Array<{ ts: string; type: string; detail: unknown }>>([]);
 
@@ -126,8 +127,9 @@
     return "Disconnected";
   });
 
-  function applyAppearance(): void {
+  function applyClientSettings(): void {
     const settings = loadClientSettings(localStorage).settings;
+    debugGmcp = settings.gmcpDebugEnabled;
     const customTheme = settings.customThemes[themeKey];
     applyTheme(customTheme ?? BUILTIN_THEMES[themeKey] ?? BUILTIN_THEMES[DEFAULT_THEME_KEY]);
     applyBackground(settings.background);
@@ -142,13 +144,14 @@
   }
 
   $effect(() => {
-    applyAppearance();
+    applyClientSettings();
     document.title = gameTitle(shell.gameName);
   });
 
   $effect(() => {
-    window.addEventListener("darkflow:client-settings-changed", applyAppearance);
-    return () => window.removeEventListener("darkflow:client-settings-changed", applyAppearance);
+    window.addEventListener("darkflow:client-settings-changed", applyClientSettings);
+    return () =>
+      window.removeEventListener("darkflow:client-settings-changed", applyClientSettings);
   });
 
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
@@ -480,6 +483,7 @@
     bind:this={workspaceHost}
     characterProfileId={session.characterProfileId}
     presentationAllowed={!shell.zorkOnly}
+    {debugGmcp}
     {session}
     {workspaceToolbar}
   />

@@ -175,6 +175,13 @@ export interface SessionWorld {
   reportPlaylistError(code: number): boolean;
 }
 
+/** Factory-only map diagnostics bridge; Svelte receives these actions through SessionGmcpDiagnostics. */
+export interface SessionWorldDiagnostics {
+  mapSummary(): string;
+  mapExport(): string;
+  clearMap(): boolean;
+}
+
 export interface SessionWorldIdentity {
   worldKey: string;
   host: string;
@@ -212,6 +219,11 @@ type RetainedMapData = RetainedMapSource & {
   exitBrowse(): void;
   flushPendingMapSave(): void;
   disposeMapDataLifecycle(): void;
+  debug: {
+    summary(): unknown;
+    exportAll(): string;
+    clearData(): void;
+  };
 };
 type RetainedLearnedMap = RetainedMapSource & {
   load(): Promise<void>;
@@ -244,7 +256,7 @@ export function createSessionWorld(
   eventBus: SessionEventBus,
   identity: SessionWorldIdentity,
   sendCommand: (command: string) => boolean,
-): SessionWorld {
+): SessionWorld & SessionWorldDiagnostics {
   let connected = false;
   let sourceVersion = 0;
   let browseOpenVersion = 0;
@@ -614,6 +626,14 @@ export function createSessionWorld(
     reportPlaylistEnded: () => playlistReport({ report: "ended" }),
     reportPlaylistError(code) {
       return Number.isFinite(code) ? playlistReport({ report: "error", code }) : false;
+    },
+    mapSummary: () => JSON.stringify(mapData.debug.summary(), null, 2),
+    mapExport: () => mapData.debug.exportAll(),
+    clearMap() {
+      if (disposed) return false;
+      mapData.debug.clearData();
+      publish();
+      return true;
     },
   };
 }

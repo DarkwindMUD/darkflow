@@ -11,6 +11,9 @@ Start with the [Darkflow GMCP Package Index](gmcp-darkwind-index.md). It mirrors
 the current `Core.Supports.Set` handshake and links every standard and
 Darkwind-specific package to its supporting documentation.
 
+For the developer-only bounded message viewer and authoritative MapData2
+diagnostics, see [GMCP Debug](gmcp-debug.md).
+
 ### Standard GMCP
 
 | Document                             | Coverage                                                     |

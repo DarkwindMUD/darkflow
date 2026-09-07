@@ -172,6 +172,28 @@ test("world shares durable graphs by world key but keeps current views session-l
   second.scope.dispose();
 });
 
+test("world diagnostics operate on the authoritative shared MapData2 cache", async (t) => {
+  const modules = await loadModules(t);
+  const key = `diagnostics-${++worldSequence}`;
+  const first = createWorld(modules, key);
+  const second = createWorld(modules, key);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+
+  first.bus.dispatch("Darkwind.MapData2.Current", current(101, "First"));
+  assert.match(first.world.mapSummary(), /"totalRooms": 1/);
+  assert.match(first.world.mapExport(), /"worldKey":/);
+  let published = 0;
+  first.world.subscribe(() => {
+    published += 1;
+  });
+  assert.equal(first.world.clearMap(), true);
+  assert.equal(first.world.getSnapshot().source.getRoom(101), null);
+  assert.equal(second.world.getSnapshot().source.getRoom(101), null);
+  assert.equal(published > 1, true);
+  first.scope.dispose();
+  second.scope.dispose();
+});
+
 test("room image tokens follow merged Room.Info identity and playlist Open alone focuses", async (t) => {
   const modules = await loadModules(t);
   const { bus, scope, world } = createWorld(modules);

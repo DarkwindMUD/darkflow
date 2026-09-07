@@ -10,6 +10,10 @@ executable parity/behavior tests assert against; the plan's "Frozen target" and
 "Pane behavior by class" tables are the authority when this file and the plan
 disagree.
 
+**Closeout:** COMPLETE on 2026-09-07. Candidate `a50290a` passed the Step 13
+cutover gates; the project owner confirmed successful CI deployment and active
+beta use.
+
 Primary source:
 [`client/workspace/WorkspaceHost.svelte`](../../../client/workspace/WorkspaceHost.svelte)
 (inventory, renderer registry, restore set, transient save suppression).

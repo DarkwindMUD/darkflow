@@ -8,9 +8,10 @@ six survived independent recheck._
 - Mode: detailed implementation plan for the complete Step 12 horizon.
 - Complexity: 8/10 — shell geometry, Dockview behavior, persistence, mobile,
   accessibility, and visual evidence cross lifecycle-sensitive boundaries.
-- Status: **IMPLEMENTED LOCALLY — FINAL COMPLETION GATE OPEN**. The separately
-  approved Room/Chat functional slice has resolved the last inventory gaps;
-  Step 13 remains unstarted.
+- Status: **COMPLETE** as of 2026-09-07. The separately approved Room/Chat
+  functional slice resolved the last inventory gaps, candidate `a50290a` passed
+  the Step 13 cutover gates, and the project owner confirmed successful CI
+  deployment and active beta use.
 - Base: `bff841e` (`Phase 2 Step 11: port combat and specialty surfaces`).
 - Depends on: Steps 1–11 complete and committed.
 - Current horizon: presentation and workspace behavior only. Step 13 retains
@@ -466,17 +467,17 @@ this document.
 
 ## Success criteria
 
-- [ ] MH1 full-height shell.
-- [ ] MH2 classic hybrid default.
-- [ ] MH3 terminal identity/lifecycle.
-- [ ] MH4 accessible pane mechanics.
-- [ ] MH5 geometry/bounds/overlap/Enemy priority.
-- [ ] MH6 persistence/recovery/transient exclusion.
-- [ ] MH7 compact/mobile responsive isolation.
-- [ ] MH8 theme/background consistency.
-- [ ] MH9 complete inventory including Room and Chat owners.
-- [ ] MH10 development, built, full-browser, package, and live evidence.
-- [ ] Step 13 remains unstarted.
+- [x] MH1 full-height shell.
+- [x] MH2 classic hybrid default.
+- [x] MH3 terminal identity/lifecycle.
+- [x] MH4 accessible pane mechanics.
+- [x] MH5 geometry/bounds/overlap/Enemy priority.
+- [x] MH6 persistence/recovery/transient exclusion.
+- [x] MH7 compact/mobile responsive isolation.
+- [x] MH8 theme/background consistency.
+- [x] MH9 complete inventory including Room and Chat owners.
+- [x] MH10 development, built, full-browser, package, and live evidence.
+- [x] Step 13 cutover and certification completed.
 
 ## Execution fit
 

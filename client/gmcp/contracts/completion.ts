@@ -12,3 +12,8 @@ export interface CompletionResult {
   kind?: string;
   ambiguous: boolean;
 }
+
+/** LDMud JSON encodes protocol booleans as integers. */
+export interface CompletionResultWire extends Omit<CompletionResult, "ambiguous"> {
+  ambiguous: boolean | 0 | 1;
+}

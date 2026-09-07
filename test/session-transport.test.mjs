@@ -466,6 +466,24 @@ test("live endpoint and transport ladder are re-read on each attempt", async (t)
   assert.equal(harness.latestSocket()?.url, "ws://new.example:2222/");
 });
 
+test("an empty host cancels automatic and manual retries", async (t) => {
+  const modules = await loadTransportModules(t);
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
+  FakeWebSocket.reset();
+
+  const harness = createHarness(modules, t);
+  harness.transport.connect();
+  harness.latestSocket()?.open();
+  harness.endpoint = { ...harness.endpoint, host: "" };
+  harness.latestSocket()?.close(1006, "lost");
+
+  const socketsBeforeRetry = FakeWebSocket.instances.length;
+  harness.advance(30000);
+  harness.transport.retryNow();
+  assert.equal(FakeWebSocket.instances.length, socketsBeforeRetry);
+  assert.equal(harness.events.at(-1)?.payload.status, "idle");
+});
+
 test("handshake guard and lost-transmission events fire at legacy delays", async (t) => {
   const modules = await loadTransportModules(t);
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });

@@ -69,7 +69,9 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
     patron: "mitra", summary: "Bright.", holy_hour: { god: 0 }, eclipse: { active: 0 },
   });
   bus.dispatch("Darkwind.Sky", { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } });
-  bus.dispatch("Darkwind.GuildVitals", { items: [{ id: "heat", label: "Heat", cur: 1, max: 10 }] });
+  bus.dispatch("Darkwind.GuildVitals", {
+    items: [{ id: "focus", label: "Focus", kind: "boolean", on: 1 }],
+  });
   bus.dispatch("Darkwind.XPMon", { active: 1, xp: 25 });
 
   const snapshot = information.getSnapshot();
@@ -82,7 +84,7 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   assert.equal(snapshot.group?.groupname, "Expedition");
   assert.equal(snapshot.avatar?.url, "/assets/avatar.png");
   assert.equal(snapshot.sky?.receivedAt !== undefined, true);
-  assert.equal(snapshot.guildVitals?.items?.[0]?.id, "heat");
+  assert.equal(snapshot.guildVitals?.items?.[0]?.on, 1);
   assert.equal(snapshot.xpmon?.xp, 25);
   assert.equal(Object.isFrozen(snapshot), true);
   assert.equal(Object.isFrozen(snapshot.defences), true);

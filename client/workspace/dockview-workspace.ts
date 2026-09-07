@@ -200,6 +200,36 @@ export function createWorkspace(
     window.addEventListener("pointercancel", cleanup, true);
   };
 
+  const primeFloatingResizePosition = (event: PointerEvent): void => {
+    if (event.button !== 0) return;
+    const frame = (event.currentTarget as HTMLElement).parentElement;
+    if (!frame) return;
+    const frameBounds = frame.getBoundingClientRect();
+    const offsetX = frameBounds.right - event.clientX;
+    const offsetY = frameBounds.bottom - event.clientY;
+    const move = (moveEvent: PointerEvent) => {
+      if (moveEvent.pointerId !== event.pointerId || !moveEvent.isTrusted) return;
+      moveEvent.stopImmediatePropagation();
+      window.dispatchEvent(
+        new PointerEvent("pointermove", {
+          buttons: moveEvent.buttons,
+          clientX: moveEvent.clientX + offsetX,
+          clientY: moveEvent.clientY + offsetY,
+          pointerId: moveEvent.pointerId,
+          pointerType: moveEvent.pointerType,
+        }),
+      );
+    };
+    const cleanup = () => {
+      window.removeEventListener("pointermove", move, true);
+      window.removeEventListener("pointerup", cleanup, true);
+      window.removeEventListener("pointercancel", cleanup, true);
+    };
+    window.addEventListener("pointermove", move, true);
+    window.addEventListener("pointerup", cleanup, true);
+    window.addEventListener("pointercancel", cleanup, true);
+  };
+
   const annotateFloatingTitlebars = () => {
     const floatingPanels = api.panels.filter((panel) => panel.api.location.type === "floating");
     const titlebars = host.querySelectorAll<HTMLElement>(".dv-floating-titlebar");
@@ -215,7 +245,13 @@ export function createWorkspace(
         const resizeGrip = titlebar.parentElement?.querySelector<HTMLElement>(
           ".dv-resize-handle-bottomright",
         );
-        if (resizeGrip) resizeGrip.title = `Resize ${panel.title ?? panel.id}`;
+        if (resizeGrip) {
+          resizeGrip.title = `Resize ${panel.title ?? panel.id}`;
+          if (!resizeGrip.dataset.resizeOriginFixed) {
+            resizeGrip.dataset.resizeOriginFixed = "true";
+            resizeGrip.addEventListener("pointerdown", primeFloatingResizePosition, true);
+          }
+        }
       } else {
         delete titlebar.dataset.panelId;
       }
@@ -285,6 +321,7 @@ export function createWorkspace(
   const layoutHost = () => {
     diagnostics.recordLayout();
     api.layout(host.clientWidth, host.clientHeight, true);
+    if (clampFloatingFrames()) queueMicrotask(emitLayout);
   };
   const releaseResizeObserver = diagnostics.trackResource("observer");
   const resizeObserver = new ResizeObserver(() => {
@@ -520,6 +557,42 @@ export function createWorkspace(
     };
   };
 
+  function clampFloatingFrames(): boolean {
+    const container = host.querySelector<HTMLElement>(".dv-floating-overlay-host");
+    if (!container) return false;
+    const containerBounds = container.getBoundingClientRect();
+    let changed = false;
+    for (const frame of container.querySelectorAll<HTMLElement>(":scope > .dv-resize-container")) {
+      const bounds = frame.getBoundingClientRect();
+      const width = Math.min(bounds.width, containerBounds.width);
+      const height = Math.min(bounds.height, containerBounds.height);
+      const left = Math.max(
+        0,
+        Math.min(bounds.left - containerBounds.left, containerBounds.width - width),
+      );
+      const top = Math.max(
+        0,
+        Math.min(bounds.top - containerBounds.top, containerBounds.height - height),
+      );
+      if (
+        Math.abs(bounds.width - width) < 0.5 &&
+        Math.abs(bounds.height - height) < 0.5 &&
+        Math.abs(bounds.left - containerBounds.left - left) < 0.5 &&
+        Math.abs(bounds.top - containerBounds.top - top) < 0.5
+      ) {
+        continue;
+      }
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      frame.style.left = `${left}px`;
+      frame.style.top = `${top}px`;
+      frame.style.right = "auto";
+      frame.style.bottom = "auto";
+      changed = true;
+    }
+    return changed;
+  }
+
   const addPanel = (spec: WorkspacePanelSpec): void => {
     const options = panelOptions(spec);
     const placement = spec.placement;
@@ -556,6 +629,38 @@ export function createWorkspace(
 
     applyPaneConstraints(api.addPanel(options), spec);
     queueMicrotask(annotateFloatingTitlebars);
+  };
+
+  const reapplySerializedFloatingBounds = (layout: ReturnType<typeof api.toJSON>): void => {
+    requestAnimationFrame(() => {
+      if (disposed) return;
+      for (const floating of layout.floatingGroups ?? []) {
+        if (!floating.data) continue;
+        const panel = api.panels.find(
+          (candidate) => candidate.group.id === floating.data!.id,
+        ) as unknown as DockviewPanelLike | undefined;
+        const frame = panel?.group.element.closest<HTMLElement>(".dv-resize-container");
+        if (!frame) continue;
+        const position = floating.position;
+        frame.style.width = `${position.width}px`;
+        frame.style.height = `${position.height}px`;
+        if ("left" in position) {
+          frame.style.left = `${position.left}px`;
+          frame.style.right = "auto";
+        } else {
+          frame.style.right = `${position.right}px`;
+          frame.style.left = "auto";
+        }
+        if ("top" in position) {
+          frame.style.top = `${position.top}px`;
+          frame.style.bottom = "auto";
+        } else {
+          frame.style.bottom = `${position.bottom}px`;
+          frame.style.top = "auto";
+        }
+      }
+      annotateFloatingTitlebars();
+    });
   };
 
   const applyPlacement = (panel: DockviewPanelLike, placement: PanelPlacement): void => {
@@ -716,6 +821,39 @@ export function createWorkspace(
 
     requestClosePanel,
 
+    setPanelCollapsed(id, collapsed) {
+      const current = collapsedPanes.has(id);
+      return current === collapsed ? current : toggleCollapse(id);
+    },
+
+    setFloatingPanelBounds(boundsById) {
+      const layout = api.toJSON();
+      let changed = false;
+      for (const [id, requested] of Object.entries(boundsById)) {
+        const panel = api.getPanel(id);
+        const floating = layout.floatingGroups?.find((group) => group.data?.id === panel?.group.id);
+        if (!floating) continue;
+        const bounds = clampFloatingBounds(requested);
+        floating.position = {
+          left: bounds.x,
+          top: bounds.y,
+          width: bounds.width,
+          height: bounds.height,
+        };
+        changed = true;
+      }
+      if (!changed) return false;
+      const requestedLayout = structuredClone(layout);
+      suppressLayoutEventsForFrame();
+      preserveOwnedFocus(() => {
+        api.fromJSON(layout, { reuseExistingPanels: true });
+        layoutHost();
+      });
+      reapplySerializedFloatingBounds(requestedLayout);
+      queueMicrotask(annotateFloatingTitlebars);
+      return true;
+    },
+
     save() {
       assertUsable();
       return { layout: api.toJSON(), version: 1 };
@@ -733,6 +871,7 @@ export function createWorkspace(
       }
 
       try {
+        const layout = structuredClone(snapshot.layout as unknown as ReturnType<typeof api.toJSON>);
         suppressLayoutEventsForFrame();
         for (const spec of panels) {
           const record = records.get(spec.id);
@@ -743,10 +882,13 @@ export function createWorkspace(
           }
         }
         preserveOwnedFocus(() => {
-          api.fromJSON(snapshot.layout as never, { reuseExistingPanels: true });
+          api.fromJSON(layout, { reuseExistingPanels: true });
           removeEmptyFloatingGroups();
           layoutHost();
         });
+        reapplySerializedFloatingBounds(
+          snapshot.layout as unknown as ReturnType<typeof api.toJSON>,
+        );
         queueMicrotask(annotateFloatingTitlebars);
         return true;
       } catch {

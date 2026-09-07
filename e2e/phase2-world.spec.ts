@@ -185,6 +185,25 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
   await expect(chat.locator(".chat-entry")).toHaveCount(2);
   await expect(chat).toContainText("A private message.");
 
+  for (let index = 0; index < 40; index += 1) {
+    endpoint.sendGmcp("Comm.Channel", {
+      channel: "gossip",
+      talker: "alice",
+      text: `[gossip] Alice: Scrolling message ${index + 1}.`,
+    });
+  }
+  const chatLog = chat.getByRole("log", { name: "Chat messages" });
+  await expect(chat.locator(".chat-entry")).toHaveCount(42);
+  await expect
+    .poll(() =>
+      chatLog.evaluate((element) => ({
+        atBottom: element.scrollTop + element.clientHeight >= element.scrollHeight - 1,
+        overflowY: getComputedStyle(element).overflowY,
+        scrollable: element.scrollHeight > element.clientHeight,
+      })),
+    )
+    .toEqual({ atBottom: true, overflowY: "auto", scrollable: true });
+
   endpoint.dropConnections();
   await expect(room).toContainText("No room data.");
   await expect(chat).toContainText("No messages.");

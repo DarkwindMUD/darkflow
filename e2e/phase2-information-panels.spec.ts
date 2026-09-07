@@ -86,6 +86,28 @@ test("inventory and progress panels open from desktop and mobile controls", asyn
   }
 });
 
+test("Guild Vitals accepts LDMud numeric boolean values", async ({ page }) => {
+  await connect(page);
+  await ensurePanelOpen(page, "Guild vitals", "guildVitals");
+  fixtures.endpoints.ws.sendGmcp("Darkwind.GuildVitals", {
+    items: [
+      { id: "focus", label: "Focus", guild: "Monk", kind: "boolean", on: 1 },
+      {
+        id: "stances",
+        label: "Stances",
+        guild: "Monk",
+        kind: "flags",
+        flags: [{ label: "Crane", on: 0 }],
+      },
+    ],
+  });
+
+  const panel = page.locator('.information-panel[data-panel-id="guildVitals"]');
+  await expect(panel).toContainText("Focus");
+  await expect(panel).toContainText("Crane");
+  await expect(panel).not.toContainText("No guild vitals");
+});
+
 test("wire data survives malformed frames and resets across reconnect and disposal", async ({
   page,
 }) => {

@@ -240,6 +240,10 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await expect(page.locator(".sound-widget")).not.toHaveClass(/locked/);
   await expect(page.locator(".sound-widget-compact > button")).toHaveCount(1);
   await expect(indicator).toHaveText("");
+  await indicator.click();
+  await expect(controls).toBeHidden();
+  await indicator.click();
+  await expect(controls).toBeVisible();
 
   const volume = controls.locator('input[type="range"]');
   await volume.focus();

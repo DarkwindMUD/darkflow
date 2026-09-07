@@ -565,7 +565,10 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
     const listener: GmcpPackageHandler = (data) => {
       const result = validateCompletionResult(data);
       if (result.success) {
-        handler(result.data);
+        handler({
+          ...result.data,
+          ambiguous: result.data.ambiguous === true || result.data.ambiguous === 1,
+        });
       }
     };
     this.#completionHandlers.set(handler, listener);

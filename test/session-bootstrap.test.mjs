@@ -210,6 +210,8 @@ function createBootHarness(t, modules, options = {}) {
       urlSearchParams: new URLSearchParams(options.urlParams ?? ""),
       uuidFactory: options.uuidFactory ?? modules.createSequentialUuidFactory("10000000-0000-4000-8000-"),
       fetchConfig: overrides.fetchConfig ?? (async () => options.config ?? modules.DEFAULT_CONFIG_JSON),
+      fetchClientVersion:
+        overrides.fetchClientVersion ?? (async () => options.clientVersion ?? "test"),
       importModule,
       loadClient: async (record) => {
         clientLoadCount += 1;
@@ -359,6 +361,21 @@ test("MH2 malformed config falls back without aborting boot", async (t) => {
 
   assert.equal(harness.sessionDiagnostic?.phase, "session-ready");
   assert.equal(harness.bootstrapPhase, "legacy-loaded");
+});
+
+test("runtime client version is resolved before the session handshake source is installed", async (t) => {
+  const modules = await loadBootstrapModules(t);
+  const fixture = loadFixture("single-scope");
+  const storage = createMemoryStorage();
+  populateLegacyStorage(storage, modules, fixture);
+  const harness = createBootHarness(t, modules, { storage });
+
+  const result = await harness.runTransaction({
+    fetchClientVersion: async () => "9.8.7",
+  });
+
+  assert.equal(harness.legacyState.clientVersion, "9.8.7");
+  assert.equal(result.record.shell.clientVersion, "9.8.7");
 });
 
 test("MH3 default character resolves from defaults.defaultCharacterProfileId", async (t) => {

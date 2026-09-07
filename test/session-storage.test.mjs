@@ -182,6 +182,7 @@ test("Phase 1 session storage executes through Vite SSR", async (t) => {
     const activeCharacter = findActiveCharacter(state, "wss://mud.example.com:4242");
     assert.ok(activeCharacter);
     assert.deepEqual(activeCharacter.commandHistory, ["look", "score"]);
+    assert.deepEqual(activeCharacter.automationVariables, { target: "orc" });
     assert.equal(activeCharacter.localDefinitions.aliases.length, 1);
     assert.equal(activeCharacter.localDefinitions.keyMappings.length, 1);
     assert.equal(activeCharacter.audio.combat.enabled, false);
@@ -346,6 +347,37 @@ test("Phase 1 session storage executes through Vite SSR", async (t) => {
     assert.equal(second.success, true);
     assert.equal(second.skipped, true);
     assert.equal(legacyReads.length, 0);
+  });
+
+  await t.test("existing Phase 2 state backfills preserved legacy variables once", async () => {
+    const fixture = loadFixture("single-scope");
+    const storage = createMemoryStorage();
+    populateLegacyStorage(storage, legacyKeys, fixture);
+    const first = migration.migrateLegacyData(
+      storage,
+      fixture.config,
+      new URLSearchParams(fixture.urlSearchParams),
+      uuidFactory,
+    );
+    assert.equal(first.success, true);
+
+    const oldState = repository.readState(storage).data;
+    const active = findActiveCharacter(oldState, "wss://mud.example.com:4242");
+    delete active.automationVariables;
+    storage.setItem(schema.SESSION_CORE_STORAGE_KEY, JSON.stringify(oldState));
+
+    const result = migration.migrateLegacyData(
+      storage,
+      fixture.config,
+      new URLSearchParams(fixture.urlSearchParams),
+      uuidFactory,
+    );
+    assert.equal(result.success, true);
+    const migrated = findActiveCharacter(
+      repository.readState(storage).data,
+      "wss://mud.example.com:4242",
+    );
+    assert.deepEqual(migrated.automationVariables, { target: "orc" });
   });
 
   await t.test("quota failure leaves no committed Phase 1 graph", async () => {

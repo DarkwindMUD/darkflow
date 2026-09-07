@@ -151,7 +151,12 @@ test("Step 6 information package validators accept representative server payload
     "Darkwind.Char.Avatar": { url: "/assets/avatar.png", name: "Nacho" },
     "Darkwind.Divine": { patron: "mitra", pressure_scale: { mitra: 100 } },
     "Darkwind.Sky": { server_time: 1, game_now: 2, scale: { second: 1 }, time: { hour: 1 } },
-    "Darkwind.GuildVitals": { items: [{ id: "heat", label: "Heat", cur: 1, max: 10 }] },
+    "Darkwind.GuildVitals": {
+      items: [
+        { id: "focus", label: "Focus", kind: "boolean", on: 1 },
+        { id: "stances", label: "Stances", kind: "flags", flags: [{ label: "Crane", on: 0 }] },
+      ],
+    },
     "Darkwind.XPMon": { active: 1, xp: 25 },
     "Darkwind.Quests.List": [{ id: "herbs", name: "Gather herbs", status: "Started" }],
     "Darkwind.Quests.Active": [],

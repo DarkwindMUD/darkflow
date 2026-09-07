@@ -374,13 +374,16 @@ test("split scrollback renders one record stream into history and live panes", (
   core.configure({ scrollbackBehavior: "split", scrollbackSplitRatio: 2 });
   core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\n");
   scheduler.flushFrames();
-  output.scrollTop = 0;
+  output.clientHeight = 100;
+  historyOutput.clientHeight = 50;
+  output.scrollTop = 10;
   output.dispatch("wheel");
   output.dispatch("scroll");
 
   assert.equal(shell.classList.contains("split-active"), true);
   assert.equal(historyOutput.children.length, 6);
   assert.equal(liveOutput.children.length, 6);
+  assert.equal(historyOutput.scrollHeight - historyOutput.scrollTop - historyOutput.clientHeight, 10);
   assert.equal(liveOutput.scrollTop, liveOutput.scrollHeight);
 
   historyOutput.scrollTop = historyOutput.scrollHeight;

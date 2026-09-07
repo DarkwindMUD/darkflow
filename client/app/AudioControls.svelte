@@ -91,12 +91,16 @@
   });
 
   async function toggleExpanded(): Promise<void> {
+    if (expanded) {
+      expanded = false;
+      return;
+    }
     const request = ++unlockRequest;
     unlockPending = true;
     await session.audio.unlock();
     if (request !== unlockRequest) return;
     unlockPending = false;
-    if (snapshot.supported) expanded = !expanded;
+    if (snapshot.supported) expanded = true;
   }
 
   function handleEscape(event: KeyboardEvent): void {

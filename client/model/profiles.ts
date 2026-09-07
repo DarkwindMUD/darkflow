@@ -52,6 +52,7 @@ export interface CharacterProfile {
   serverIdentity?: string;
   configSetRefs: ConfigurationSetRefs;
   localDefinitions: LocalDefinitions;
+  automationVariables?: Record<string, string>;
   commandHistory: Array<string & tags.MaxLength<4096>> & tags.MaxItems<200>;
   workspace: WorkspaceSnapshot;
   audio: CharacterAudioControls;

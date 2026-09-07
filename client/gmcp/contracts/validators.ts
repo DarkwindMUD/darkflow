@@ -24,7 +24,7 @@ import type {
 } from "./comm";
 import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./room";
 import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client";
-import type { CompletionRequest, CompletionResult } from "./completion";
+import type { CompletionRequest, CompletionResultWire } from "./completion";
 import type { CorePing, DarkwindLagStatus } from "./diagnostics";
 import type {
   DarkwindAvatar,
@@ -181,7 +181,7 @@ export const validateDarkwindRoomPlaylistReport =
 export const validateDarkwindClientNaws = typia.createValidate<DarkwindClientNaws>();
 export const validateDarkwindSessionRecovered = typia.createValidate<DarkwindSessionRecovered>();
 export const validateCompletionRequest = typia.createValidate<CompletionRequest>();
-export const validateCompletionResult = typia.createValidate<CompletionResult>();
+export const validateCompletionResult = typia.createValidate<CompletionResultWire>();
 export const validateCorePing = typia.createValidate<CorePing>();
 export const validateDarkwindLagStatus = typia.createValidate<DarkwindLagStatus>();
 export const validateGroup = typia.createValidate<Group>();

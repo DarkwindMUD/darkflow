@@ -81,8 +81,9 @@
     display: flex;
     box-sizing: border-box;
     flex-direction: column;
+    height: 100%;
     min-width: 0;
-    min-height: 100%;
+    min-height: 0;
     padding: 0.5rem;
     overflow: hidden;
     color: var(--df-text, #c9d1d9);

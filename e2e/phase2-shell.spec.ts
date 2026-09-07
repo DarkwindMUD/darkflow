@@ -251,13 +251,14 @@ test("Phase 2 controls drive connection, retry countdown, disconnect, and dispos
     .poll(() => page.evaluate(() => localStorage.getItem("darkflow-protocol")))
     .toBe("ws");
 
-  await page.getByLabel("Host").fill("fixture.example");
+  const host = page.getByLabel("Host");
+  await host.fill("fixture.example");
   await page.getByLabel("Port").fill("4321");
   const connectionButton = page.locator("#connect-btn");
   const connectionButtonWidth = await connectionButton.evaluate(
     (button) => button.getBoundingClientRect().width,
   );
-  await connectionButton.click();
+  await host.press("Enter");
   await expect(page.getByTestId("connection-status")).toHaveText("Connecting");
   await expect(connectionButton).toHaveText("Connecting");
   await expect(connectionButton).toHaveClass(/connecting/);
@@ -358,6 +359,31 @@ test("connection button cancels connecting and scheduled retries", async ({ page
   const socketsAfterRetryCancel = (await readFakeSockets(page)).urls.length;
   await page.waitForTimeout(1_100);
   expect((await readFakeSockets(page)).urls).toHaveLength(socketsAfterRetryCancel);
+});
+
+test("successful hosts are restored and an empty host stops reconnect", async ({ page }) => {
+  await installFakeWebSocket(page);
+  await page.goto("/phase2/");
+
+  const host = page.getByLabel("Host");
+  const connectionButton = page.locator("#connect-btn");
+  await host.fill("remembered.example");
+  await connectionButton.click();
+  await controlFakeSocket(page, "open");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-last-login-host")))
+    .toBe("remembered.example");
+
+  await host.fill("");
+  const socketsBeforeDrop = (await readFakeSockets(page)).urls.length;
+  await controlFakeSocket(page, "drop");
+  await expect(connectionButton).toHaveText("Connect");
+  await expect(connectionButton).toBeDisabled();
+  await page.waitForTimeout(1_100);
+  expect((await readFakeSockets(page)).urls).toHaveLength(socketsBeforeDrop);
+
+  await page.reload();
+  await expect(page.getByLabel("Host")).toHaveValue("remembered.example");
 });
 
 test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", async ({

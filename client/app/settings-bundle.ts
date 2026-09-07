@@ -6,6 +6,7 @@ import {
 import type { ApplicationStateV1 } from "../model/profiles";
 import {
   convertLegacyLocalDefinitions,
+  convertLegacyVariables,
   mapLegacySoundToCharacterAudio,
 } from "../storage/legacy-migration";
 import { LEGACY_SOUND_STORAGE_KEY } from "../storage/legacy-keys";
@@ -126,7 +127,7 @@ function preview(formatVersion: 1 | 2, state: ApplicationStateV1): SettingsBundl
     ...(formatVersion === 1
       ? {
           legacyLayoutWarning:
-            "Legacy panel positions cannot be converted and will remain unchanged.",
+            "Legacy panel visibility, docking, order, collapse, size, and position will be converted where supported.",
         }
       : {}),
   };
@@ -289,6 +290,9 @@ function parseV1(
   );
   if (!definitions)
     return { success: false, message: "A legacy definition cannot be converted safely." };
+  const variables = convertLegacyVariables(aliases.data[scope]?.variables ?? {});
+  if (!variables)
+    return { success: false, message: "Legacy scripting variables cannot be converted safely." };
   const theme =
     typeof legacySettings.theme === "string" && legacySettings.theme
       ? legacySettings.theme
@@ -313,6 +317,16 @@ function parseV1(
     };
   graph.defaults.themeKey = theme;
   character.localDefinitions = definitions;
+  character.automationVariables = variables;
+  if (isObject(data.panels)) {
+    character.workspace = {
+      version: 1,
+      payload: {
+        ...data.panels,
+        activeLayout: legacySettings.workspaceLayout === "floating" ? "floating" : "classic",
+      },
+    };
+  }
   character.audio = mapLegacySoundToCharacterAudio(sound.data);
   const graphValidation = validateApplicationState(graph);
   if (!graphValidation.success || !graphValidation.data)

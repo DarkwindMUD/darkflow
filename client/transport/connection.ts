@@ -202,6 +202,11 @@ export function createSessionTransport(
     if (disposed) {
       return;
     }
+    if (!callbacks.getEndpoint().host.trim()) {
+      reconnect.cancelReconnectTimer();
+      reconnect.emitReconnectStatus({ status: "idle" });
+      return;
+    }
     if (socket && isSocketClosingOrClosed(socket)) {
       releaseSocket();
     }

@@ -78,6 +78,12 @@ export interface Workspace {
   hasPanel(id: string): boolean;
   removePanel(id: string): Promise<void>;
   requestClosePanel(id: string): Promise<boolean>;
+  setPanelCollapsed(id: string, collapsed: boolean): boolean;
+  setFloatingPanelBounds(
+    boundsById: Readonly<
+      Record<string, { left: number; top: number; width: number; height: number }>
+    >,
+  ): boolean;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;
   subscribePanelDrag(listener: (event: { cancel(): void; panelId: string }) => void): () => void;

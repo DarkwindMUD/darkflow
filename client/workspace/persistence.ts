@@ -10,7 +10,13 @@ import type { PersistedWorkspaceSnapshot as DockviewWorkspaceSnapshot } from "./
 
 export type LoadCharacterWorkspaceResult =
   | { success: true; snapshot: DockviewWorkspaceSnapshot; recovered: false }
-  | { success: true; snapshot: null; recovered: true; message: string }
+  | {
+      success: true;
+      snapshot: null;
+      legacy: LegacyWorkspaceLayout | null;
+      recovered: true;
+      message: string;
+    }
   | {
       success: false;
       code: "missing-state" | "unknown-character";
@@ -24,6 +30,19 @@ export type SaveCharacterWorkspaceResult =
       code: "missing-state" | "unknown-character" | "validation-failed" | "storage-failed";
       message: string;
     };
+
+export interface LegacyWorkspacePanel {
+  id: string;
+  dock: "left" | "right" | "float";
+  order: number;
+  collapsed: boolean;
+  bounds: { left: number; top: number; width: number; height: number };
+  state: Record<string, unknown>;
+}
+
+export interface LegacyWorkspaceLayout {
+  panels: LegacyWorkspacePanel[];
+}
 
 type JsonObject = Record<string, JsonValue>;
 
@@ -89,6 +108,44 @@ function readPersistedDockviewWorkspace(workspace: CharacterWorkspaceSnapshot): 
   return { dockview, legacy };
 }
 
+function finiteNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+/** Converts the active legacy profile into vendor-neutral placement hints. */
+export function convertLegacyWorkspace(
+  workspace: CharacterWorkspaceSnapshot,
+): LegacyWorkspaceLayout | null {
+  if (workspace.version !== 1) return null;
+  const payload = workspace.payload;
+  const layout = payload.activeLayout === "floating" ? "floating" : "classic";
+  const profiles = isObject(payload.profiles) ? payload.profiles : null;
+  const profile = profiles && isObject(profiles[layout]) ? profiles[layout] : payload;
+  if (!isObject(profile.panels)) return null;
+
+  const panels: LegacyWorkspacePanel[] = [];
+  for (const [id, value] of Object.entries(profile.panels)) {
+    if (!isObject(value) || value.visible !== true) continue;
+    const dock = value.dock === "left" || value.dock === "right" ? value.dock : "float";
+    const state: Record<string, unknown> = {};
+    if (id === "map" && typeof value.mapZoom === "number") state.mapZoom = value.mapZoom;
+    panels.push({
+      id,
+      dock,
+      order: finiteNumber(value.order, 0),
+      collapsed: value.collapsed === true,
+      bounds: {
+        left: finiteNumber(value.floatX, 40),
+        top: finiteNumber(value.floatY, 40),
+        width: Math.max(160, finiteNumber(value.floatW, 320)),
+        height: Math.max(80, finiteNumber(value.floatH, 240)),
+      },
+      state,
+    });
+  }
+  return panels.length ? { panels } : null;
+}
+
 /** Loads one character's valid Dockview layout or requests a recoverable default. */
 export function loadCharacterWorkspace(
   storage: StorageLike,
@@ -114,11 +171,15 @@ export function loadCharacterWorkspace(
 
   const persisted = readPersistedDockviewWorkspace(character.workspace);
   if (persisted === null) {
+    const legacy = convertLegacyWorkspace(character.workspace);
     return {
       success: true,
       snapshot: null,
+      legacy,
       recovered: true,
-      message: "Saved workspace is incompatible; using the default layout.",
+      message: legacy
+        ? "Legacy workspace converted."
+        : "Saved workspace is incompatible; using the default layout.",
     };
   }
 

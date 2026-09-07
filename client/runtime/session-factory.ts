@@ -31,7 +31,7 @@ import { createSessionVisualEffects } from "./visual-effects";
 import { createSessionGmcpDiagnostics } from "./gmcp-diagnostics";
 import type { SessionEventBus } from "./event-bus";
 import type { ResourceScope } from "./resource-scope";
-import type { StorageLike } from "../storage/repository";
+import { commit, readState, type StorageLike } from "../storage/repository";
 
 /** Wiring handles exposed to Phase 1 compatibility facades; not part of the public Session API. */
 export interface SessionFacadeHandles {
@@ -196,7 +196,17 @@ export function createSessionFromState(
   const runtimeState = createSessionRuntimeState(resolved.data);
   compositionRefs.runtimeState = runtimeState;
 
-  const automationRuntime = createAutomationRuntimeState(scope);
+  const automationRuntime = createAutomationRuntimeState(
+    scope,
+    characterProfile.automationVariables,
+    (variables) => {
+      const latest = readState(deps.storage);
+      const character = latest.success ? latest.data?.characterProfiles[characterProfileId] : null;
+      if (!latest.success || !latest.data || !character) return false;
+      character.automationVariables = variables;
+      return commit(deps.storage, latest.data).success;
+    },
+  );
   const configuration = createSessionConfiguration(deps.storage, characterProfileId);
   const information = createSessionInformation(gmcp, scope, eventBus);
   const interactions = createSessionInteractions(gmcp, scope, eventBus, transport);

@@ -332,6 +332,8 @@ test("Phase 2 settings save current preferences without replacing deferred field
         background: "retired",
         sideRailOpacity: "invalid",
         terminalBackgroundOpacity: "invalid",
+        terminalFontFamily: "invalid",
+        terminalFontSize: 7,
         terminalWidthColumns: 39,
         customThemes: {
           saved: {
@@ -367,11 +369,15 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByLabel("Complete from history with Tab").check();
   await dialog.getByLabel("Show emoji picker").uncheck();
   await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Terminal font family")).toHaveValue("");
+  await expect(dialog.getByLabel("Terminal font size")).toHaveValue("");
   await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("pause");
   await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("normal");
   await expect(dialog.getByLabel("Split history size")).toHaveValue("60");
   await dialog.getByLabel("Scrollback behavior").selectOption("split");
   await dialog.getByLabel("Scrollback memory").selectOption("high");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Courier" });
+  await dialog.getByLabel("Terminal font size").selectOption("18");
   await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Add variable" }).click();
   await dialog.getByLabel("Name").fill("target");
@@ -415,8 +421,13 @@ test("Phase 2 settings save current preferences without replacing deferred field
     background: "none",
     sideRailOpacity: 67,
     terminalBackgroundOpacity: 43,
+    terminalFontFamily: '"Courier New", Courier, monospace',
+    terminalFontSize: 18,
     terminalWidthColumns: null,
   });
+  const terminalOutput = page.getByLabel("Terminal output", { exact: true });
+  await expect(terminalOutput).toHaveCSS("font-family", /Courier New/);
+  await expect(terminalOutput).toHaveCSS("font-size", "18px");
   expect(saved.settings.customThemes).toMatchObject({ saved: { key: "saved", label: "Saved" } });
   expect(saved.settings.customThemes.invalid).toBeUndefined();
   expect(saved.variables).toMatchObject({ target: "goblin" });
@@ -428,6 +439,11 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("nord");
   await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("67");
   await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("43");
+  await settingsTab(dialog, "Terminal");
+  await expect(dialog.getByLabel("Terminal font family")).toHaveValue(
+    '"Courier New", Courier, monospace',
+  );
+  await expect(dialog.getByLabel("Terminal font size")).toHaveValue("18");
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -475,8 +491,9 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("split");
   await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("high");
   await settingsTab(dialog, "Variables");
-  await expect(dialog.getByText("Variables last for this session only.")).toBeVisible();
-  await expect(dialog.getByLabel("Name")).toHaveCount(0);
+  await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
+  await expect(dialog.getByLabel("Name")).toHaveValue("target");
+  await expect(dialog.getByLabel("Value")).toHaveValue("goblin");
 });
 
 test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => {
@@ -495,7 +512,7 @@ test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => 
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
 });
 
-test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on Apply", async ({
+test("Phase 2 appearance controls preview live, revert on Cancel, and persist on Apply", async ({
   page,
 }) => {
   await page.goto("/phase2/");
@@ -506,6 +523,8 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
         background: "moonlit-forest",
         sideRailOpacity: 67,
         terminalBackgroundOpacity: 43,
+        terminalFontFamily: '"Courier New", Courier, monospace',
+        terminalFontSize: 18,
       }),
     ),
   );
@@ -517,6 +536,9 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Side panel opacity").fill("20");
   await dialog.getByLabel("Terminal background opacity").fill("10");
+  await settingsTab(dialog, "Terminal");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Serif" });
+  await dialog.getByLabel("Terminal font size").selectOption("24");
   await expect
     .poll(() =>
       page.locator("#phase2-left-rail").evaluate((rail) => getComputedStyle(rail).backgroundColor),
@@ -529,6 +551,9 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
         .evaluate((terminal) => getComputedStyle(terminal).backgroundColor),
     )
     .toContain("0.1");
+  const terminalOutput = page.getByLabel("Terminal output", { exact: true });
+  await expect(terminalOutput).toHaveCSS("font-family", /Georgia/);
+  await expect(terminalOutput).toHaveCSS("font-size", "24px");
 
   const storedBeforeCancel = await page.evaluate(() =>
     localStorage.getItem("darkwind-client-settings"),
@@ -544,9 +569,20 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
         terminal: getComputedStyle(document.documentElement).getPropertyValue(
           "--df-terminal-background-alpha",
         ),
+        terminalFontFamily: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-font-family",
+        ),
+        terminalFontSize: getComputedStyle(document.documentElement).getPropertyValue(
+          "--df-terminal-font-size",
+        ),
       })),
     )
-    .toEqual({ sideRail: "67%", terminal: "0.43" });
+    .toEqual({
+      sideRail: "67%",
+      terminal: "0.43",
+      terminalFontFamily: '"Courier New", Courier, monospace',
+      terminalFontSize: "18px",
+    });
   expect(await page.evaluate(() => localStorage.getItem("darkwind-client-settings"))).toBe(
     storedBeforeCancel,
   );
@@ -555,6 +591,9 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Side panel opacity").fill("60");
   await dialog.getByLabel("Terminal background opacity").fill("30");
+  await settingsTab(dialog, "Terminal");
+  await dialog.getByLabel("Terminal font family").selectOption({ label: "Verdana" });
+  await dialog.getByLabel("Terminal font size").selectOption("20");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
@@ -572,7 +611,12 @@ test("Phase 2 opacity sliders preview live, revert on Cancel, and persist on App
     .toMatchObject({
       sideRail: "60%",
       terminal: "0.3",
-      settings: { sideRailOpacity: 60, terminalBackgroundOpacity: 30 },
+      settings: {
+        sideRailOpacity: 60,
+        terminalBackgroundOpacity: 30,
+        terminalFontFamily: "Verdana, Geneva, Tahoma, sans-serif",
+        terminalFontSize: 20,
+      },
     });
 });
 
@@ -584,7 +628,16 @@ test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme 
   await settingsButton.click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Appearance");
-  await dialog.getByRole("radio", { name: "Moonlit Forest" }).check();
+  const background = dialog.getByRole("radio", { name: "Moonlit Forest" });
+  const backgroundChoice = dialog.locator('.background-choice:has(input[value="moonlit-forest"])');
+  await expect(background).toHaveCSS("opacity", "0");
+  await expect(backgroundChoice.locator("img")).toBeVisible();
+  const backgroundPreview = backgroundChoice.locator(".background-preview");
+  await backgroundPreview.click();
+  await expect(background).toBeChecked();
+  expect(
+    await backgroundPreview.evaluate((element) => getComputedStyle(element).borderColor),
+  ).not.toBe("rgba(0, 0, 0, 0)");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
@@ -865,8 +918,13 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
 }, testInfo) => {
   await page.goto("/phase2/");
   const host = page.getByLabel("Host");
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
+  await settingsButton.click();
   const dialog = settingsDialog(page);
+  await settingsButton.click();
+  await expect(dialog).not.toBeVisible();
+  await expect(settingsButton).toBeFocused();
+  await settingsButton.click();
   if (["chromium", "mobile-chromium"].includes(testInfo.project.name)) {
     await expect(dialog).toHaveScreenshot(
       `phase2-settings-${testInfo.project.name === "mobile-chromium" ? "mobile" : "desktop"}.png`,
@@ -902,10 +960,27 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await expect(dialog.getByRole("textbox", { name: "Trigger", exact: true })).toHaveValue(
     "draft-alias",
   );
+  await settingsTab(dialog, "Connection");
+  await dialog.getByLabel("Auto-reconnect").uncheck();
   await settingsTab(dialog, "Variables");
-  await dialog.getByRole("button", { name: "Close settings" }).click();
-  await skipChangedSettingsBackup(dialog);
-  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsButton.click();
+  const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
+  await expect(backup).toBeVisible();
+  await backup.getByRole("button", { name: "Continue editing", exact: true }).click();
+  await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await settingsTab(dialog, "Aliases");
+  await expect(dialog.getByRole("textbox", { name: "Trigger", exact: true })).toHaveValue(
+    "draft-alias",
+  );
+  await settingsTab(dialog, "Connection");
+  await expect(dialog.getByLabel("Auto-reconnect")).not.toBeChecked();
+  await settingsTab(dialog, "Variables");
+  await settingsButton.click();
+  await backup.getByRole("button", { name: "Skip", exact: true }).click();
+  await settingsButton.click();
   await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
     "aria-selected",
     "true",

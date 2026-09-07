@@ -1,5 +1,6 @@
 import {
   clearPhase1RuntimeSlot,
+  fetchRuntimeClientVersion,
   publishBootstrapPhase,
   readPhase1RuntimeSlot,
   runBootTransaction,
@@ -36,6 +37,7 @@ async function bootstrap(): Promise<void> {
         const configResponse = await fetch("/config.json");
         return configResponse.ok ? await configResponse.json() : {};
       },
+      fetchClientVersion: fetchRuntimeClientVersion,
       importModule: importPublicModule,
       loadClient: async () => {
         await loadLegacyApp();

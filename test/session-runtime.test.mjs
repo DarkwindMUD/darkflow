@@ -773,7 +773,7 @@ test("public terminal owns text, commands, completion, configuration, and automa
   const encoder = new TextEncoder();
   socket?.emitMessage(
     encoder.encode(
-      'Darkwind.Completion.Result {"line":"look sword ","cursor":11,"matches":["sword"],"ambiguous":false}',
+      'Darkwind.Completion.Result {"line":"look sword ","cursor":11,"matches":["sword"],"ambiguous":0}',
     ),
   );
   socket?.emitMessage(encoder.encode('Darkwind.Completion.Result {"line":1}'));

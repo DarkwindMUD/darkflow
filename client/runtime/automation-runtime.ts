@@ -104,10 +104,17 @@ function flattenValue(gmcpVariables: Map<string, string>, parts: string[], value
 }
 
 /** Creates session-owned automation execution state backed by one resource scope. */
-export function createAutomationRuntimeState(scope: ResourceScope): AutomationRuntimeState {
-  const userVariables = new Map<string, string>();
+export function createAutomationRuntimeState(
+  scope: ResourceScope,
+  initialVariables: Record<string, string> = {},
+  persistVariables?: (variables: Record<string, string>) => boolean,
+): AutomationRuntimeState {
+  const userVariables = new Map(Object.entries(initialVariables));
   const gmcpVariables = new Map<string, string>();
   const timerRegistry = new Map<string, TimerRegistryEntry>();
+
+  const persistUserVariables = (): boolean =>
+    persistVariables?.(Object.fromEntries(userVariables.entries())) !== false;
 
   const clearTimer = (timerId: string): void => {
     const key = String(timerId || "");
@@ -142,13 +149,23 @@ export function createAutomationRuntimeState(scope: ResourceScope): AutomationRu
     setVariable(name: string, value: string): boolean {
       const cleanName = normalizeWhitespace(name);
       if (!cleanName) return false;
-      userVariables.set(cleanName, String(value ?? ""));
+      const nextValue = String(value ?? "");
+      const previousValue = userVariables.get(cleanName);
+      if (previousValue === nextValue) return true;
+      userVariables.set(cleanName, nextValue);
+      if (!persistUserVariables()) {
+        if (previousValue === undefined) userVariables.delete(cleanName);
+        else userVariables.set(cleanName, previousValue);
+        return false;
+      }
       return true;
     },
 
     removeVariable(name: string): void {
-      if (!name) return;
+      if (!name || !userVariables.has(name)) return;
+      const previousValue = userVariables.get(name)!;
       userVariables.delete(name);
+      if (!persistUserVariables()) userVariables.set(name, previousValue);
     },
 
     listVariableNames(): string[] {

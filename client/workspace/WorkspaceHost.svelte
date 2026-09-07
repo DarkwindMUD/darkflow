@@ -5,7 +5,7 @@
   import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
   import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
   import { onMount, tick } from "svelte";
-  import { SvelteMap, SvelteSet } from "svelte/reactivity";
+  import { SvelteSet } from "svelte/reactivity";
   import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
@@ -26,7 +26,11 @@
   import RoomPanel from "./RoomPanel.svelte";
   import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
   import GmcpDebugPanel from "./GmcpDebugPanel.svelte";
-  import { loadCharacterWorkspace, saveCharacterWorkspace } from "./persistence";
+  import {
+    loadCharacterWorkspace,
+    saveCharacterWorkspace,
+    type LegacyWorkspaceLayout,
+  } from "./persistence";
   import TerminalPanel from "./TerminalPanel.svelte";
   import ServerWindowPanel from "./ServerWindowPanel.svelte";
   import { focusTerminalIsland } from "./terminal-island";
@@ -274,34 +278,19 @@
     return railFor(id) ?? (workspace?.hasPanel(id) ? workspace : (railHomeFor(id) ?? workspace));
   }
 
-  /** Where a floated-out card came from, so docking can put it back exactly. */
-  const railOrigins = new SvelteMap<string, { rail: Scrollview; index: number }>();
   const RAIL_FLOAT_BOUNDS = { left: 40, top: 40, width: 320, height: 240 };
-  /** Reclaiming moves panels, which fires the layout event that calls it again. */
-  let reclaiming = false;
 
   /**
-   * A rail panel may sit in the Dockview tree only while it is floating. The
-   * moment it is docked it returns to its rail, because a content-height card
-   * docked into the grid stretches to full height -- the very layout the rails
-   * exist to escape. This also repairs a version 1 snapshot, which restores
-   * every rail panel into the grid.
+   * Version 1 snapshots predate the separate rail roots, so move their default
+   * rail panels out of the Dockview grid during migration. Version 2 ownership
+   * is authoritative: a rail-capable panel may remain docked in the center.
    */
-  function reclaimDockedRailPanels(ws: Workspace & WorkspaceInspector): void {
-    if (reclaiming || !railsEnabled) return;
-    reclaiming = true;
+  function migrateVersionOneRailPanels(ws: Workspace & WorkspaceInspector): void {
     for (const id of [...leftRailOrder, ...rightRailOrder]) {
       if (!ws.hasPanel(id) || ws.inspectPanel(id)?.floating) continue;
-      const origin = railOrigins.get(id);
-      railOrigins.delete(id);
       void ws.removePanel(id);
-      const rail = origin?.rail ?? railHomeFor(id);
-      rail?.addOrUpdatePanel(railPanelSpec(id as RailPanelId), origin?.index);
-      // Bring the returned card into view; without this a long rail scrolled
-      // past the origin index makes the reclaim look like a disappearance.
-      rail?.scrollCardIntoView(id);
+      railHomeFor(id)?.addOrUpdatePanel(railPanelSpec(id as RailPanelId));
     }
-    reclaiming = false;
   }
 
   /** The frozen rail membership, used for a fresh layout and for version 1 payloads. */
@@ -320,9 +309,79 @@
   /** Fresh classic-hybrid layout: terminal center plus the two frozen rails. */
   function applyDefaultLayout(ws: Workspace & WorkspaceInspector): void {
     ws.addOrUpdatePanel(terminal);
-    reclaimDockedRailPanels(ws);
     fillRailsWithDefaults();
     ws.activatePanel(terminal.id);
+  }
+
+  function applyLegacyLayout(
+    ws: Workspace & WorkspaceInspector,
+    legacy: LegacyWorkspaceLayout,
+  ): boolean {
+    const stablePanels = [...informationPanels, ...worldPanels, chatPanel];
+    const terminalLayout = legacy.panels.find(({ id }) => id === terminal.id);
+    const deferredFloats: Array<{
+      panel: LegacyWorkspaceLayout["panels"][number];
+      spec: WorkspacePanelSpec;
+    }> = [];
+    const floatingPlacement = (bounds: LegacyWorkspaceLayout["panels"][number]["bounds"]) => {
+      const hostBounds = host.getBoundingClientRect();
+      return {
+        kind: "floating" as const,
+        bounds: {
+          ...bounds,
+          left: bounds.left - hostBounds.left - host.clientLeft,
+          top: bounds.top - hostBounds.top - host.clientTop,
+        },
+      };
+    };
+
+    ws.addOrUpdatePanel(terminal);
+    if (terminalLayout?.dock === "float") {
+      deferredFloats.push({ panel: terminalLayout, spec: terminal });
+    }
+
+    let converted = 1;
+    for (const panel of legacy.panels
+      .filter(({ id }) => id !== terminal.id)
+      .sort((left, right) => left.order - right.order)) {
+      const spec = stablePanels.find(({ id }) => id === panel.id);
+      if (!spec) continue;
+      const next = { ...spec, state: { ...spec.state, ...panel.state } };
+      const rail =
+        panel.dock === "left" ? leftRail : panel.dock === "right" ? rightRail : undefined;
+      if (rail && railEligible(panel.id)) {
+        rail.addOrUpdatePanel(next);
+        rail.setCollapsed(panel.id, panel.collapsed);
+      } else if (panel.dock === "float") {
+        deferredFloats.push({ panel, spec: next });
+      } else {
+        ws.addOrUpdatePanel({
+          ...next,
+          placement: { kind: "grid", direction: panel.dock, referencePanelId: terminal.id },
+        });
+        ws.setPanelCollapsed(panel.id, panel.collapsed);
+      }
+      converted += 1;
+    }
+    ws.activatePanel(terminal.id);
+    requestAnimationFrame(() => {
+      const boundsById: Record<
+        string,
+        { left: number; top: number; width: number; height: number }
+      > = {};
+      for (const { panel, spec } of deferredFloats) {
+        const placement = floatingPlacement(panel.bounds);
+        ws.addOrUpdatePanel({ ...spec, placement });
+        boundsById[panel.id] = placement.bounds;
+      }
+      ws.setFloatingPanelBounds(boundsById);
+      for (const { panel } of deferredFloats) {
+        ws.setPanelCollapsed(panel.id, panel.collapsed);
+      }
+      syncVisiblePanels();
+      requestAnimationFrame(() => requestSave?.());
+    });
+    return converted > 1 || terminalLayout !== undefined;
   }
 
   let removeTerminalViewForTestImpl = (): Promise<void> => Promise.resolve();
@@ -863,14 +922,12 @@
         .then(() => {
           if (disposed) return;
           if (destination === "float") {
-            if (sourceRail) railOrigins.set(id, { rail: sourceRail, index: sourceIndex });
             currentWorkspace.addOrUpdatePanel({
               ...railPanelSpec(id, state),
               placement: { kind: "floating", bounds: floatBounds },
             });
             currentWorkspace.activatePanel(id);
           } else {
-            railOrigins.delete(id);
             receiver.addOrUpdatePanel(railPanelSpec(id, state), index);
             (receiver as Scrollview).setCollapsed(id, false);
             (receiver as Scrollview).scrollCardIntoView(id);
@@ -923,7 +980,7 @@
       const panels = [terminal, ...informationPanels, ...worldPanels, chatPanel];
       if (next.version === 1) {
         if (!currentWorkspace.restore(next, panels)) return false;
-        reclaimDockedRailPanels(currentWorkspace);
+        migrateVersionOneRailPanels(currentWorkspace);
         fillRailsWithDefaults();
         return true;
       }
@@ -939,7 +996,6 @@
       if (!currentWorkspace.restore({ version: 1, layout: next.layout.dockview }, panels)) {
         return false;
       }
-      reclaimDockedRailPanels(currentWorkspace);
       for (const [side, rail] of [
         ["left", leftRail],
         ["right", rightRail],
@@ -968,16 +1024,20 @@
 
     const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
     const snapshot = loaded.success ? loaded.snapshot : null;
+    const legacy = loaded.success && loaded.snapshot === null ? loaded.legacy : null;
     const loadMessage = !loaded.success
       ? loaded.message
       : loaded.snapshot === null
         ? loaded.message
         : "";
     const restored = snapshot !== null && restoreSnapshot(snapshot);
+    const convertedLegacy =
+      !restored && legacy !== null && applyLegacyLayout(currentWorkspace, legacy);
     if (!restored) {
-      applyDefaultLayout(currentWorkspace);
-      status =
-        snapshot === null
+      if (!convertedLegacy) applyDefaultLayout(currentWorkspace);
+      status = convertedLegacy
+        ? "Legacy workspace converted."
+        : snapshot === null
           ? loadMessage
           : "Saved workspace could not be restored; using the default layout.";
     } else if (currentWorkspace.hasPanel(terminal.id)) {
@@ -988,7 +1048,6 @@
       currentWorkspace.addOrUpdatePanel(terminal);
       status = "Restored workspace was missing the terminal; it has been re-added.";
     }
-    reclaimDockedRailPanels(currentWorkspace);
     syncVisiblePanels();
     if (debugGmcp) {
       void toggleGmcpDebugPanel();
@@ -1096,7 +1155,6 @@
           (rail?.ids() ?? []).map((panelId) => rail!.removePanel(panelId)),
         ),
       );
-      railOrigins.clear();
       await currentWorkspace.removePanel(terminal.id);
       await Promise.all(informationPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
       await Promise.all(worldPanels.map((panel) => currentWorkspace.removePanel(panel.id)));
@@ -1290,7 +1348,6 @@
         cancelPendingSave();
         return;
       }
-      reclaimDockedRailPanels(currentWorkspace);
       if (suppressPersistence || hasTransientPanels() || transferring.size > 0) cancelPendingSave();
       else scheduleSave(composeSnapshot());
       syncVisiblePanels();
@@ -1492,7 +1549,12 @@
               <fieldset class="df-panels-menu-group">
                 <legend>{group.title}</legend>
                 {#each group.items as item (item.panel.id)}
-                  <label>
+                  <label
+                    onpointerdown={(event) => {
+                      event.currentTarget.control?.focus();
+                      event.preventDefault();
+                    }}
+                  >
                     <input
                       type="checkbox"
                       checked={panelMenuItemOpen(item)}

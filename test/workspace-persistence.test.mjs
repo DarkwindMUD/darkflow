@@ -130,6 +130,44 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     });
   }
 
+  await t.test("legacy panel state converts visible placements from its active profile", () => {
+    const converted = persistence.convertLegacyWorkspace({
+      version: 1,
+      payload: {
+        activeLayout: "floating",
+        version: 2,
+        profiles: {
+          floating: {
+            panels: {
+              terminal: {
+                dock: "float", visible: true, collapsed: false, order: 0,
+                floatX: 272, floatY: 42, floatW: 1024, floatH: 960,
+              },
+              status: {
+                dock: "left", visible: true, collapsed: true, order: 1,
+                floatX: 0, floatY: 42, floatW: 256, floatH: 112,
+              },
+              avatar: { dock: "left", visible: false, order: 0 },
+            },
+          },
+        },
+      },
+    });
+
+    assert.deepEqual(converted, {
+      panels: [
+        {
+          id: "terminal", dock: "float", order: 0, collapsed: false,
+          bounds: { left: 272, top: 42, width: 1024, height: 960 }, state: {},
+        },
+        {
+          id: "status", dock: "left", order: 1, collapsed: true,
+          bounds: { left: 0, top: 42, width: 256, height: 112 }, state: {},
+        },
+      ],
+    });
+  });
+
   await t.test("migrated version 1 recovers and saves only the selected character", () => {
     const storage = createGraphStorage();
     const before = repository.readState(storage).data;
@@ -137,6 +175,7 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     assert.deepEqual(persistence.loadCharacterWorkspace(storage, characterAId), {
       success: true,
       snapshot: null,
+      legacy: null,
       recovered: true,
       message: "Saved workspace is incompatible; using the default layout.",
     });

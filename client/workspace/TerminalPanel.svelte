@@ -38,6 +38,16 @@
   let batchForm = $state<HTMLFormElement>();
   let island: TerminalIsland | undefined;
 
+  function focusCommandInput(event: MouseEvent): void {
+    if (!(event.target instanceof HTMLElement)) return;
+    const clickedOutput = event.target.closest(".terminal-output");
+    if (!clickedOutput) return;
+    const selection = window.getSelection();
+    if (!selection?.toString() || !clickedOutput.contains(selection.anchorNode)) {
+      commandInput?.focus();
+    }
+  }
+
   onMount(() => {
     if (!host) return;
     if (!session) {
@@ -64,6 +74,7 @@
     }
     if (!output || !commandInput || !sendButton || !batchDialog || !batchInput || !batchForm)
       return;
+    const outputShell = output.parentElement!;
     island = registerTerminalIsland(output, panelId);
     const terminal = createTerminalOutputCore({
       shell: output.parentElement!,
@@ -160,9 +171,11 @@
       getMappedCommand: session.terminal.getMappedCommand,
       returnOutputToLive: terminal.returnToLive,
     });
+    outputShell.addEventListener("click", focusCommandInput);
 
     return () => {
       window.removeEventListener("darkflow:client-settings-changed", refreshTerminalSettings);
+      outputShell.removeEventListener("click", focusCommandInput);
       geometryObserver.disconnect();
       if (geometryFrame) cancelAnimationFrame(geometryFrame);
       unregisterLineNavigator?.();
@@ -272,7 +285,8 @@
     overflow: auto;
     padding: 8px 12px;
     color: #c9d1d9;
-    font-family: var(--df-font-mono, monospace);
+    font-family: var(--df-terminal-font-family, var(--df-font-mono, monospace));
+    font-size: var(--df-terminal-font-size, inherit);
     line-height: 1.4;
     white-space: pre-wrap;
     overflow-wrap: break-word;

@@ -37,7 +37,7 @@ function graph(ids) {
     characterProfiles: {
       [ids.character]: {
         id: ids.character, serverProfileId: ids.server, label: "Main", configSetRefs: refs,
-        localDefinitions: definitions, commandHistory: ["look"], workspace: { version: 1, payload: { dockview: "kept" } },
+        localDefinitions: definitions, automationVariables: { target: "goblin" }, commandHistory: ["look"], workspace: { version: 1, payload: { dockview: "kept" } },
         audio: {
           ambient: { enabled: true, volume: 1 }, combat: { enabled: true, volume: 1 },
           notification: { enabled: true, volume: 1 },
@@ -73,6 +73,10 @@ test("settings bundle validates, round-trips three owners, and keeps unknown cli
   assert.deepEqual(prepared.data.clientSettings.deferred, { keep: true });
   assert.equal(prepared.data.clientSettings.repeatLastCommand, false);
   assert.equal(prepared.data.clientSettings.gmcpDebugEnabled, true);
+  assert.deepEqual(
+    Object.values(prepared.data.applicationState.characterProfiles)[0].automationVariables,
+    { target: "goblin" },
+  );
   assert.deepEqual(bundle.applySettingsImport(store, prepared.data), { success: true });
   assert.deepEqual(JSON.parse(store.getItem("darkwind-sound-settings")).categoryEnabled.combat, false);
 });
@@ -106,6 +110,8 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
     ["applicationState", {}],
     ["clientSettings", { ...validBundle.data.clientSettings, repeatLastCommand: "bad" }],
     ["clientSettings", { ...validBundle.data.clientSettings, gmcpDebugEnabled: "bad" }],
+    ["clientSettings", { ...validBundle.data.clientSettings, terminalFontFamily: "fantasy" }],
+    ["clientSettings", { ...validBundle.data.clientSettings, terminalFontSize: 17 }],
     ["sound", { ...validBundle.data.sound, volume: 2 }],
   ]) {
     const invalid = structuredClone(validBundle);
@@ -132,7 +138,7 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
   assert.equal(nullOwners.getItem("darkwind-sound-settings"), null);
 });
 
-test("legacy imports select the active scope and preserve workspace and history", async (t) => {
+test("legacy imports select the active scope, variables, and workspace", async (t) => {
   const server = await createServer({ configFile: path.join(repoRoot, "vite.config.ts"), appType: "custom", logLevel: "silent", server: { middlewareMode: true }, hmr: false, watch: null });
   t.after(() => server.close());
   const ssr = server.environments.ssr;
@@ -168,18 +174,38 @@ test("legacy imports select the active scope and preserve workspace and history"
     format: "darkwind-client-settings-export", formatVersion: 1,
     data: {
       settings: { theme: "nord", keyMappings: [{ code: "F2", command: "score" }] },
-      aliases: scoped({ aliases: [{ trigger: "q", steps: [{ type: "send_command", template: "quit" }] }] }),
+      aliases: scoped({ aliases: [{ trigger: "q", steps: [{ type: "send_command", template: "quit" }] }], variables: { target: "orc" } }),
       highlights: scoped({ rules: [] }), triggers: scoped({ triggers: [] }), timers: scoped({ timers: [] }), functions: scoped({ functions: [] }),
-      panels: { ignored: true }, sound: { enabled: false, volume: 0.3, categoryEnabled: { ambient: false } },
+      panels: {
+        version: 2,
+        profiles: {
+          classic: {
+            docks: { left: false, right: false },
+            panels: {
+              status: {
+                dock: "left", order: 1, collapsed: true, visible: true,
+                floatX: 20, floatY: 60, floatW: 280, floatH: 200,
+              },
+            },
+          },
+        },
+      },
+      sound: { enabled: false, volume: 0.3, categoryEnabled: { ambient: false } },
     },
   };
   const prepared = bundle.prepareSettingsImport(JSON.stringify(legacy), store, { characterProfileId: id.character });
   assert.equal(prepared.success, true, prepared.success ? "" : prepared.message);
-  assert.equal(prepared.data.preview.legacyLayoutWarning, "Legacy panel positions cannot be converted and will remain unchanged.");
+  assert.equal(
+    prepared.data.preview.legacyLayoutWarning,
+    "Legacy panel visibility, docking, order, collapse, size, and position will be converted where supported.",
+  );
   const character = prepared.data.applicationState.characterProfiles[id.character];
+  assert.equal(character.workspace.payload.activeLayout, "classic");
+  assert.equal(character.workspace.payload.profiles.classic.panels.status.collapsed, true);
   assert.deepEqual(character.commandHistory, ["look"]);
-  assert.deepEqual(character.workspace, { version: 1, payload: { dockview: "kept" } });
+  assert.equal(character.workspace.version, 1);
   assert.equal(character.localDefinitions.aliases[0].trigger, "q");
+  assert.deepEqual(character.automationVariables, { target: "orc" });
   assert.equal(character.localDefinitions.keyMappings[0].command, "score");
   assert.equal(prepared.data.clientSettings.untouched, true);
   assert.deepEqual(prepared.data.applicationState.characterProfiles[otherCharacter], preservedOther);

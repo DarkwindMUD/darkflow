@@ -49,7 +49,7 @@ import {
   readLegacySoundSettings,
   type LegacyScopedStore,
 } from "./legacy-keys";
-import { commit, hasValidState, writeProvenance, type StorageLike } from "./repository";
+import { commit, hasValidState, readState, writeProvenance, type StorageLike } from "./repository";
 import { DEFAULT_THEME_KEY, LEGACY_MIGRATION_WORLD_KEY, type MigrationProvenance } from "./schema";
 import { validateApplicationState } from "./validators";
 
@@ -75,7 +75,7 @@ export function migrateLegacyData(
   uuidFactory: UuidFactory,
 ): MigrationResult {
   if (hasValidState(storage)) {
-    return { success: true, skipped: true };
+    return backfillLegacyVariables(storage);
   }
 
   const skippedLegacyKeys: MigrationProvenance["skippedLegacyKeys"] = [];
@@ -166,9 +166,10 @@ export function migrateLegacyData(
         functionStore,
         keyMappings: isActiveScope ? activeKeyMappings : [],
       }),
+      automationVariables: extractVariables(aliasStore?.scopes[scopeKey]),
       commandHistory: isActiveScope ? normalizeCommandHistory(historyResult.value) : [],
       workspace: isActiveScope
-        ? buildWorkspaceSnapshot(panelResult.value)
+        ? buildWorkspaceSnapshot(panelResult.value, settingsResult.value)
         : createDefaultWorkspace(),
       audio: isActiveScope
         ? mapLegacySoundToCharacterAudio(soundResult.value)
@@ -227,6 +228,32 @@ export function migrateLegacyData(
   });
 
   return { success: true, skipped: false };
+}
+
+function backfillLegacyVariables(storage: StorageLike): MigrationResult {
+  const state = readState(storage);
+  if (!state.success || !state.data) return { success: true, skipped: true };
+  const missing = Object.values(state.data.characterProfiles).filter(
+    (character) => character.automationVariables === undefined,
+  );
+  if (!missing.length) return { success: true, skipped: true };
+
+  const aliases = readLegacyScopedStore(storage, LEGACY_ALIAS_STORAGE_KEY).value?.scopes ?? {};
+  for (const character of missing) {
+    const server = state.data.serverProfiles[character.serverProfileId];
+    const protocol = server?.protocol === "wss" || server?.protocol === "telnets" ? "wss" : "ws";
+    const scopeKey = server ? `${protocol}://${server.host}:${server.port}` : "";
+    character.automationVariables = extractVariables(aliases[character.id] ?? aliases[scopeKey]);
+  }
+
+  const result = commit(storage, state.data);
+  return result.success
+    ? { success: true, skipped: true }
+    : {
+        success: false,
+        code: result.code === "validation-failed" ? "validation-failed" : "commit-failed",
+        message: result.message,
+      };
 }
 
 function resolveConfigJson(configJson: unknown): ConfigJson {
@@ -604,9 +631,16 @@ function normalizeCommandHistory(history: string[] | undefined): string[] {
     .map((entry) => String(entry).slice(0, MAX_COMMAND_LENGTH));
 }
 
-function buildWorkspaceSnapshot(raw: unknown): WorkspaceSnapshot {
+function buildWorkspaceSnapshot(raw: unknown, settings: unknown): WorkspaceSnapshot {
   if (isObject(raw)) {
-    return { version: 1, payload: raw as WorkspaceSnapshot["payload"] };
+    return {
+      version: 1,
+      payload: {
+        ...(raw as WorkspaceSnapshot["payload"]),
+        activeLayout:
+          isObject(settings) && settings.workspaceLayout === "floating" ? "floating" : "classic",
+      },
+    };
   }
   return createDefaultWorkspace();
 }
@@ -653,6 +687,19 @@ function normalizeWhitespace(value: unknown): string {
   return String(value ?? "")
     .trim()
     .replace(/\s+/g, " ");
+}
+
+export function convertLegacyVariables(value: unknown): Record<string, string> | null {
+  if (!isObject(value)) return null;
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([name, entry]) => [normalizeWhitespace(name), String(entry ?? "")])
+      .filter(([name]) => Boolean(name)),
+  );
+}
+
+function extractVariables(scope: Record<string, unknown> | undefined): Record<string, string> {
+  return convertLegacyVariables(scope?.variables ?? {}) ?? {};
 }
 
 function normalizeColorToken(value: unknown): string {

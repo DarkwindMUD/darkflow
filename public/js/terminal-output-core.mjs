@@ -185,11 +185,15 @@ export function createTerminalOutputCore({
   };
   const activateSplit = () => {
     if (splitActive || !isSplitMode()) return;
+    const distanceFromBottom = output.scrollHeight - output.scrollTop - output.clientHeight;
     splitActive = true;
     paused = false;
     syncControls();
     renderPending();
-    historyOutput.scrollTop = output.scrollTop;
+    historyOutput.scrollTop = Math.max(
+      0,
+      historyOutput.scrollHeight - historyOutput.clientHeight - distanceFromBottom,
+    );
     liveOutput.scrollTop = liveOutput.scrollHeight;
   };
   const returnToLive = () => {

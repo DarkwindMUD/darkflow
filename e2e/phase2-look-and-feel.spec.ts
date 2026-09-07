@@ -396,7 +396,19 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   const resizeGrip = floatingFrame.locator(".dv-resize-handle-bottomright");
   await expect(resizeGrip).toBeVisible();
   await expect(resizeGrip).toHaveAttribute("title", "Resize Avatar");
-  await expect(resizeGrip).toHaveCSS("width", "4px");
+  await expect(resizeGrip).toHaveCSS("width", "16px");
+  await expect(resizeGrip).toHaveCSS("height", "16px");
+  await expect(resizeGrip).toHaveCSS("z-index", "999");
+  await expect(resizeGrip).toHaveCSS("cursor", "se-resize");
+  expect(
+    await resizeGrip.evaluate((grip) => {
+      const bounds = grip.getBoundingClientRect();
+      return (
+        document.elementFromPoint(bounds.x + bounds.width / 2, bounds.y + bounds.height / 2) ===
+        grip
+      );
+    }),
+  ).toBe(true);
   await expect(avatarFloating).toHaveCSS("height", "12px");
   await expect(floatingFrame).toHaveCSS("border-top-width", "0px");
   expect(await floatingFrame.evaluate((frame) => getComputedStyle(frame).boxShadow)).toContain(
@@ -427,17 +439,12 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   }
   const expandedBounds = await floatingFrame.boundingBox();
   expect(expandedBounds).not.toBeNull();
-  const gripBounds = await resizeGrip.boundingBox();
-  expect(gripBounds).not.toBeNull();
-  await page.mouse.move(
-    gripBounds!.x + gripBounds!.width / 2,
-    gripBounds!.y + gripBounds!.height / 2,
-  );
+  const gripX = expandedBounds!.x + expandedBounds!.width - 8;
+  const gripY = expandedBounds!.y + expandedBounds!.height - 8;
+  await page.mouse.move(gripX, gripY);
   await page.mouse.down();
-  await page.mouse.move(
-    gripBounds!.x + gripBounds!.width / 2 + 2,
-    gripBounds!.y + gripBounds!.height / 2 + 2,
-  );
+  await page.mouse.move(gripX, gripY);
+  await page.mouse.move(gripX + 20, gripY + 20);
   const resizedBounds = await floatingFrame.boundingBox();
   await page.mouse.up();
   expect(resizedBounds!.x).toBeCloseTo(expandedBounds!.x, 0);
@@ -459,7 +466,9 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   expect(collapsedBounds).not.toBeNull();
   expect(collapsedBounds!.height).toBeLessThan(expandedBounds!.height);
   expect(collapsedBounds!.y).toBeCloseTo(draggedBounds!.y, 0);
+  await expect(resizeGrip).toBeHidden();
   await avatarTab.getByRole("button", { name: "Expand Avatar" }).click();
+  await expect(resizeGrip).toBeVisible();
   await expect
     .poll(async () => (await draggedFrame.boundingBox())?.height ?? 0)
     .toBeGreaterThanOrEqual(expandedBounds!.height - 2);
@@ -475,6 +484,62 @@ test("persistent panes expose accessible collapse, float, and dock controls", as
   await avatarTab.getByRole("button", { name: "Close Avatar" }).click();
   await expect(avatarTab).toHaveCount(0);
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+});
+
+test("preserved floating content leaves its resize grip interactive", async ({
+  page,
+}, testInfo) => {
+  test.skip(isMobileProject(testInfo), "floating resize is a desktop affordance");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openPhase2(page);
+
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Chat", exact: true }).click();
+  const frame = page.locator('[data-floating-drag-handle][data-panel-id="chat"]').locator("..");
+  const grip = frame.locator(".dv-resize-handle-bottomright");
+  await expect(grip).toBeVisible();
+  await expect(grip).toHaveCSS("cursor", "se-resize");
+  expect(
+    await grip.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return document.elementFromPoint(bounds.right - 8, bounds.bottom - 8) === element;
+    }),
+  ).toBe(true);
+
+  const before = await frame.boundingBox();
+  expect(before).not.toBeNull();
+  const x = before!.x + before!.width - 8;
+  const y = before!.y + before!.height - 8;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x, y);
+  await page.mouse.move(x + 20, y + 20);
+  await page.mouse.up();
+  const after = await frame.boundingBox();
+  expect(after!.x).toBeCloseTo(before!.x, 0);
+  expect(after!.y).toBeCloseTo(before!.y, 0);
+  expect(after!.width).toBeGreaterThan(before!.width);
+  expect(after!.height).toBeGreaterThan(before!.height);
+
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const host = page.getByTestId("workspace-host");
+  await expect
+    .poll(async () => {
+      const [frameBounds, hostBounds] = await Promise.all([
+        frame.boundingBox(),
+        host.boundingBox(),
+      ]);
+      return frameBounds && hostBounds
+        ? frameBounds.x + frameBounds.width <= hostBounds.x + hostBounds.width
+        : false;
+    })
+    .toBe(true);
+  expect(
+    await grip.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      return document.elementFromPoint(bounds.right - 8, bounds.bottom - 8) === element;
+    }),
+  ).toBe(true);
 });
 
 test("rail cards size to content under one scrollbar and reorder by drag", async ({

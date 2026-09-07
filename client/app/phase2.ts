@@ -3,6 +3,7 @@ import { mount, unmount } from "svelte";
 import App from "./App.svelte";
 import {
   clearPhase1RuntimeSlot,
+  fetchRuntimeClientVersion,
   publishBootstrapPhase,
   readPhase1RuntimeSlot,
   runBootTransaction,
@@ -16,6 +17,7 @@ import {
   type ConfigJson,
 } from "../storage/config-validator";
 import type { TransportEndpoint, TransportName } from "../transport/types";
+import { readLastLoginHost } from "./client-settings";
 
 declare global {
   interface Window {
@@ -66,7 +68,11 @@ function resolvePhase2Endpoint(
 
   const baselineHost = baseline.host.trim().toLowerCase() === "default" ? "" : baseline.host;
   return {
-    host: params.get("host")?.trim() || config.host.trim() || baselineHost,
+    host:
+      params.get("host")?.trim() ||
+      config.host.trim() ||
+      baselineHost ||
+      readLastLoginHost(storage),
     port:
       params.get("port")?.trim() || (config.host ? String(config.port) : baseline.port) || "4242",
     protocol: isProtocol(protocol) ? protocol : baseline.protocol,
@@ -104,6 +110,7 @@ try {
       config = result.success && result.data ? result.data : DEFAULT_CONFIG_JSON;
       return config;
     },
+    fetchClientVersion: fetchRuntimeClientVersion,
     importModule: importPublicModule,
     loadClient: async (record) => {
       await record.session.terminal.startProcessing();

@@ -185,8 +185,8 @@ export interface GuildVitalsItem {
   pct?: number;
   severity?: string;
   tip?: string;
-  on?: boolean;
-  flags?: Array<{ label: string; on?: boolean; tip?: string; [key: string]: unknown }>;
+  on?: boolean | 0 | 1;
+  flags?: Array<{ label: string; on?: boolean | 0 | 1; tip?: string; [key: string]: unknown }>;
   value?: string;
   display?: string;
   remaining?: number;

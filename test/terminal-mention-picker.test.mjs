@@ -405,6 +405,9 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   document.body.focus();
   document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
   assert.equal(executed.at(-1), "score");
+  assert.equal(document.activeElement, document.body);
+  document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
+  assert.deepEqual(executed.slice(-2), ["score", "score"]);
 
   controller.dispose();
   assert.equal(notifications.listeners.size, 0);

@@ -2,7 +2,7 @@
   import Newspaper from "@lucide/svelte/icons/newspaper";
   import Settings from "@lucide/svelte/icons/settings";
   import { untrack } from "svelte";
-  import type { ShellBootstrap } from "./bootstrap-transaction.ts";
+  import { fetchRuntimeClientVersion, type ShellBootstrap } from "./bootstrap-transaction.ts";
   import type { Session, SessionConnectionSnapshot } from "../runtime/session.ts";
   import type { ConnectionHealthSnapshot } from "../runtime/connection-health.ts";
   import type { TransportEndpoint, TransportName } from "../transport/types.ts";
@@ -18,7 +18,7 @@
   import SnoopOverlay from "./SnoopOverlay.svelte";
   import TutorialOverlay from "./TutorialOverlay.svelte";
   import VisualEffectsLayer from "./VisualEffectsLayer.svelte";
-  import { loadClientSettings } from "./client-settings.ts";
+  import { loadClientSettings, saveLastLoginHost } from "./client-settings.ts";
   // @ts-expect-error Legacy UI module has no declaration file.
   import { gameTitle } from "../../public/js/brand.js";
   // @ts-expect-error Legacy UI module has no declaration file.
@@ -61,9 +61,10 @@
     restoreTerminalViewForTest(): Promise<void>;
   }>();
   let updateStatus = $state<UpdateStatus | null>(null);
-  let clientVersion = $state<string | null>(null);
+  let clientVersion = $state<string | null>(untrack(() => shell.clientVersion));
   let settingsOpen = $state(false);
   let settingsButton = $state<HTMLButtonElement>();
+  let settingsDialog = $state<{ close(): void }>();
   let announcementsOpen = $state(false);
   let announcementsButton = $state<HTMLButtonElement>();
   let interactionSnapshot = $state(untrack(() => session.interactions.getSnapshot()));
@@ -141,6 +142,18 @@
       "--df-terminal-background-alpha",
       String(settings.terminalBackgroundOpacity / 100),
     );
+    if (settings.terminalFontFamily)
+      document.documentElement.style.setProperty(
+        "--df-terminal-font-family",
+        settings.terminalFontFamily,
+      );
+    else document.documentElement.style.removeProperty("--df-terminal-font-family");
+    if (settings.terminalFontSize)
+      document.documentElement.style.setProperty(
+        "--df-terminal-font-size",
+        `${settings.terminalFontSize}px`,
+      );
+    else document.documentElement.style.removeProperty("--df-terminal-font-size");
   }
 
   $effect(() => {
@@ -213,13 +226,19 @@
   $effect(() => {
     session.setConnectionEndpoint(endpoint);
     const unsubscribe = session.subscribeConnection((next) => {
+      if (next.state === "connected" && snapshot.state !== "connected") {
+        saveLastLoginHost(localStorage, next.endpoint.host);
+      }
       snapshot = next;
     });
     if (shell.shouldAutoConnect) session.connect();
     return unsubscribe;
   });
 
-  $effect(() => session.setConnectionEndpoint(readConnectionEndpoint()));
+  $effect(() => {
+    session.setConnectionEndpoint(readConnectionEndpoint());
+    if (!host.trim() && snapshot.reconnect?.status === "scheduled") session.disconnect();
+  });
 
   $effect(() => {
     if (snapshot.reconnect?.status !== "scheduled") return;
@@ -251,19 +270,14 @@
 
     let disposed = false;
     const fetchVersion = async () => {
-      try {
-        const response = await fetch("/api/version", { cache: "no-store" });
-        const data = (await response.json()) as { version?: string };
-        if (!disposed && data.version) {
-          if (clientVersion && clientVersion !== data.version)
-            updateStatus = { state: "browser-update" };
-          clientVersion = data.version;
-        }
-      } catch {
-        // Version checks are advisory in browser mode.
+      const version = await fetchRuntimeClientVersion();
+      if (!disposed && version) {
+        if (clientVersion && clientVersion !== "unknown" && clientVersion !== version)
+          updateStatus = { state: "browser-update" };
+        clientVersion = version;
       }
     };
-    void fetchVersion();
+    if (clientVersion === "unknown") void fetchVersion();
     const timer = setInterval(
       () => {
         if (document.visibilityState === "visible") void fetchVersion();
@@ -278,7 +292,7 @@
 
   function readConnectionEndpoint(): TransportEndpoint {
     return {
-      host: host.trim() || "localhost",
+      host: host.trim(),
       port: port.trim() || "4242",
       protocol,
     };
@@ -413,6 +427,12 @@
       {/if}
 
       <button
+        type="submit"
+        hidden
+        disabled={snapshot.state !== "disconnected" || (!shell.zorkOnly && !host.trim())}
+        >Connect</button
+      >
+      <button
         id="connect-btn"
         class:connected={snapshot.state === "connected"}
         class:connecting={snapshot.state === "connecting"}
@@ -472,7 +492,8 @@
         type="button"
         title="Settings"
         aria-label="Settings"
-        onclick={() => (settingsOpen = true)}
+        aria-expanded={settingsOpen}
+        onclick={() => (settingsOpen ? settingsDialog?.close() : (settingsOpen = true))}
       >
         <Settings size={16} />
       </button>
@@ -490,6 +511,7 @@
 </main>
 
 <SettingsDialog
+  bind:this={settingsDialog}
   {clientVersion}
   open={settingsOpen}
   {session}

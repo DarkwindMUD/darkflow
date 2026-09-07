@@ -7,6 +7,7 @@ import { normalizeBackgroundKey } from "../../public/js/background-manager.js";
 import { BUILTIN_THEMES, normalizeTheme } from "../../public/js/theme-manager.js";
 
 export const CLIENT_SETTINGS_STORAGE_KEY = "darkwind-client-settings";
+export const LAST_LOGIN_HOST_STORAGE_KEY = "darkflow-last-login-host";
 const SETTINGS_WINDOW_STATE_KEY = "darkwind-settings-window";
 const SETTINGS_WINDOW_STATE_VERSION = 1;
 const SETTINGS_WINDOW_MIN_WIDTH = 560;
@@ -23,6 +24,25 @@ export interface SettingsWindowState {
 
 export type ScrollbackBehavior = "pause" | "split";
 export type OutputScrollbackPreset = "low" | "normal" | "high";
+
+export const TERMINAL_FONT_FAMILIES = [
+  {
+    label: "Monospace",
+    value:
+      'ui-monospace, "SFMono-Regular", Menlo, Monaco, "Consolas", "Liberation Mono", monospace',
+  },
+  {
+    label: "System sans-serif",
+    value: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  },
+  { label: "Serif", value: 'Georgia, "Times New Roman", Times, serif' },
+  { label: "Courier", value: '"Courier New", Courier, monospace' },
+  { label: "Verdana", value: "Verdana, Geneva, Tahoma, sans-serif" },
+  { label: "Comic Sans", value: '"Comic Sans MS", "Comic Sans", cursive' },
+] as const;
+export const TERMINAL_FONT_SIZES = [
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64,
+] as const;
 
 export interface CustomTheme {
   key: string;
@@ -50,6 +70,8 @@ export interface Phase2ClientSettings {
   background: string;
   sideRailOpacity: number;
   terminalBackgroundOpacity: number;
+  terminalFontFamily: string | null;
+  terminalFontSize: number | null;
   customThemes: Record<string, CustomTheme>;
   autoReconnect: boolean;
   settingsBackupPromptEnabled: boolean;
@@ -72,6 +94,8 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   background: "none",
   sideRailOpacity: 82,
   terminalBackgroundOpacity: 55,
+  terminalFontFamily: null,
+  terminalFontSize: null,
   customThemes: {},
   autoReconnect: true,
   settingsBackupPromptEnabled: true,
@@ -82,6 +106,24 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
 export type ClientSettingsResult =
   | { success: true; settings: Phase2ClientSettings }
   | { success: false; message: string; settings: Phase2ClientSettings };
+
+export function readLastLoginHost(storage: Pick<Storage, "getItem">): string {
+  try {
+    return storage.getItem(LAST_LOGIN_HOST_STORAGE_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function saveLastLoginHost(storage: Pick<Storage, "setItem">, host: string): void {
+  const value = host.trim();
+  if (!value) return;
+  try {
+    storage.setItem(LAST_LOGIN_HOST_STORAGE_KEY, value);
+  } catch {
+    // The successful connection remains usable when storage is unavailable.
+  }
+}
 
 function readObject(storage: Pick<Storage, "getItem">): Record<string, unknown> {
   const raw = storage.getItem(CLIENT_SETTINGS_STORAGE_KEY);
@@ -127,6 +169,18 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
       Number.isFinite(settings.terminalBackgroundOpacity)
         ? Math.round(Math.max(0, Math.min(100, settings.terminalBackgroundOpacity)))
         : 55,
+    terminalFontFamily:
+      typeof settings.terminalFontFamily === "string" &&
+      TERMINAL_FONT_FAMILIES.some(({ value }) => value === settings.terminalFontFamily)
+        ? settings.terminalFontFamily
+        : null,
+    terminalFontSize:
+      typeof settings.terminalFontSize === "number" &&
+      TERMINAL_FONT_SIZES.includes(
+        settings.terminalFontSize as (typeof TERMINAL_FONT_SIZES)[number],
+      )
+        ? settings.terminalFontSize
+        : null,
     customThemes: normalizeCustomThemes(settings.customThemes),
     autoReconnect: settings.autoReconnect !== false,
     settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
@@ -305,6 +359,18 @@ export function validateClientSettingsDocument(
     )
       return { success: false, message: `Client setting ${key} is invalid.` };
   }
+  if (
+    "terminalFontFamily" in value &&
+    value.terminalFontFamily !== null &&
+    !TERMINAL_FONT_FAMILIES.some(({ value: family }) => family === value.terminalFontFamily)
+  )
+    return { success: false, message: "Client setting terminalFontFamily is invalid." };
+  if (
+    "terminalFontSize" in value &&
+    value.terminalFontSize !== null &&
+    !TERMINAL_FONT_SIZES.includes(value.terminalFontSize as (typeof TERMINAL_FONT_SIZES)[number])
+  )
+    return { success: false, message: "Client setting terminalFontSize is invalid." };
   if (
     "terminalWidthColumns" in value &&
     value.terminalWidthColumns !== null &&

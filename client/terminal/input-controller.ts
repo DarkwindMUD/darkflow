@@ -89,6 +89,19 @@ export function createTerminalInputController({
     historyIndex = history.length;
     saveHistory();
   };
+  const execute = (text: string) => {
+    if (!(executeCommand ?? session.terminal.sendCommand)(text)) {
+      appendSystemMessage("Not connected.");
+      return false;
+    }
+    if (text) {
+      appendEcho(text);
+      pushHistory(text);
+    }
+    mentionPicker.close();
+    completion.reset();
+    return true;
+  };
   const completion = createCompletionController({
     input,
     getHistory: () => history,
@@ -117,16 +130,7 @@ export function createTerminalInputController({
 
   const send = () => {
     const text = input.value;
-    if (!(executeCommand ?? session.terminal.sendCommand)(text)) {
-      appendSystemMessage("Not connected.");
-      return false;
-    }
-    if (text) {
-      appendEcho(text);
-      pushHistory(text);
-    }
-    mentionPicker.close();
-    completion.reset();
+    if (!execute(text)) return false;
     if (loadClientSettings(localStorage).settings.repeatLastCommand && text) {
       input.value = text;
       input.select();
@@ -214,7 +218,7 @@ export function createTerminalInputController({
     const mappedCommand = getMappedCommand?.(event);
     if (mappedCommand) {
       event.preventDefault();
-      sendCommand(mappedCommand);
+      execute(mappedCommand);
       return;
     }
     if (event.key === "Escape") {

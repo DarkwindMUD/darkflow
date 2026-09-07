@@ -25,6 +25,29 @@ function panelDragHandle(page: Page, panelId: string): Locator {
   return page.locator(`[data-panel-drag-handle][data-panel-id="${panelId}"]`);
 }
 
+test("desktop panel selector toggles from its label and trigger", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop menu only");
+  await openWorkspace(page);
+
+  const trigger = page.getByRole("button", { name: "Panels", exact: true });
+  const menu = page.locator(".df-panels-menu-list");
+  const avatar = page.getByRole("checkbox", { name: "Avatar", exact: true });
+
+  await trigger.click();
+  await expect(menu).toBeVisible();
+  await avatar.locator("..").getByText("Avatar", { exact: true }).click();
+  await expect(avatar).not.toBeChecked();
+  await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
+  await expect(menu).toBeVisible();
+
+  await avatar.click();
+  await expect(avatar).toBeChecked();
+  await expect(panelDragHandle(page, "avatar")).toBeVisible();
+
+  await trigger.click();
+  await expect(menu).toBeHidden();
+});
+
 /** Open the Panels menu and toggle Avatar (dirties the layout to trigger a save). */
 async function toggleAvatar(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Panels", exact: true }).click();
@@ -125,6 +148,69 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await disposeSession(page);
   await expect(page.getByTestId("phase2-shell")).toHaveCount(0);
   await expect(page.locator('[data-workspace-owned="true"]')).toHaveCount(0);
+});
+
+test("legacy panel state converts rail order, collapse, and floating bounds", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop layout conversion only");
+  await openWorkspace(page);
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+    character.workspace = {
+      version: 1,
+      payload: {
+        activeLayout: "classic",
+        version: 2,
+        profiles: {
+          classic: {
+            panels: {
+              avatar: { dock: "left", order: 0, collapsed: false, visible: false },
+              status: { dock: "left", order: 1, collapsed: true, visible: true },
+              chat: {
+                dock: "float",
+                order: 0,
+                collapsed: false,
+                visible: true,
+                floatX: 300,
+                floatY: 200,
+                floatW: 420,
+                floatH: 260,
+              },
+            },
+          },
+        },
+      },
+    };
+    localStorage.setItem("darkflow-session-core-v1", JSON.stringify(state));
+  });
+
+  await page.reload();
+  await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
+  await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
+  const chatFrame = page.locator('[data-floating-drag-handle][data-panel-id="chat"]').locator("..");
+  await expect(chatFrame).toBeVisible();
+  await expect
+    .poll(async () => await chatFrame.boundingBox())
+    .toMatchObject({ x: 300, y: 200, width: 420, height: 260 });
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+        return character.workspace.version;
+      }),
+    )
+    .toBe(2);
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
+  await expect
+    .poll(async () => await chatFrame.boundingBox())
+    .toMatchObject({ x: 300, y: 200, width: 420, height: 260 });
 });
 
 test("Phase 2 preserves center panel proportions across reload", async ({ page }, testInfo) => {
@@ -269,6 +355,25 @@ test("eligible docked tabs move directly into either rail", async ({ page }, tes
   expect(await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1"))).toBe(
     desktopBytes,
   );
+});
+
+test("a panel floated from a rail can stay docked in the center", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "desktop center docking only");
+  await openWorkspace(page);
+
+  await page.getByRole("button", { name: "Float Avatar", exact: true }).click();
+  await expect(page.locator('.dv-floating-titlebar[data-panel-id="avatar"]')).toBeVisible();
+
+  await dockPanelAsTab(page, "avatar", "terminal");
+  await expect(page.locator('.dv-floating-titlebar[data-panel-id="avatar"]')).toHaveCount(0);
+  await expect(page.locator('.dv-dockview .dv-default-tab[data-panel-id="avatar"]')).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="avatar"]')).toHaveCount(0);
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  await expect(page.locator('.dv-dockview .dv-default-tab[data-panel-id="avatar"]')).toBeVisible();
+  await expect(page.locator('[data-rail="left"] > [data-panel-id="avatar"]')).toHaveCount(0);
 });
 
 test("duplicate persisted ownership keeps the Dockview panel", async ({ page }, testInfo) => {

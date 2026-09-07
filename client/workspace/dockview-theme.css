@@ -60,6 +60,18 @@ html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating
   border-color: color-mix(in srgb, var(--df-accent-blue, #58a6ff) 55%, var(--df-border, #30363d));
 }
 
+/* Preserved floating content is portalled above its frame; leave its resize corner interactive. */
+.df-workspace .dv-render-overlay-float {
+  clip-path: polygon(
+    0 0,
+    100% 0,
+    100% calc(100% - 16px),
+    calc(100% - 16px) calc(100% - 16px),
+    calc(100% - 16px) 100%,
+    0 100%
+  );
+}
+
 /* Compact uppercase pane titles. */
 .df-workspace .dv-default-tab-content {
   font-family: var(--df-font-ui, var(--df-font-sans, inherit));
@@ -195,13 +207,23 @@ html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating
 
 /* Dockview already owns resizing; make its bottom-right handle discoverable. */
 .df-workspace .dv-resize-container-with-titlebar > .dv-resize-handle-bottomright {
-  z-index: 5;
+  right: 0;
+  bottom: 0;
+  z-index: 999;
+  width: 16px;
+  height: 16px;
+}
+
+.df-workspace
+  .dv-resize-container-with-titlebar:has(.dv-groupview[data-collapsed="true"])
+  > .dv-resize-handle-bottomright {
+  display: none;
 }
 
 .df-workspace .dv-resize-container-with-titlebar > .dv-resize-handle-bottomright::before {
   position: absolute;
-  right: -2px;
-  bottom: -2px;
+  right: 0;
+  bottom: 0;
   width: 16px;
   height: 16px;
   background: linear-gradient(

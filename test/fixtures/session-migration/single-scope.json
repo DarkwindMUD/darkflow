@@ -19,7 +19,9 @@
             ]
           }
         ],
-        "variables": {}
+        "variables": {
+          "target": "orc"
+        }
       }
     }
   },

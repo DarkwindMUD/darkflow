@@ -1,5 +1,11 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
+
+const packageMetadata = JSON.parse(
+  readFileSync(path.join(process.cwd(), "package.json"), "utf8"),
+) as { version: string };
 
 declare global {
   interface Window {
@@ -48,6 +54,10 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   await expect
     .poll(() => gmcpPayload(endpoint.gmcpMessages, "Darkwind.Client.NAWS"))
     .not.toBeNull();
+  expect(gmcpPayload(endpoint.gmcpMessages, "Core.Hello")).toMatchObject({
+    client: "Darkflow",
+    version: packageMetadata.version,
+  });
   const automatic = gmcpPayload(endpoint.gmcpMessages, "Darkwind.Client.NAWS")!;
   expect(automatic.width).toBeGreaterThanOrEqual(40);
   expect(automatic.height).toBeGreaterThanOrEqual(8);
@@ -275,6 +285,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     "desktop layout-island test; mobile is terminal-centric",
   );
   const output = page.getByLabel("Terminal output", { exact: true });
+  const input = page.getByLabel("Command input", { exact: true });
   const identity = await output.getAttribute("data-terminal-identity");
   await expect(output).toContainText(endpoint.prompt);
 
@@ -331,9 +342,27 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   expect(await output.textContent()).toBe(beforeLayout);
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();
-  await expect(output).toBeFocused();
+  await expect(input).toBeFocused();
+
+  const selectionBox = await output.locator(".ansi-fg-red").boundingBox();
+  expect(selectionBox).not.toBeNull();
+  await input.evaluate((element) => element.blur());
+  await page.mouse.move(selectionBox!.x + 1, selectionBox!.y + selectionBox!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    selectionBox!.x + selectionBox!.width - 1,
+    selectionBox!.y + selectionBox!.height / 2,
+  );
+  await page.mouse.up();
+  await expect(input).not.toBeFocused();
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("phase two ANSI");
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
 
   const terminalHandle = page.locator('[data-panel-drag-handle][data-panel-id="terminal"]');
+  await terminalHandle.locator(".dv-default-tab-content").selectText();
+  await output.dispatchEvent("click");
+  await expect(input).toBeFocused();
+  await page.evaluate(() => window.getSelection()?.removeAllRanges());
   await page.keyboard.down("Shift");
   await dragBy(page, terminalHandle, 80, 60);
   await page.keyboard.up("Shift");
@@ -372,7 +401,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(floatingHandle).toHaveCount(0);
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();
-  await expect(output).toBeFocused();
+  await expect(input).toBeFocused();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
   expect(await output.textContent()).toBe(beforeLayout);
 
@@ -387,7 +416,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(output).toBeEmpty();
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();
-  await expect(output).toBeFocused();
+  await expect(input).toBeFocused();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
 
   await page.evaluate(() => {
@@ -449,9 +478,24 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   expect(endpoint.commands).not.toContain("score");
   await input.evaluate((element) => element.blur());
   await page.keyboard.press("F2");
+  await page.keyboard.press("F2");
   await expect
     .poll(() => endpoint.commands)
-    .toEqual(expect.arrayContaining(["look", "wave", "say true", "score", "tick"]));
+    .toEqual(expect.arrayContaining(["look", "wave", "say true", "tick"]));
+  expect(endpoint.commands.filter((command) => command === "score")).toHaveLength(2);
+
+  await input.fill("look sw");
+  await input.press("Tab");
+  await expect
+    .poll(() => endpoint.gmcpMessages)
+    .toContain('Darkwind.Completion.Request {"line":"look sw","cursor":7}');
+  endpoint.sendGmcp("Darkwind.Completion.Result", {
+    line: "look sword ",
+    cursor: 11,
+    matches: ["sword"],
+    ambiguous: 0,
+  });
+  await expect(input).toHaveValue("look sword ");
 
   endpoint.sendText("dan");
   endpoint.sendText("ger\nplain gl");
@@ -492,7 +536,21 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await expect(page.getByLabel("Scrollback history", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Live output", { exact: true })).toBeVisible();
   await expect(output).toBeHidden();
+  const historyOutput = page.getByLabel("Scrollback history", { exact: true });
+  const liveOutput = page.getByLabel("Live output", { exact: true });
+  await expect
+    .poll(() => historyOutput.evaluate((element) => element.scrollTop))
+    .toBeGreaterThan(0);
+  await input.evaluate((element) => element.blur());
+  await historyOutput.click();
+  await expect(input).toBeFocused();
+  await input.evaluate((element) => element.blur());
+  await liveOutput.click();
+  await expect(input).toBeFocused();
   const divider = page.getByRole("separator", { name: "Resize terminal history" });
+  await input.evaluate((element) => element.blur());
+  await divider.click();
+  await expect(input).not.toBeFocused();
   await expect
     .poll(() => divider.evaluate((element) => getComputedStyle(element).backgroundImage))
     .not.toBe("none");
@@ -520,6 +578,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
     )
     .toBeCloseTo(expectedRatio, 2);
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(input).not.toBeFocused();
   await expect(output).toBeVisible();
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();

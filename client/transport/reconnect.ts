@@ -195,6 +195,10 @@ export function createReconnectController(deps: ReconnectDeps): ReconnectControl
       if (timers.reconnectRelease) {
         return;
       }
+      if (!deps.getEndpoint().host.trim()) {
+        controller.emitReconnectStatus({ status: "idle" });
+        return;
+      }
       state.reconnectAttempts += 1;
       const delay = controller.computeBackoffDelay();
       controller.emitReconnectStatus({
@@ -210,6 +214,10 @@ export function createReconnectController(deps: ReconnectDeps): ReconnectControl
 
     scheduleRetry(delayMs, reason) {
       controller.cancelReconnectTimer();
+      if (!deps.getEndpoint().host.trim()) {
+        controller.emitReconnectStatus({ status: "idle", reason });
+        return;
+      }
       controller.emitReconnectStatus({
         status: "scheduled",
         delayMs,

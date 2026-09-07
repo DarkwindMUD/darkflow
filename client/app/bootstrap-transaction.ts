@@ -48,6 +48,7 @@ export interface Phase1RuntimeRecord {
 export interface ShellBootstrap {
   gameName: string;
   themeKey: string;
+  clientVersion: string;
   shouldAutoConnect: boolean;
   zorkOnly: boolean;
 }
@@ -89,6 +90,7 @@ export interface BootTransactionDeps {
   urlSearchParams: URLSearchParams;
   uuidFactory: () => string;
   fetchConfig: () => Promise<unknown>;
+  fetchClientVersion: () => Promise<string | null>;
   importModule: <T = Record<string, unknown>>(entry: string) => Promise<T>;
   loadClient: (record: Phase1RuntimeRecord) => Promise<void>;
   setBootstrapPhase: (phase: BootstrapDiagnostic["phase"]) => void;
@@ -109,6 +111,17 @@ export interface BootTransactionDeps {
 export interface BootTransactionResult {
   kind: "created" | "reused";
   record: Phase1RuntimeRecord;
+}
+
+export async function fetchRuntimeClientVersion(): Promise<string | null> {
+  try {
+    const response = await fetch("/api/version", { cache: "no-store" });
+    if (!response.ok) return null;
+    const data = (await response.json()) as { version?: unknown };
+    return typeof data.version === "string" && data.version.trim() ? data.version.trim() : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Reads the persistent same-document runtime slot, ignoring disposed sessions. */
@@ -246,7 +259,10 @@ export async function runBootTransaction(
   let createdSession: Session | null = null;
 
   try {
-    const configRaw = await deps.fetchConfig();
+    const [configRaw, clientVersion] = await Promise.all([
+      deps.fetchConfig(),
+      deps.fetchClientVersion(),
+    ]);
     const configResult = validateConfigJsonInput(configRaw);
     const config: ConfigJson =
       configResult.success && configResult.data ? configResult.data : DEFAULT_CONFIG_JSON;
@@ -296,6 +312,8 @@ export async function runBootTransaction(
         soundManager: import("../runtime/audio.ts").RetainedSoundManager;
       }>("/js/sound-manager.js"),
     ]);
+
+    if (clientVersion) state.clientVersion = clientVersion;
 
     const registry = createSessionRegistry();
     const sessionResult = createSessionFromState(
@@ -392,6 +410,7 @@ export async function runBootTransaction(
       shell: {
         gameName: config.gameName,
         themeKey: applicationState.defaults.themeKey,
+        clientVersion: state.clientVersion || "unknown",
         shouldAutoConnect: zorkOnly || Boolean(deps.urlSearchParams.get("host") || config.host),
         zorkOnly,
       },

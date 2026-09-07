@@ -4,6 +4,8 @@
   import DefinitionEditor from "./DefinitionEditor.svelte";
   import {
     DEFAULT_PHASE2_CLIENT_SETTINGS,
+    TERMINAL_FONT_FAMILIES,
+    TERMINAL_FONT_SIZES,
     loadClientSettings,
     loadSettingsWindowState,
     saveClientSettings,
@@ -79,7 +81,12 @@
   let connection = $state(untrack(() => session.getConnectionSnapshot()));
   let health = $state(untrack(() => session.connectionHealth.getSnapshot()));
   let drag: { x: number; y: number } | null = null;
-  let originalOpacity: { sideRail: number; terminal: number } | null = null;
+  let originalAppearance: {
+    sideRailOpacity: number;
+    terminalBackgroundOpacity: number;
+    terminalFontFamily: string | null;
+    terminalFontSize: number | null;
+  } | null = null;
   let importInput = $state<HTMLInputElement>();
   let preparedImport = $state<PreparedSettingsBundle | null>(null);
   let closeIntent = $state<"discard" | "apply" | null>(null);
@@ -95,9 +102,11 @@
   function loadDraft(): void {
     const result = loadClientSettings(localStorage);
     settings = { ...result.settings };
-    originalOpacity = {
-      sideRail: result.settings.sideRailOpacity,
-      terminal: result.settings.terminalBackgroundOpacity,
+    originalAppearance = {
+      sideRailOpacity: result.settings.sideRailOpacity,
+      terminalBackgroundOpacity: result.settings.terminalBackgroundOpacity,
+      terminalFontFamily: result.settings.terminalFontFamily,
+      terminalFontSize: result.settings.terminalFontSize,
     };
     theme = session.configuration.getSnapshot().themeKey;
     variables = session.terminal.automation
@@ -123,6 +132,7 @@
       theme,
       localDefinitions: configuration.localDefinitions,
       attachedConfigurationSets: configuration.attachedConfigurationSets,
+      variables,
       sound: soundSettings(),
     });
   }
@@ -300,7 +310,7 @@
     for (const name of runtime.listVariableNames())
       if (!nextNames.has(name)) runtime.removeVariable(name);
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
-    originalOpacity = null;
+    originalAppearance = null;
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
     dialog?.close();
@@ -343,11 +353,10 @@
       };
       const saved = saveClientSettings(
         localStorage,
-        originalOpacity
+        originalAppearance
           ? {
               ...nextSettings,
-              sideRailOpacity: originalOpacity.sideRail,
-              terminalBackgroundOpacity: originalOpacity.terminal,
+              ...originalAppearance,
             }
           : nextSettings,
         key,
@@ -364,6 +373,8 @@
       window.dispatchEvent(new Event("darkflow:client-settings-changed"));
       previewSideRailOpacity(String(settings.sideRailOpacity));
       previewTerminalOpacity(String(settings.terminalBackgroundOpacity));
+      previewTerminalFontFamily(settings.terminalFontFamily ?? "");
+      previewTerminalFontSize(settings.terminalFontSize ? String(settings.terminalFontSize) : "");
       status = "Theme imported.";
     } catch (error) {
       status =
@@ -376,7 +387,7 @@
     persistWindow();
     dialog?.close();
   }
-  function close(): void {
+  export function close(): void {
     requestClose("discard");
   }
   function requestClose(intent: "discard" | "apply"): void {
@@ -412,16 +423,20 @@
     finishClose();
   }
   function handleDialogClose(): void {
-    if (originalOpacity) {
+    if (originalAppearance) {
       document.documentElement.style.setProperty(
         "--df-side-rail-opacity",
-        `${originalOpacity.sideRail}%`,
+        `${originalAppearance.sideRailOpacity}%`,
       );
       document.documentElement.style.setProperty(
         "--df-terminal-background-alpha",
-        String(originalOpacity.terminal / 100),
+        String(originalAppearance.terminalBackgroundOpacity / 100),
       );
-      originalOpacity = null;
+      previewTerminalFontFamily(originalAppearance.terminalFontFamily ?? "");
+      previewTerminalFontSize(
+        originalAppearance.terminalFontSize ? String(originalAppearance.terminalFontSize) : "",
+      );
+      originalAppearance = null;
     }
     onclose();
   }
@@ -435,6 +450,16 @@
       "--df-terminal-background-alpha",
       String(Number(value) / 100),
     );
+  }
+  function previewTerminalFontFamily(value: string): void {
+    settings.terminalFontFamily = value || null;
+    if (value) document.documentElement.style.setProperty("--df-terminal-font-family", value);
+    else document.documentElement.style.removeProperty("--df-terminal-font-family");
+  }
+  function previewTerminalFontSize(value: string): void {
+    settings.terminalFontSize = value ? Number(value) : null;
+    if (value) document.documentElement.style.setProperty("--df-terminal-font-size", `${value}px`);
+    else document.documentElement.style.removeProperty("--df-terminal-font-size");
   }
   function resetWorkspace(): void {
     window.dispatchEvent(new Event("darkflow:reset-workspace"));
@@ -635,15 +660,20 @@
             <legend>Background</legend>
             <div class="background-gallery" role="radiogroup" aria-label="Background">
               {#each BACKGROUND_PRESETS as preset (preset.key)}
-                <label class="background-choice">
+                <label class="background-choice" title={preset.description}>
                   <input
+                    class="background-choice-input"
                     type="radio"
                     name="background"
                     value={preset.key}
                     bind:group={settings.background}
                   />
-                  {#if preset.thumbnail}<img src={preset.thumbnail} alt="" />{/if}
-                  <span>{preset.label}</span>
+                  <span class="background-preview" aria-hidden="true">
+                    {#if preset.thumbnail}<img src={preset.thumbnail} alt="" />{:else}<span
+                        class="background-none"></span
+                      >{/if}
+                  </span>
+                  <span class="background-label">{preset.label}</span>
                 </label>
               {/each}
             </div>
@@ -763,6 +793,28 @@
           hidden={panelHidden("terminal")}
         >
           <h3>Terminal</h3>
+          <div class="settings-row">
+            <span>Font</span>
+            <div class="terminal-font-controls">
+              <select
+                aria-label="Terminal font family"
+                value={settings.terminalFontFamily ?? ""}
+                onchange={(event) => previewTerminalFontFamily(event.currentTarget.value)}
+                ><option value="">Default</option
+                >{#each TERMINAL_FONT_FAMILIES as family (family.value)}<option value={family.value}
+                    >{family.label}</option
+                  >{/each}</select
+              ><select
+                class="terminal-font-size"
+                aria-label="Terminal font size"
+                value={settings.terminalFontSize ?? ""}
+                onchange={(event) => previewTerminalFontSize(event.currentTarget.value)}
+                ><option value="">Default</option>{#each TERMINAL_FONT_SIZES as size (size)}<option
+                    value={size}>{size} px</option
+                  >{/each}</select
+              >
+            </div>
+          </div>
           <label class="settings-row"
             >Scrollback behavior<select bind:value={settings.scrollbackBehavior}
               ><option value="pause">Pause</option><option value="split"
@@ -873,7 +925,7 @@
             type="button"
             onclick={() => variables.push({ name: "", value: "" })}>Add variable</button
           >
-          <p>Variables last for this session only.</p>
+          <p>Variables are saved for this character.</p>
           <h4>GMCP variables</h4>
           {#each Object.entries(gmcpVariables) as [name, value] (name)}<p>
               {name}: {value}
@@ -1072,14 +1124,52 @@
     gap: 0.5rem;
   }
   .background-choice {
+    position: relative;
     display: grid;
     gap: 0.25rem;
+    cursor: pointer;
     font-size: 0.8rem;
   }
-  .background-choice img {
-    width: 100%;
+  .background-choice-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    opacity: 0;
+  }
+  .background-preview {
+    position: relative;
+    display: grid;
+    overflow: hidden;
     aspect-ratio: 16 / 9;
+    place-items: center;
+    border: 2px solid transparent;
+    border-radius: 0.35rem;
+    background: var(--df-bg, #0d1117);
+    transition:
+      border-color 120ms ease,
+      box-shadow 120ms ease,
+      filter 120ms ease;
+  }
+  .background-choice:hover .background-preview {
+    filter: brightness(1.14);
+  }
+  .background-choice:has(input:checked) .background-preview,
+  .background-choice:has(input:focus-visible) .background-preview {
+    border-color: var(--df-accent, #58a6ff);
+    box-shadow: 0 0 0 2px var(--df-accent, #58a6ff);
+  }
+  .background-choice:has(input:checked) .background-label {
+    color: var(--df-accent, #58a6ff);
+  }
+  .background-preview img {
+    width: 100%;
+    height: 100%;
     object-fit: cover;
+  }
+  .background-none {
+    width: 100%;
+    height: 100%;
+    background: var(--df-bg, #0d1117);
   }
   nav {
     min-width: 0;
@@ -1170,6 +1260,11 @@
   .settings-row select,
   .settings-row input {
     width: 100%;
+  }
+  .terminal-font-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 6rem;
+    gap: 0.5rem;
   }
   fieldset {
     min-width: 0;

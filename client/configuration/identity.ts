@@ -6,7 +6,7 @@ import type {
   KeyMappingDefinition,
   TimerDefinition,
   TriggerDefinition,
-} from "../model/configuration.ts";
+} from "../model/configuration";
 
 /** Collapses surrounding and internal whitespace the way legacy managers do. */
 export function normalizeWhitespace(value: string): string {

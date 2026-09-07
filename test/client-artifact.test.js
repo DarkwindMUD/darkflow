@@ -14,10 +14,9 @@ const packageMetadata = require("../package.json");
 const repoRoot = path.resolve(__dirname, "..");
 const writerPath = path.join(repoRoot, "scripts", "write-client-version.mjs");
 
-const ROOT_BUNDLE = "assets/root-AbCd1234.js";
+const ROOT_BUNDLE = "assets/phase2-AbCd1234.js";
 const ROOT_BUNDLE_CONTENTS = [
-  'window.__darkflowPhase1Bootstrap = { phase: "legacy-loaded" };',
-  'import("/js/app.js");',
+  'window.__darkflowPhase1Bootstrap = { phase: "client-loaded" };',
   "export {};",
 ].join("\n");
 
@@ -32,6 +31,7 @@ async function createFixture(t, version = "1.2.3") {
   await fs.mkdir(path.join(publicDir, "assets"), { recursive: true });
   await fs.mkdir(path.join(artifactDir, "assets"), { recursive: true });
   await fs.mkdir(path.join(artifactDir, "phase0"), { recursive: true });
+  await fs.mkdir(path.join(artifactDir, "phase2"), { recursive: true });
 
   const publicFiles = {
     "assets/logo.txt": "logo bytes\n",
@@ -62,6 +62,10 @@ async function createFixture(t, version = "1.2.3") {
     fs.writeFile(
       path.join(artifactDir, ROOT_BUNDLE),
       `${ROOT_BUNDLE_CONTENTS}\n`,
+    ),
+    fs.writeFile(
+      path.join(artifactDir, "phase2", "index.html"),
+      `<script type="module" src="/${ROOT_BUNDLE}"></script>\n`,
     ),
   ]);
 
@@ -96,7 +100,16 @@ test("accepts a complete client artifact without its public source", async (t) =
   assert.deepEqual(metadata, { version: fixture.version });
 });
 
-test("accepts a root handoff in a preloaded bundle", async (t) => {
+test("root source preserves PWA metadata while using the Phase 2 entry", () => {
+  const html = require("node:fs").readFileSync(path.join(repoRoot, "client", "index.html"), "utf8");
+  assert.match(html, /mobile-web-app-capable/);
+  assert.match(html, /apple-mobile-web-app-capable/);
+  assert.match(html, /apple-touch-icon/);
+  assert.match(html, /site\.webmanifest/);
+  assert.match(html, /app\/phase2\.ts/);
+});
+
+test("accepts a shared root and Phase 2 entry in a preloaded bundle", async (t) => {
   const fixture = await createFixture(t);
   const sharedBundle = "assets/shared-AbCd1234.js";
   await Promise.all([
@@ -289,20 +302,20 @@ test("rejects a missing root bundle reference", async (t) => {
   await fs.rm(path.join(fixture.artifactDir, fixture.rootBundle));
   await expectInvalid(
     { ...fixture, expectedVersion: fixture.version },
-    /missing referenced JavaScript bundle: assets\/root-AbCd1234\.js/,
+    /missing referenced JavaScript bundle: assets\/phase2-AbCd1234\.js/,
   );
 });
 
-test("rejects a generated root bundle without the legacy runtime handoff", async (t) => {
+test("rejects a generated root bundle with a legacy runtime handoff", async (t) => {
   const fixture = await createFixture(t);
   await fs.writeFile(
     path.join(fixture.artifactDir, fixture.rootBundle),
-    'window.__darkflowPhase1Bootstrap = { phase: "legacy-loaded" };\n',
+    'window.__darkflowPhase1Bootstrap = { phase: "client-loaded" }; import("/js/app.js");\n',
   );
 
   await expectInvalid(
     { ...fixture, expectedVersion: fixture.version },
-    /missing legacy runtime handoff/,
+    /contains legacy runtime handoff/,
   );
 });
 

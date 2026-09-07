@@ -1,12 +1,12 @@
-import type { JsonValue } from "../model/configuration.ts";
-import type { CharacterProfileId } from "../model/ids.ts";
+import type { JsonValue } from "../model/configuration";
+import type { CharacterProfileId } from "../model/ids";
 import type {
   ApplicationStateV1,
   WorkspaceSnapshot as CharacterWorkspaceSnapshot,
-} from "../model/profiles.ts";
-import { commit, readState, type StorageLike } from "../storage/repository.ts";
+} from "../model/profiles";
+import { commit, readState, type StorageLike } from "../storage/repository";
 
-import type { PersistedWorkspaceSnapshot as DockviewWorkspaceSnapshot } from "./workspace.ts";
+import type { PersistedWorkspaceSnapshot as DockviewWorkspaceSnapshot } from "./workspace";
 
 export type LoadCharacterWorkspaceResult =
   | { success: true; snapshot: DockviewWorkspaceSnapshot; recovered: false }

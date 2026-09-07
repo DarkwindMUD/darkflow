@@ -238,7 +238,7 @@ async function createMainWindow() {
     mainWindow = null;
   });
 
-  await mainWindow.loadURL(`${appOrigin}${smokeTest ? '/phase2/' : '/'}`);
+  await mainWindow.loadURL(`${appOrigin}/`);
 }
 
 async function runSmokeTest() {
@@ -274,12 +274,14 @@ async function runSmokeTest() {
       );
       await waitFor(() => bridge.getConnectionState() === 'connected', 'the smoke MUD connection');
       bridge.gmcpDispatch('Core.Supports.Set', ['Darkwind.Sound 1']);
+      bridge.gmcpDispatch('Char.Status', { name: 'Desktop smoke' });
       const audioIndicator = await waitFor(
         () => {
           const root = document.querySelector('#audio-widget-root:not([hidden])');
-          return root && root.querySelector('.sound-widget-indicator');
+          const indicator = root && root.querySelector('.sound-widget-indicator');
+          return indicator && !indicator.disabled && indicator;
         },
-        'the supported Svelte audio control',
+        'the enabled Svelte audio control',
       );
       const audioIndicatorBounds = audioIndicator.getBoundingClientRect();
       bridge.gmcpDispatch('Darkwind.IDE.Open', {
@@ -297,6 +299,7 @@ async function runSmokeTest() {
       editor.querySelector('.cm-content').focus();
       return {
         title: document.title,
+        bootstrapPhase: window.__darkflowPhase1Bootstrap?.phase,
         desktopApi: Boolean(desktopApi),
         desktopApiFrozen: Object.isFrozen(desktopApi),
         desktopApiKeys,
@@ -316,6 +319,7 @@ async function runSmokeTest() {
         audio: {
           connected: bridge.getConnectionState() === 'connected',
           supported: !document.querySelector('#audio-widget-root').hidden,
+          enabled: !audioIndicator.disabled,
           indicatorBounds: {
             x: audioIndicatorBounds.x,
             y: audioIndicatorBounds.y,
@@ -447,6 +451,7 @@ async function runSmokeTest() {
     });
 
     if (desktopServeMode !== 'built'
+        || result.bootstrapPhase !== 'client-loaded'
         || !result.desktopApi
         || !result.desktopApiFrozen
         || !result.desktopApiFunctions
@@ -485,6 +490,7 @@ async function runSmokeTest() {
         || !result.ide.noExternalEditorNetwork
         || !result.audio.connected
         || !result.audio.supported
+        || !result.audio.enabled
         || !result.audio.unlocked
         || !result.audio.controlsExpanded
         || result.audio.injectedActivity !== 'alert'

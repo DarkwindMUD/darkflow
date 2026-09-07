@@ -7,7 +7,7 @@ import type {
   DarkwindIdeOpenFinish,
   DarkwindIdeOpenStart,
   DarkwindIdeSaveResult,
-} from "../gmcp/contracts/darkwind-ide.ts";
+} from "../gmcp/contracts/darkwind-ide";
 import {
   validateDarkwindIdeOpen,
   validateDarkwindIdeOpenChunk,
@@ -15,11 +15,11 @@ import {
   validateDarkwindIdeOpenStart,
   validateDarkwindIdeSaveResult,
 } from "../gmcp/contracts/validators";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { SessionTransport, TransportReconnectStatusPayload } from "../transport/types.ts";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { Disposer, ResourceScope } from "./resource-scope.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { SessionTransport, TransportReconnectStatusPayload } from "../transport/types";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { Disposer, ResourceScope } from "./resource-scope";
 
 const MAX_OPEN_CHUNKS = 512;
 const MAX_CONTENT_LENGTH = 4 * 1024 * 1024;

@@ -1,7 +1,7 @@
 import typia from "typia";
 
-import { canonicalPackageName } from "../frame.ts";
-import type { CoreSupportsPayload } from "./core.ts";
+import { canonicalPackageName } from "../frame";
+import type { CoreSupportsPayload } from "./core";
 import type {
   CharDefencesList,
   CharDefencesRemove,
@@ -15,17 +15,17 @@ import type {
   CharStatusVars,
   CharVitals,
   CharWorth,
-} from "./char.ts";
+} from "./char";
 import type {
   CommChannelList,
   CommChannelMessage,
   CommChannelPlayers,
   CommChannelState,
-} from "./comm.ts";
-import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./room.ts";
-import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client.ts";
-import type { CompletionRequest, CompletionResult } from "./completion.ts";
-import type { CorePing, DarkwindLagStatus } from "./diagnostics.ts";
+} from "./comm";
+import type { RoomAddPlayer, RoomInfo, RoomPlayers, RoomRemovePlayer } from "./room";
+import type { DarkwindClientNaws, DarkwindSessionRecovered } from "./darkwind-client";
+import type { CompletionRequest, CompletionResult } from "./completion";
+import type { CorePing, DarkwindLagStatus } from "./diagnostics";
 import type {
   DarkwindAvatar,
   DarkwindAchievements,
@@ -41,7 +41,7 @@ import type {
   DarkwindQuestsUpdate,
   DarkwindQuest,
   Group,
-} from "./information.ts";
+} from "./information";
 import type {
   DarkwindIdeOpen,
   DarkwindIdeOpenChunk,
@@ -54,7 +54,7 @@ import type {
   DarkwindIdeSaveFinish,
   DarkwindIdeSaveResult,
   DarkwindIdeSaveStart,
-} from "./darkwind-ide.ts";
+} from "./darkwind-ide";
 import type {
   MapData2Area,
   MapData2Browse,
@@ -64,12 +64,12 @@ import type {
   MapData2Reset,
   MapData2Sync,
   MapData2Update,
-} from "./darkwind-map-data-v2.ts";
+} from "./darkwind-map-data-v2";
 import type {
   DarkwindWindowClose,
   DarkwindWindowOpen,
   DarkwindWindowUpdate,
-} from "./darkwind-window.ts";
+} from "./darkwind-window";
 import type {
   DarkwindAnnouncementsList,
   DarkwindAnnouncementsNew,
@@ -89,14 +89,14 @@ import type {
   DarkwindSnoopClose,
   DarkwindSnoopOpen,
   DarkwindSnoopStatus,
-} from "./interactions.ts";
+} from "./interactions";
 import type {
   DarkwindRoomImage,
   DarkwindRoomPlaylistAction,
   DarkwindRoomPlaylistOpen,
   DarkwindRoomPlaylistReport,
   DarkwindRoomPlaylistState,
-} from "./world.ts";
+} from "./world";
 import { normalizeDarkwindSound, type DarkwindSound } from "./sound";
 import {
   normalizeDarkwindCombatEvent,
@@ -105,7 +105,7 @@ import {
   type DarkwindCombatEventMessage,
   type DarkwindCombatEvents,
   type DarkwindCombatState,
-} from "./combat.ts";
+} from "./combat";
 import {
   normalizeDarkwindTutorialAction,
   normalizeDarkwindTutorialControl,
@@ -115,7 +115,7 @@ import {
   type DarkwindTutorialControl,
   type DarkwindTutorialResync,
   type DarkwindTutorialState,
-} from "./tutorial.ts";
+} from "./tutorial";
 import {
   normalizeDarkwindVisualEvent,
   normalizeDarkwindVisualEvents,
@@ -125,8 +125,8 @@ import {
   type DarkwindVisualEvents,
   type DarkwindVisualPreview,
   type DarkwindVisualState,
-} from "./visual-effects.ts";
-import { normalizeDarkwindStreetSamurai, type DarkwindStreetSamurai } from "./street-samurai.ts";
+} from "./visual-effects";
+import { normalizeDarkwindStreetSamurai, type DarkwindStreetSamurai } from "./street-samurai";
 
 export const validateCoreSupports = typia.createValidate<CoreSupportsPayload>();
 export const validateCharVitals = typia.createValidate<CharVitals>();

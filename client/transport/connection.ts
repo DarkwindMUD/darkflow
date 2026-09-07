@@ -1,17 +1,17 @@
-import type { SessionId } from "../model/ids.ts";
-import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
-import type { SessionEventBus } from "../runtime/event-bus.ts";
-import type { ResourceScope } from "../runtime/resource-scope.ts";
-import type { Disposer } from "../runtime/resource-scope.ts";
-import { WS_FORCE_RECONNECT_DELAY_MS, createReconnectController } from "./reconnect.ts";
-import { WS_HEALTH_INTERVAL_MS, createTransportHealth } from "./health.ts";
-import { buildConnectionUrl, buildTransportLadder } from "./urls.ts";
+import type { SessionId } from "../model/ids";
+import type { SessionDiagnostics } from "../runtime/diagnostics";
+import type { SessionEventBus } from "../runtime/event-bus";
+import type { ResourceScope } from "../runtime/resource-scope";
+import type { Disposer } from "../runtime/resource-scope";
+import { WS_FORCE_RECONNECT_DELAY_MS, createReconnectController } from "./reconnect";
+import { WS_HEALTH_INTERVAL_MS, createTransportHealth } from "./health";
+import { buildConnectionUrl, buildTransportLadder } from "./urls";
 import type {
   SessionTransport,
   SessionTransportCallbacks,
   TransportState,
   WebSocketLike,
-} from "./types.ts";
+} from "./types";
 
 const gmcpTextDecoder = new TextDecoder();
 

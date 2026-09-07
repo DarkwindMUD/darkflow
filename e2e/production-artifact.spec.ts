@@ -57,7 +57,7 @@ async function expectResource(
   return response;
 }
 
-test("built artifact renders the legacy client and preserves production contracts", async ({
+test("built artifact renders the Svelte client and preserves production contracts", async ({
   page,
   runtimeErrors,
 }) => {
@@ -76,10 +76,9 @@ test("built artifact renders the legacy client and preserves production contract
   await page.goto("/");
 
   await expect(page).toHaveTitle("Darkflow");
-  await expect(page.locator("#toolbar")).toBeVisible();
-  await expect(page.locator("#toolbar-brand")).toContainText("Darkflow");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
   await expect(page.getByLabel("Terminal output", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Command input")).toBeVisible();
+  await expect(page.getByLabel("Command input", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Host")).toBeVisible();
   await expect(page.getByLabel("Port")).toBeVisible();
   await expect(page.getByLabel("Connection protocol")).toBeVisible();
@@ -93,22 +92,7 @@ test("built artifact renders the legacy client and preserves production contract
             .__darkflowPhase1Bootstrap?.phase,
       ),
     )
-    .toBe("legacy-loaded");
-
-  const controllerDiagnostics = await page.evaluate(() =>
-    (
-      window as unknown as {
-        __darkflowPhase1ControllerBridge?: {
-          getControllerDiagnostics(): {
-            activeControllers: number;
-            session: { liveSubscriptions: number };
-          };
-        };
-      }
-    ).__darkflowPhase1ControllerBridge?.getControllerDiagnostics(),
-  );
-  expect(controllerDiagnostics?.activeControllers).toBe(26);
-  expect(controllerDiagnostics?.session.liveSubscriptions).toBeGreaterThanOrEqual(109);
+    .toBe("client-loaded");
 
   await expect
     .poll(() =>
@@ -125,10 +109,12 @@ test("built artifact renders the legacy client and preserves production contract
   const rootHtml = await page.content();
   expect(rootHtml).not.toMatch(/\/js\/app\.js/);
   expect(rootHtml).not.toMatch(/\.ts["']/);
-  const rootBundle = rootHtml.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+  const rootBundle = rootHtml.match(/src="(\/assets\/phase2-[^"]+\.js)"/)?.[1];
   expect(rootBundle, "index.html must reference a generated JavaScript bundle").toBeTruthy();
   expect(rootBundle).not.toMatch(/phase0-/);
   await expectResource(page, rootBundle!, /^(?:text|application)\/javascript\b/);
+  const phase2Html = await (await page.request.get(`${appOrigin}/phase2/`)).text();
+  expect(phase2Html.match(/src="(\/assets\/phase2-[^"]+\.js)"/)?.[1]).toBe(rootBundle);
 
   const config = await expectResource(page, "/config.json", /^application\/json\b/);
   expect(JSON.parse(config.body)).toMatchObject({ host: "" });

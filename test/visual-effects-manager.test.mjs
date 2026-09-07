@@ -532,8 +532,8 @@ test('visual overlay is non-interactive, accessible, motion-aware, and has no pr
     new URL('../public/css/visual-effects.css', import.meta.url),
     'utf8',
   );
-  const html = readFileSync(
-    new URL('../client/index.html', import.meta.url),
+  const visualLayer = readFileSync(
+    new URL('../client/app/VisualEffectsLayer.svelte', import.meta.url),
     'utf8',
   );
   const settingsSource = readFileSync(
@@ -554,14 +554,18 @@ test('visual overlay is non-interactive, accessible, motion-aware, and has no pr
     height,
   }));
 
-  assert.match(html, /id="visual-effects-root" aria-hidden="true" hidden/);
-  assert.match(html, /class="visual-effects-low-health"/);
-  assert.match(html, /class="visual-effects-spell-cast"/);
-  assert.match(html, /class="visual-effects-fire"/);
-  assert.equal((html.match(/class="visual-fire-flame"/g) || []).length, 12);
-  assert.match(html, /class="visual-effects-frost"/);
-  assert.match(html, /class="visual-effects-lightning"/);
-  assert.equal((html.match(/class="visual-lightning-arc"/g) || []).length, 6);
+  assert.match(visualLayer, /id="visual-effects-root"/);
+  assert.match(visualLayer, /aria-hidden="true"/);
+  assert.match(visualLayer, /hidden=\{!snapshot\.enabled\}/);
+  assert.match(visualLayer, /class="visual-effects-low-health"/);
+  assert.match(visualLayer, /class="visual-effects-spell-cast"/);
+  assert.match(visualLayer, /class="visual-effects-fire"/);
+  assert.match(visualLayer, /Array\.from\(\{ length: 12 \}/);
+  assert.match(visualLayer, /class="visual-fire-flame"/);
+  assert.match(visualLayer, /class="visual-effects-frost"/);
+  assert.match(visualLayer, /class="visual-effects-lightning"/);
+  assert.match(visualLayer, /Array\.from\(\{ length: 6 \}/);
+  assert.match(visualLayer, /class="visual-lightning-arc"/);
   assert.match(css, /#visual-effects-root\s*\{[\s\S]*?z-index:\s*12000/);
   assert.match(css, /#visual-effects-root\s*\{[\s\S]*?pointer-events:\s*none/);
   assert.match(css,

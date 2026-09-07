@@ -1,6 +1,6 @@
-import type { SessionId } from "../model/ids.ts";
-import type { SessionDiagnostics } from "./diagnostics.ts";
-import type { SessionEvent, SessionEventHandler, Unsubscribe } from "./events.ts";
+import type { SessionId } from "../model/ids";
+import type { SessionDiagnostics } from "./diagnostics";
+import type { SessionEvent, SessionEventHandler, Unsubscribe } from "./events";
 
 /** Per-session event bus with handler isolation and session-bound routing. */
 export interface SessionEventBus {

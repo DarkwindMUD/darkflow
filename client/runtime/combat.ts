@@ -1,26 +1,26 @@
-import { deepFreeze } from "../configuration/snapshot.ts";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { CharEnemy, CharVitals } from "../gmcp/contracts/char.ts";
+import { deepFreeze } from "../configuration/snapshot";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { CharEnemy, CharVitals } from "../gmcp/contracts/char";
 import type {
   DarkwindCombatActor,
   DarkwindCombatEvent,
   DarkwindCombatEvents,
   DarkwindCombatOverflow,
-} from "../gmcp/contracts/combat.ts";
+} from "../gmcp/contracts/combat";
 import {
   normalizeDarkwindCombatEvent,
   normalizeDarkwindCombatEvents,
   normalizeDarkwindCombatState,
-} from "../gmcp/contracts/combat.ts";
-import type { DarkwindAvatar } from "../gmcp/contracts/information.ts";
-import { validateCharEnemy } from "../gmcp/contracts/validators.ts";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
+} from "../gmcp/contracts/combat";
+import type { DarkwindAvatar } from "../gmcp/contracts/information";
+import { validateCharEnemy } from "../gmcp/contracts/validators";
+import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained combat reducer is JavaScript without a declaration file.
 import * as combatCore from "../../public/js/combat-visual-core.mjs";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { SessionInformation } from "./information.ts";
-import type { Disposer, ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { SessionInformation } from "./information";
+import type { Disposer, ResourceScope } from "./resource-scope";
 
 const {
   clearCurrentCombatEvent,

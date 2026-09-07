@@ -1,4 +1,4 @@
-import type { TransportEndpoint, TransportName } from "./types.ts";
+import type { TransportEndpoint, TransportName } from "./types";
 
 /** Default transport fallback ladder in priority order. */
 export const TRANSPORT_LADDER: readonly TransportName[] = ["wss", "ws", "telnets", "telnet"];

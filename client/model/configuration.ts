@@ -1,6 +1,6 @@
 import type { tags } from "typia";
 
-import type { ConfigSetId } from "./ids.ts";
+import type { ConfigSetId } from "./ids";
 
 /** The six shareable configuration-set kinds supported in Phase 1. */
 export type ConfigKind =

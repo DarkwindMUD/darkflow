@@ -1,18 +1,18 @@
 import { deepFreeze } from "../configuration/snapshot";
-import type { DarkwindLagStatus } from "../gmcp/contracts/diagnostics.ts";
+import type { DarkwindLagStatus } from "../gmcp/contracts/diagnostics";
 import { validateCorePing, validateDarkwindLagStatus } from "../gmcp/contracts/validators";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
 import type {
   SessionTransport,
   TransportEndpoint,
   TransportHealthSnapshot,
   TransportReconnectStatusPayload,
-} from "../transport/types.ts";
+} from "../transport/types";
 // @ts-expect-error Pure legacy-compatible diagnostics core has no declaration file.
 import * as lagCore from "../../public/js/lag-core.mjs";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { Disposer, ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { Disposer, ResourceScope } from "./resource-scope";
 
 const {
   LAG_THRESHOLDS,

@@ -138,7 +138,7 @@ test('loads the pinned local Howler core before the Darkflow module graph', () =
   assert.equal(packageJson.dependencies.howler, '2.2.4');
   assert.ok(
     indexHtml.indexOf('/vendor/howler.core.min.js') <
-      indexHtml.indexOf('/app/bootstrap.ts'),
+      indexHtml.indexOf('/app/phase2.ts'),
   );
   assert.doesNotMatch(indexHtml, /js\/app\.js/);
   assert.doesNotMatch(soundManager, /new\s+Audio\s*\(/);

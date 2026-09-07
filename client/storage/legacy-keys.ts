@@ -1,4 +1,4 @@
-import type { StorageLike } from "./repository.ts";
+import type { StorageLike } from "./repository";
 
 /** Legacy scoped automation store shape shared by alias/trigger/timer managers. */
 export interface LegacyScopedStore {

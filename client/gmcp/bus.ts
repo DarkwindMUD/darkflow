@@ -1,10 +1,10 @@
-import type { SessionId } from "../model/ids.ts";
-import type { SessionDiagnostics } from "../runtime/diagnostics.ts";
-import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame.ts";
-import type { CoreHello } from "./contracts/core.ts";
-import type { DarkwindClientNaws } from "./contracts/darkwind-client.ts";
-import type { CompletionRequest, CompletionResult } from "./contracts/completion.ts";
-import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2.ts";
+import type { SessionId } from "../model/ids";
+import type { SessionDiagnostics } from "../runtime/diagnostics";
+import { canonicalPackageName, normalizeGmcpFrame, normalizeSupportsPayload } from "./frame";
+import type { CoreHello } from "./contracts/core";
+import type { DarkwindClientNaws } from "./contracts/darkwind-client";
+import type { CompletionRequest, CompletionResult } from "./contracts/completion";
+import type { MapData2Browse, MapData2Sync } from "./contracts/darkwind-map-data-v2";
 import type {
   DarkwindIdeClose,
   DarkwindIdeSave,
@@ -12,7 +12,7 @@ import type {
   DarkwindIdeSaveChunk,
   DarkwindIdeSaveFinish,
   DarkwindIdeSaveStart,
-} from "./contracts/darkwind-ide.ts";
+} from "./contracts/darkwind-ide";
 import type {
   DarkwindAnnouncementsMarkRead,
   DarkwindFishingCast,
@@ -22,14 +22,14 @@ import type {
   DarkwindSnoopClosed,
   DarkwindSnoopCommand,
   DarkwindSnoopStop,
-} from "./contracts/interactions.ts";
+} from "./contracts/interactions";
 import type {
   DarkwindWindowAction,
   DarkwindWindowClosed,
   DarkwindWindowSubmit,
-} from "./contracts/darkwind-window.ts";
-import type { DarkwindRoomPlaylistAction, DarkwindRoomPlaylistReport } from "./contracts/world.ts";
-import type { DarkwindTutorialAction, DarkwindTutorialResync } from "./contracts/tutorial.ts";
+} from "./contracts/darkwind-window";
+import type { DarkwindRoomPlaylistAction, DarkwindRoomPlaylistReport } from "./contracts/world";
+import type { DarkwindTutorialAction, DarkwindTutorialResync } from "./contracts/tutorial";
 import {
   validateDarkwindRoomPlaylistAction,
   validateDarkwindRoomPlaylistReport,
@@ -46,7 +46,7 @@ import {
   validateMapData2Sync,
   validateDarkwindTutorialAction,
   validateDarkwindTutorialResync,
-} from "./contracts/validators.ts";
+} from "./contracts/validators";
 
 const GMCP_MEDIA_REFRESH_PACKAGE = "Darkwind.Client.RefreshMedia";
 const GMCP_SUBSCRIPTIONS_PACKAGE = "Darkwind.Client.Subscriptions";

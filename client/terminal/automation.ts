@@ -1,5 +1,5 @@
-import type { AutomationStep, ConfigKind, TimerDefinition } from "../model/configuration.ts";
-import type { Session } from "../runtime/session.ts";
+import type { AutomationStep, ConfigKind, TimerDefinition } from "../model/configuration";
+import type { Session } from "../runtime/session";
 
 // @ts-expect-error Shared legacy/Phase 2 executor core is JavaScript.
 import * as automationExecutor from "../../public/js/automation-executor-core.mjs";

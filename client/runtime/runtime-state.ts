@@ -1,4 +1,4 @@
-import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
+import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot";
 
 /** Mutable per-session runtime flags and effective-configuration reference. */
 export interface SessionRuntimeState {

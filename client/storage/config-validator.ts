@@ -1,6 +1,6 @@
 import typia from "typia";
 
-import type { ValidationResult } from "../model/validators.ts";
+import type { ValidationResult } from "../model/validators";
 
 /** `/config.json` payload shape served by `server.js`. */
 export interface ConfigJson {

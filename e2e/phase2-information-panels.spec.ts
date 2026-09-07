@@ -61,7 +61,10 @@ test("character information panels present, restore, and close from the active c
 
   await page.getByRole("button", { name: "Panels", exact: true }).click();
   if (onMobile) {
-    await page.getByRole("button", { name: "Close Omens", exact: true }).click();
+    await page
+      .getByRole("dialog", { name: "Panels" })
+      .getByRole("button", { name: "Close Omens", exact: true })
+      .click();
   } else {
     await page.getByRole("checkbox", { name: "Omens", exact: true }).uncheck();
     await page.keyboard.press("Escape");

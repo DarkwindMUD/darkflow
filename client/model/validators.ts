@@ -1,8 +1,8 @@
 import typia from "typia";
 
-import { CONFIG_KINDS, type ConfigKind, type ConfigurationSet } from "./configuration.ts";
-import type { ApplicationStateV1, ServerProfile } from "./profiles.ts";
-import type { SessionDescriptor } from "./session-contract.ts";
+import { CONFIG_KINDS, type ConfigKind, type ConfigurationSet } from "./configuration";
+import type { ApplicationStateV1, ServerProfile } from "./profiles";
+import type { SessionDescriptor } from "./session-contract";
 
 export const validateApplicationStateV1 = typia.createValidate<ApplicationStateV1>();
 export const parseApplicationStateV1 = typia.json.createValidateParse<ApplicationStateV1>();

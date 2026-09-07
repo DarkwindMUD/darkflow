@@ -388,6 +388,7 @@ test("IDE close guards, native tab, reset, repeated lifecycle, and remount stay 
   await replaceEditorText(page, "dirty reset\n");
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   await confirmAction(
     page,
     () => settings.getByRole("button", { name: "Reset workspace", exact: true }).click(),

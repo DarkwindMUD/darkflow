@@ -1,8 +1,8 @@
 import { deepFreeze } from "../configuration/snapshot";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { ResourceScope } from "./resource-scope.ts";
-import type { SessionWorldDiagnostics } from "./world.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { Unsubscribe } from "./events";
+import type { ResourceScope } from "./resource-scope";
+import type { SessionWorldDiagnostics } from "./world";
 
 export const GMCP_DIAGNOSTIC_LIMIT = 200;
 export const GMCP_DIAGNOSTIC_PAYLOAD_LIMIT = 16 * 1024;

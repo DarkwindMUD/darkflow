@@ -1,4 +1,4 @@
-import type { MapData2RoomId, MapData2WireBoolean } from "./darkwind-map-data-v2.ts";
+import type { MapData2RoomId, MapData2WireBoolean } from "./darkwind-map-data-v2";
 
 /** Darkwind.Room.Image inbound payload. */
 export interface DarkwindRoomImage {

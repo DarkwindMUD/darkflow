@@ -1,6 +1,6 @@
-import type { SessionId } from "../model/ids.ts";
-import type { SessionDiagnostics } from "./diagnostics.ts";
-import type { ResourceKind } from "./diagnostics.ts";
+import type { SessionId } from "../model/ids";
+import type { SessionDiagnostics } from "./diagnostics";
+import type { ResourceKind } from "./diagnostics";
 
 /** Releases one owned resource without disposing the whole scope. */
 export type Disposer = () => void;

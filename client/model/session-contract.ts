@@ -1,4 +1,4 @@
-import type { CharacterProfileId, ServerProfileId, SessionId } from "./ids.ts";
+import type { CharacterProfileId, ServerProfileId, SessionId } from "./ids";
 
 /** Ephemeral runtime session identity and parent profile references. */
 export interface SessionDescriptor {

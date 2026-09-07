@@ -1,23 +1,20 @@
 import { deepFreeze } from "../configuration/snapshot";
-import type {
-  DarkwindVisualEffect,
-  DarkwindVisualPreview,
-} from "../gmcp/contracts/visual-effects.ts";
+import type { DarkwindVisualEffect, DarkwindVisualPreview } from "../gmcp/contracts/visual-effects";
 import {
   normalizeDarkwindVisualEvent,
   normalizeDarkwindVisualEvents,
   normalizeDarkwindVisualPreview,
   normalizeDarkwindVisualState,
-} from "../gmcp/contracts/visual-effects.ts";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
+} from "../gmcp/contracts/visual-effects";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained visual-effects helpers are JavaScript without declaration files.
 import * as visualCore from "../../public/js/visual-effects-core.mjs";
 // @ts-expect-error Retained visual-effects settings are JavaScript without declaration files.
 import * as visualSettings from "../../public/js/visual-effects-settings.mjs";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { ResourceScope } from "./resource-scope";
 
 const VISUAL_PACKAGE = "Darkwind.Visual";
 const PREVIEW_TTL_MS = 5_000;

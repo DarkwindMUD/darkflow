@@ -289,6 +289,7 @@ test("server panels and NPC dialogue render and send actions", async ({ page }) 
   await expect(fishingPanel).toBeVisible();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   await settings.getByRole("button", { name: "Reset workspace", exact: true }).click();
   await settings.getByRole("button", { name: "Cancel", exact: true }).click();
   await expect(panel).toHaveCount(0);

@@ -5,22 +5,22 @@ import type {
   CommChannelMessage,
   CommChannelPlayers,
   CommChannelState,
-} from "../gmcp/contracts/comm.ts";
+} from "../gmcp/contracts/comm";
 import {
   validateCommChannelList,
   validateCommChannelMessage,
   validateCommChannelPlayers,
   validateCommChannelState,
 } from "../gmcp/contracts/validators";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
 // @ts-expect-error Retained JavaScript helper has no TypeScript declaration.
 import * as mentionUtils from "../../public/js/mention-utils.js";
 // @ts-expect-error Retained JavaScript helper has no TypeScript declaration.
 import * as notificationUtils from "../../public/js/notification-utils.js";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { SessionInformation } from "./information.ts";
-import type { ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { SessionInformation } from "./information";
+import type { ResourceScope } from "./resource-scope";
 
 const MAX_CHANNELS = 128;
 const MAX_ROSTER = 512;

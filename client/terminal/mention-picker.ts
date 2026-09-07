@@ -1,4 +1,4 @@
-import type { SessionNotifications } from "../runtime/notifications.ts";
+import type { SessionNotifications } from "../runtime/notifications";
 
 // @ts-expect-error Retained mention parsing is shared with the legacy client.
 import { getMentionContext, getMentionSuggestions } from "../../public/js/mention-utils.js";

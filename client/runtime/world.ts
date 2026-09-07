@@ -11,21 +11,21 @@ import type {
   MapData2RoomId,
   MapData2Sync,
   MapData2Update,
-} from "../gmcp/contracts/darkwind-map-data-v2.ts";
+} from "../gmcp/contracts/darkwind-map-data-v2";
 import type {
   RoomAddPlayer,
   RoomInfo,
   RoomPlayer,
   RoomPlayers,
   RoomRemovePlayer,
-} from "../gmcp/contracts/room.ts";
+} from "../gmcp/contracts/room";
 import type {
   DarkwindRoomImage,
   DarkwindRoomPlaylistAction,
   DarkwindRoomPlaylistOpen,
   DarkwindRoomPlaylistReport,
   DarkwindRoomPlaylistState,
-} from "../gmcp/contracts/world.ts";
+} from "../gmcp/contracts/world";
 import {
   validateDarkwindRoomImage,
   validateDarkwindRoomPlaylistOpen,
@@ -41,8 +41,8 @@ import {
   validateRoomPlayers,
   validateRoomRemovePlayer,
 } from "../gmcp/contracts/validators";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained map controller is JavaScript without a declaration file.
 import * as learnedMapCore from "../../public/js/map-data-gmcp-core.js";
 // @ts-expect-error Retained map controller is JavaScript without a declaration file.
@@ -53,9 +53,9 @@ import * as liveMapSourceCore from "../../public/js/live-map-source-core.js";
 import * as mapSpeedwalkCore from "../../public/js/map-speedwalk-core.js";
 // @ts-expect-error Retained playlist normalizer is JavaScript without a declaration file.
 import { normalizePlaylistState } from "../../public/js/room-playlist-core.mjs";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { ResourceScope } from "./resource-scope";
 
 const mapDataWorldRepository = mapDataV2Core.createMapDataV2WorldRepository();
 const learnedMapWorldRepository = learnedMapCore.createLearnedMapWorldRepository();

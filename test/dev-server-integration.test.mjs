@@ -93,23 +93,23 @@ test(
       assert.equal(rootResponse.status, 200);
       const rootHtml = await rootResponse.text();
       assert.match(rootHtml, /\/@vite\/client/);
-      assert.match(rootHtml, /\/app\/bootstrap\.ts/);
+      assert.match(rootHtml, /\/app\/phase2\.ts/);
       assert.doesNotMatch(rootHtml, /js\/app\.js/);
 
       const indexResponse = await fetch(`${origin}/index.html`);
       assert.equal(indexResponse.status, 200);
       const indexHtml = await indexResponse.text();
       assert.match(indexHtml, /\/@vite\/client/);
-      assert.match(indexHtml, /\/app\/bootstrap\.ts/);
+      assert.match(indexHtml, /\/app\/phase2\.ts/);
 
-      const bootstrapResponse = await fetch(`${origin}/app/bootstrap.ts`);
-      assert.equal(bootstrapResponse.status, 200);
+      const phase2EntryResponse = await fetch(`${origin}/app/phase2.ts`);
+      assert.equal(phase2EntryResponse.status, 200);
       assert.match(
-        bootstrapResponse.headers.get("content-type") || "",
+        phase2EntryResponse.headers.get("content-type") || "",
         /javascript/,
       );
       assert.doesNotMatch(
-        await bootstrapResponse.text(),
+        await phase2EntryResponse.text(),
         /no transform has been configured/,
       );
 

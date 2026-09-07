@@ -1,4 +1,4 @@
-import type { SessionVisualEffectPreferences } from "../runtime/visual-effects.ts";
+import type { SessionVisualEffectPreferences } from "../runtime/visual-effects";
 // @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
 import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
 // @ts-expect-error Retained background data has no declaration file.

@@ -2,14 +2,14 @@ import {
   SESSION_CORE_STORAGE_KEY,
   SESSION_MIGRATION_PROVENANCE_KEY,
   type MigrationProvenance,
-} from "./schema.ts";
+} from "./schema";
 import {
   parseApplicationState,
   validateApplicationState,
   validateMigrationProvenance,
   type ApplicationStateV1,
   type ValidationResult,
-} from "./validators.ts";
+} from "./validators";
 
 /** Minimal Web Storage surface used by repository and migration code. */
 export interface StorageLike {

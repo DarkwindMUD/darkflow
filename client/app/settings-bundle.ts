@@ -2,16 +2,16 @@ import {
   CLIENT_SETTINGS_STORAGE_KEY,
   readClientSettingsDocument,
   validateClientSettingsDocument,
-} from "./client-settings.ts";
-import type { ApplicationStateV1 } from "../model/profiles.ts";
+} from "./client-settings";
+import type { ApplicationStateV1 } from "../model/profiles";
 import {
   convertLegacyLocalDefinitions,
   mapLegacySoundToCharacterAudio,
-} from "../storage/legacy-migration.ts";
-import { LEGACY_SOUND_STORAGE_KEY } from "../storage/legacy-keys.ts";
-import { SESSION_CORE_STORAGE_KEY } from "../storage/schema.ts";
-import { readState, type StorageLike } from "../storage/repository.ts";
-import { validateApplicationState } from "../model/validators.ts";
+} from "../storage/legacy-migration";
+import { LEGACY_SOUND_STORAGE_KEY } from "../storage/legacy-keys";
+import { SESSION_CORE_STORAGE_KEY } from "../storage/schema";
+import { readState, type StorageLike } from "../storage/repository";
+import { validateApplicationState } from "../model/validators";
 
 export const SETTINGS_BUNDLE_FORMAT = "darkwind-client-settings-export";
 export const SOUND_SETTINGS_STORAGE_KEY = LEGACY_SOUND_STORAGE_KEY;

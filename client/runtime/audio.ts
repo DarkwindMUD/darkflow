@@ -1,16 +1,16 @@
 import { deepFreeze } from "../configuration/snapshot";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
 import {
   DARKWIND_SOUND_CATEGORIES,
   normalizeDarkwindSound,
   type DarkwindSound,
   type DarkwindSoundCategory,
 } from "../gmcp/contracts/sound";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { SessionInteractions } from "./interactions.ts";
-import type { Disposer, ResourceScope } from "./resource-scope.ts";
+import type { TransportReconnectStatusPayload } from "../transport/types";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { SessionInteractions } from "./interactions";
+import type { Disposer, ResourceScope } from "./resource-scope";
 
 export const SESSION_AUDIO_CATEGORIES = [
   ...DARKWIND_SOUND_CATEGORIES.slice(0, -1),

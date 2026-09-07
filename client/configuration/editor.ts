@@ -1,6 +1,6 @@
-import type { ConfigKind, ConfigurationSet, LocalDefinitions } from "../model/configuration.ts";
-import type { CharacterProfileId, ConfigSetId } from "../model/ids.ts";
-import type { StorageLike } from "../storage/repository.ts";
+import type { ConfigKind, ConfigurationSet, LocalDefinitions } from "../model/configuration";
+import type { CharacterProfileId, ConfigSetId } from "../model/ids";
+import type { StorageLike } from "../storage/repository";
 import { readState } from "../storage/repository";
 
 import { resolveEffectiveConfiguration } from "./resolve";

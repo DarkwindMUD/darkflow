@@ -1,4 +1,4 @@
-import type { SessionId } from "../model/ids.ts";
+import type { SessionId } from "../model/ids";
 
 /** Supported WebSocket/telnet transport rung names. */
 export type TransportName = "ws" | "wss" | "telnet" | "telnets";

@@ -1,14 +1,14 @@
-import type { ApplicationStateV1 } from "../model/profiles.ts";
-import type { CharacterProfileId, ConfigSetId } from "../model/ids.ts";
-import type { ValidationResult } from "../model/validators.ts";
+import type { ApplicationStateV1 } from "../model/profiles";
+import type { CharacterProfileId, ConfigSetId } from "../model/ids";
+import type { ValidationResult } from "../model/validators";
 
-import { identityKeyForDefinition } from "./identity.ts";
+import { identityKeyForDefinition } from "./identity";
 import {
   BUILTIN_DEFINITIONS,
   freezeSnapshot,
   type EffectiveConfigurationSnapshot,
   type EffectiveDefinition,
-} from "./snapshot.ts";
+} from "./snapshot";
 import type {
   AliasDefinition,
   ConfigKind,
@@ -18,7 +18,7 @@ import type {
   KeyMappingDefinition,
   TimerDefinition,
   TriggerDefinition,
-} from "../model/configuration.ts";
+} from "../model/configuration";
 
 /** Resolves the effective configuration for one character profile from validated state. */
 export function resolveEffectiveConfiguration(

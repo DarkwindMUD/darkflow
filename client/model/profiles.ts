@@ -5,8 +5,8 @@ import type {
   ConfigurationSetRefs,
   JsonValue,
   LocalDefinitions,
-} from "./configuration.ts";
-import type { CharacterProfileId, ConfigSetId, ServerProfileId } from "./ids.ts";
+} from "./configuration";
+import type { CharacterProfileId, ConfigSetId, ServerProfileId } from "./ids";
 
 /** Supported transport protocols for server profiles. */
 export type TransportProtocol = "ws" | "wss" | "telnet" | "telnets";

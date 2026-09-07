@@ -219,7 +219,7 @@ try {
   const rootHtml = await rootResponse.text();
   assert.doesNotMatch(rootHtml, /\/js\/app\.js/);
   assert.doesNotMatch(rootHtml, /\.ts["']/);
-  const rootBundle = rootHtml.match(/src="(\/assets\/[^"]+\.js)"/)?.[1];
+  const rootBundle = rootHtml.match(/src="(\/assets\/phase2-[^"]+\.js)"/)?.[1];
   assert.ok(rootBundle, "index.html must reference a generated JavaScript bundle");
   assert.doesNotMatch(rootBundle, /phase0-/);
   await assertResponse(origin, rootBundle, {
@@ -228,8 +228,14 @@ try {
   });
   const rootBundleBody = await (await fetch(`${origin}${rootBundle}`)).text();
   assert.match(rootBundleBody, /__darkflowPhase1Bootstrap/);
-  assert.match(rootBundleBody, /\/js\/app\.js/);
+  assert.doesNotMatch(rootBundleBody, /\/js\/app\.js/);
   await assertResponse(origin, "/app/bootstrap.ts", { status: 404 });
+  const phase2Response = await assertResponse(origin, "/phase2/", {
+    status: 200,
+    contentType: /text\/html/,
+  });
+  const phase2Bundle = (await phase2Response.text()).match(/src="(\/assets\/phase2-[^"]+\.js)"/)?.[1];
+  assert.equal(phase2Bundle, rootBundle, "root and Phase 2 must share one application entry");
   assert.deepEqual(getServeInfo(), {
     mode: "built",
     mcp: { mounted: false, path: "/mcp", reason: "disabled" },
@@ -337,8 +343,8 @@ try {
   });
   const devRootHtml = await devRootResponse.text();
   assert.match(devRootHtml, /\/@vite\/client/);
-  assert.match(devRootHtml, /\/app\/bootstrap\.ts/);
-  await assertResponse(devOrigin, "/app/bootstrap.ts", {
+  assert.match(devRootHtml, /\/app\/phase2\.ts/);
+  await assertResponse(devOrigin, "/app/phase2.ts", {
     status: 200,
     contentType: /javascript/,
   });
@@ -357,7 +363,7 @@ try {
     status: 200,
     contentType: /text\/html/,
   });
-  await assertResponse(restartedDevOrigin, "/app/bootstrap.ts", {
+  await assertResponse(restartedDevOrigin, "/app/phase2.ts", {
     status: 200,
     contentType: /javascript/,
   });
@@ -372,7 +378,7 @@ try {
     mode: "built",
   });
   const afterDevOrigin = `http://127.0.0.1:${afterDevAddress.port}`;
-  await assertResponse(afterDevOrigin, "/app/bootstrap.ts", { status: 404 });
+  await assertResponse(afterDevOrigin, "/app/phase2.ts", { status: 404 });
   await assertResponse(afterDevOrigin, "/phase0/main.ts", { status: 404 });
   await assertResponse(afterDevOrigin, "/@vite/client", { status: 404 });
   await assertResponse(afterDevOrigin, "/definitely-not-built", {

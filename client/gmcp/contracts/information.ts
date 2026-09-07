@@ -7,7 +7,7 @@ import type {
   CharStatusVars,
   CharVitals,
   CharWorth,
-} from "./char.ts";
+} from "./char";
 
 export interface DarkwindQuestObjective {
   name: string;

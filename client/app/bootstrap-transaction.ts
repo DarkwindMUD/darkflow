@@ -7,20 +7,20 @@ import {
   buildSessionRuntimeCompatBridge,
   resolveActiveCharacterProfileId,
   type LegacyStateMirror,
-} from "./session-bridge-wiring.ts";
-import { createSessionRegistry } from "../runtime/session-registry.ts";
-import { createSessionFromState } from "../runtime/session-factory.ts";
-import type { Session } from "../runtime/session.ts";
+} from "./session-bridge-wiring";
+import { createSessionRegistry } from "../runtime/session-registry";
+import { createSessionFromState } from "../runtime/session-factory";
+import type { Session } from "../runtime/session";
 import {
   DEFAULT_CONFIG_JSON,
   validateConfigJsonInput,
   type ConfigJson,
-} from "../storage/config-validator.ts";
-import { migrateLegacyData } from "../storage/legacy-migration.ts";
-import { readState, type StorageLike } from "../storage/repository.ts";
-import type { CharacterProfileId, ServerProfileId } from "../model/ids.ts";
-import type { TransportState } from "../transport/types.ts";
-import { loadClientSettings } from "./client-settings.ts";
+} from "../storage/config-validator";
+import { migrateLegacyData } from "../storage/legacy-migration";
+import { readState, type StorageLike } from "../storage/repository";
+import type { CharacterProfileId, ServerProfileId } from "../model/ids";
+import type { TransportState } from "../transport/types";
+import { loadClientSettings } from "./client-settings";
 
 /** Temporary Phase 1 bootstrap diagnostic exposed until later cutover steps finish. */
 export interface BootstrapDiagnostic {

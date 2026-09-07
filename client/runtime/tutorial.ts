@@ -1,22 +1,22 @@
 import { deepFreeze } from "../configuration/snapshot";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
 import type {
   DarkwindTutorialActionName,
   DarkwindTutorialChapter,
   DarkwindTutorialRoute,
   DarkwindTutorialStatus,
   DarkwindTutorialStep,
-} from "../gmcp/contracts/tutorial.ts";
+} from "../gmcp/contracts/tutorial";
 import {
   validateDarkwindTutorialControl,
   validateDarkwindTutorialState,
-} from "../gmcp/contracts/validators.ts";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
+} from "../gmcp/contracts/validators";
+import type { TransportReconnectStatusPayload } from "../transport/types";
 // @ts-expect-error Retained tutorial reducer is JavaScript without a declaration file.
 import * as tutorialCore from "../../public/js/tutorial-core.mjs";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { Disposer, ResourceScope } from "./resource-scope.ts";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { Disposer, ResourceScope } from "./resource-scope";
 
 export const TUTORIAL_ACTION_TIMEOUT_MS = 5_000;
 

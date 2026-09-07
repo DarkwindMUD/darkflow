@@ -1,6 +1,6 @@
-import type { Unsubscribe } from "./events.ts";
-import type { Session, TerminalOutputEvent } from "./session.ts";
-import { createTerminalAutomation, type TerminalOutputFragment } from "../terminal/automation.ts";
+import type { Unsubscribe } from "./events";
+import type { Session, TerminalOutputEvent } from "./session";
+import { createTerminalAutomation, type TerminalOutputFragment } from "../terminal/automation";
 
 // @ts-expect-error Shared output processing is JavaScript for legacy compatibility.
 import { createTerminalOutputModel } from "../../public/js/terminal-output-model.mjs";

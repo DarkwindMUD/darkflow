@@ -11,9 +11,9 @@ test("phase 0 harness renders the Typia proof", async ({ page }) => {
   await expect(page.locator('[data-testid="typia-proof"][data-typia-ok="true"]')).toBeVisible();
 });
 
-test("legacy root renders its client shell", async ({ page }) => {
+test("default root renders the Phase 2 client shell", async ({ page }) => {
   await page.goto("/");
-  await expect(page.locator("#toolbar")).toBeVisible();
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -22,7 +22,7 @@ test("legacy root renders its client shell", async ({ page }) => {
             .__darkflowPhase1Bootstrap?.phase,
       ),
     )
-    .toBe("legacy-loaded");
+    .toBe("client-loaded");
   await expect
     .poll(() => page.evaluate(() => typeof (window as unknown as { Howler?: unknown }).Howler))
     .toBe("object");

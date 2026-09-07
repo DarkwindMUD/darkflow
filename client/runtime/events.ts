@@ -1,4 +1,4 @@
-import type { SessionId } from "../model/ids.ts";
+import type { SessionId } from "../model/ids";
 
 /** Removes a session event subscription. */
 export type Unsubscribe = () => void;

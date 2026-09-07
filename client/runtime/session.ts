@@ -1,37 +1,37 @@
-import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
-import type { SessionConfiguration } from "../configuration/editor.ts";
-import type { Unsubscribe as ConfigurationUnsubscribe } from "../configuration/service.ts";
-import type { CoreHello } from "../gmcp/contracts/core.ts";
-import type { CompletionRequest, CompletionResult } from "../gmcp/contracts/completion.ts";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { CharacterProfileId, ServerProfileId, SessionId } from "../model/ids.ts";
-import type { SessionDescriptor, SessionRegistry } from "../model/session-contract.ts";
+import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot";
+import type { SessionConfiguration } from "../configuration/editor";
+import type { Unsubscribe as ConfigurationUnsubscribe } from "../configuration/service";
+import type { CoreHello } from "../gmcp/contracts/core";
+import type { CompletionRequest, CompletionResult } from "../gmcp/contracts/completion";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { CharacterProfileId, ServerProfileId, SessionId } from "../model/ids";
+import type { SessionDescriptor, SessionRegistry } from "../model/session-contract";
 import type {
   SessionTransport,
   TransportEndpoint,
   TransportHealthSnapshot,
   TransportReconnectStatusPayload,
   TransportState,
-} from "../transport/types.ts";
-import { LOST_TRANSMISSION_RECOVERY_DELAY_MS } from "../transport/reconnect.ts";
-import type { SessionDiagnostics } from "./diagnostics.ts";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { ResourceScope } from "./resource-scope.ts";
-import type { AutomationRuntimeState } from "./automation-runtime.ts";
-import type { SessionRuntimeState } from "./runtime-state.ts";
-import type { SessionInformation } from "./information.ts";
-import type { SessionConnectionHealth } from "./connection-health.ts";
-import type { SessionInteractions } from "./interactions.ts";
-import type { SessionWorld } from "./world.ts";
-import type { SessionIde } from "./ide.ts";
-import type { SessionNotifications } from "./notifications.ts";
-import type { SessionAudio } from "./audio.ts";
-import type { SessionCombat } from "./combat.ts";
-import type { SessionTutorial } from "./tutorial.ts";
-import type { SessionVisualEffects } from "./visual-effects.ts";
-import type { TerminalProcessing } from "./terminal-processing.ts";
-import type { SessionGmcpDiagnostics } from "./gmcp-diagnostics.ts";
+} from "../transport/types";
+import { LOST_TRANSMISSION_RECOVERY_DELAY_MS } from "../transport/reconnect";
+import type { SessionDiagnostics } from "./diagnostics";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { ResourceScope } from "./resource-scope";
+import type { AutomationRuntimeState } from "./automation-runtime";
+import type { SessionRuntimeState } from "./runtime-state";
+import type { SessionInformation } from "./information";
+import type { SessionConnectionHealth } from "./connection-health";
+import type { SessionInteractions } from "./interactions";
+import type { SessionWorld } from "./world";
+import type { SessionIde } from "./ide";
+import type { SessionNotifications } from "./notifications";
+import type { SessionAudio } from "./audio";
+import type { SessionCombat } from "./combat";
+import type { SessionTutorial } from "./tutorial";
+import type { SessionVisualEffects } from "./visual-effects";
+import type { TerminalProcessing } from "./terminal-processing";
+import type { SessionGmcpDiagnostics } from "./gmcp-diagnostics";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -287,7 +287,7 @@ export function createSession(parts: SessionParts): Session {
     automation: automationRuntime,
     async startProcessing() {
       if (disposed || terminalProcessing !== null) return;
-      terminalProcessingPromise ??= import("./terminal-processing.ts").then(
+      terminalProcessingPromise ??= import("./terminal-processing").then(
         ({ createTerminalProcessing }) => {
           if (!disposed && terminalProcessing === null) {
             terminalProcessing = createTerminalProcessing(session, subscribeText);

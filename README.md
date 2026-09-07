@@ -2,7 +2,7 @@
 
 Darkflow is the official web and desktop client for Darkwind. It is a fast, terminal-first WebSocket client with Darkwind-specific panels, mapping, media, builder tools, settings, and GMCP integrations layered around the live MUD session.
 
-The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and most of the runtime remains native ES modules under `public/js/`. A small Vite-built root bootstrap in `client/` now owns startup for both development and release artifacts; the legacy module graph is still loaded at runtime from copied `public/` output, not bundled into the bootstrap.
+The app is intentionally lightweight: Express serves static files, the browser connects directly to the MUD over WebSocket, and the default Vite-built Svelte/Dockview client lives in `client/app/`. Retained `public/js/` modules remain copied rollback inputs, but the root no longer loads the legacy application.
 
 ## What Darkflow Supports
 
@@ -42,32 +42,27 @@ protocol packages remain `Darkwind.*` for compatibility.
 
 ## Build System and Release Workflow
 
-If you are cutting a release and were not involved in the Phase 1 migration,
-read this section first. The player-visible UI is unchanged, but **how the app
-starts and what ships in production changed**.
+If you are cutting a release and were not involved in the Phase 2 migration,
+read this section first. The Svelte/Dockview UI is now the default root, so both
+the player-visible application and what ships in production changed.
 
 ### Architecture in one paragraph
 
-The visible shell HTML lives in `client/index.html`. At page load, a generated
-root bundle (built from `client/app/bootstrap.ts`) runs first, proves it passed
-through the Typia transform, then dynamically imports the unchanged legacy entry
-at `/js/app.js`. CSS, images, audio, and the rest of the game client still live
-under `public/` and are copied into `dist/client/` at build time — they are not
-converted to TypeScript and are not bundled into the root bootstrap. A separate
-Phase 0 harness at `/phase0/` is another Vite entry used for migration work;
-it is not the main game shell.
+The visible shell HTML lives in `client/index.html` and mounts `client/app/phase2.ts`.
+`/phase2/` temporarily mounts the same generated application entry for certification.
+CSS, images, audio, and retained compatibility modules remain copied from `public/`.
 
 ```text
 Development (npm run dev)
-  client/index.html  --Vite transform-->  /app/bootstrap.ts  --runtime import-->  public/js/app.js
+  client/index.html  --Vite transform-->  /app/phase2.ts  -->  Svelte/Dockview client
 
 Production / release (npm run build)
-  dist/client/index.html  -->  dist/client/assets/root-*.js  -->  dist/client/js/app.js
+  dist/client/index.html  -->  dist/client/assets/phase2-*.js  -->  Svelte/Dockview client
 ```
 
 ### Three ways to run the client
 
-| Command                                      | When to use                                            | Root HTML                                   | Legacy JS/CSS              | Build required?                                        |
+| Command                                      | When to use                                            | Root HTML                                   | Retained static assets     | Build required?                                        |
 | -------------------------------------------- | ------------------------------------------------------ | ------------------------------------------- | -------------------------- | ------------------------------------------------------ |
 | `npm run dev`                                | Day-to-day UI and server work                          | Vite-transformed `client/index.html` at `/` | Served from `public/`      | No                                                     |
 | `npm run build` then `npm start`             | Production-like web server locally, CI, Docker runtime | Generated `dist/client/index.html`          | Copied into `dist/client/` | Yes                                                    |
@@ -79,7 +74,7 @@ to raw `public/` files. For local iteration without a build step, use
 `npm run dev`.
 
 Development still exposes Vite HMR for `/phase0/` and transforms the root
-bootstrap on the shared Express origin. Production, Docker, and packaged Electron
+client entry on the shared Express origin. Production, Docker, and packaged Electron
 expose only the generated files under `dist/client/` — no raw `.ts`, no
 `/@vite/client`, and no `public/` or `client/` source trees.
 
@@ -87,8 +82,8 @@ expose only the generated files under `dist/client/` — no raw `.ts`, no
 
 `vite build` writes the release artifact to `dist/client/`:
 
-- `index.html` — generated shell; references a hashed `assets/root-*.js` bundle, not `/js/app.js` or `.ts` directly
-- `assets/root-*.js` — root bootstrap with Typia-transformed startup code and the runtime `/js/app.js` handoff
+- `index.html` — generated shell; references the same hashed `assets/phase2-*.js` entry as `/phase2/`
+- `assets/phase2-*.js` — the Svelte/Dockview client entry; it does not hand off to `/js/app.js`
 - `phase0/` — isolated Phase 0 harness bundle (separate Vite input)
 - `js/`, `css/`, `assets/`, and the rest of `public/**` — byte-copied legacy runtime files (`public/index.html` no longer exists in source)
 - `version.json` — `{ "version": "<package.json version>" }`, written by the postbuild step
@@ -97,7 +92,7 @@ The postbuild hook also runs validation gates that must pass before the artifact
 is considered releasable:
 
 - `verify:bundle` — fails if any shipped JavaScript still contains untransformed Typia factory code
-- `verify:client-artifact` — fails if the root entry bypasses the generated bootstrap, if Phase 0 or public-file parity checks fail, or if `version.json` does not match `package.json`
+- `verify:client-artifact` — fails if `/` and `/phase2/` do not share the generated client entry, if legacy handoff returns, or if Phase 0/public-file parity or version checks fail
 
 Run `npm run build` explicitly before `npm start`, Docker image builds that
 expect a prebuilt tree, or any manual inspection of `dist/client/`. CI and
@@ -107,14 +102,16 @@ expect a prebuilt tree, or any manual inspection of `dist/client/`. CI and
 
 | You want to change…                                   | Edit…                                                |
 | ----------------------------------------------------- | ---------------------------------------------------- |
-| Toolbar, terminal shell, DOM structure, favicon links | `client/index.html`                                  |
-| Game logic, panels, connection, GMCP handlers         | `public/js/**` (same as before)                      |
-| Styles and static assets                              | `public/css/**`, `public/assets/**`                  |
-| Root startup / future multi-connection bootstrap      | `client/app/**` (TypeScript, linted and typechecked) |
-| Phase 0 harness only                                  | `client/phase0/**`                                   |
+| Root metadata, static links, and application mount          | `client/index.html`                                      |
+| App chrome and future multi-connection host                 | `client/app/**`                                          |
+| Session logic, GMCP owners, terminal, panels, and workspace | `client/runtime/**`, `client/gmcp/**`, `client/workspace/**` |
+| Retained legacy and compatibility rollback modules          | `public/js/**`                                           |
+| Static styles and assets                                    | `public/css/**`, `public/assets/**`                       |
+| Phase 0 harness only                                        | `client/phase0/**`                                       |
 
 Do not recreate `public/index.html`; the root entry moved to `client/index.html`
-on purpose so Vite owns startup without bundling the entire legacy graph.
+on purpose so Vite owns Svelte startup while retained legacy modules remain
+available for rollback.
 
 ### Web release checklist
 

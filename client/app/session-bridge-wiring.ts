@@ -1,25 +1,25 @@
-import type { CoreHello } from "../gmcp/contracts/core.ts";
-import { identityKeyForDefinition } from "../configuration/identity.ts";
-import { resolveEffectiveConfiguration } from "../configuration/resolve.ts";
+import type { CoreHello } from "../gmcp/contracts/core";
+import { identityKeyForDefinition } from "../configuration/identity";
+import { resolveEffectiveConfiguration } from "../configuration/resolve";
 import {
   replaceLocalDefinitions as serviceReplaceLocalDefinitions,
   subscribe as serviceSubscribe,
-} from "../configuration/service.ts";
-import type { ConfigKind } from "../model/configuration.ts";
-import type { CharacterProfileId } from "../model/ids.ts";
-import type { ApplicationStateV1 } from "../model/profiles.ts";
-import { computeActiveScopeKey, type ConfigJson } from "../storage/config-validator.ts";
-import { readState, type StorageLike } from "../storage/repository.ts";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { Session } from "../runtime/session.ts";
-import type { SessionFacadeHandles } from "../runtime/session-factory.ts";
-import type { TransportReconnectStatusPayload } from "../transport/types.ts";
-import type { TransportState } from "../transport/types.ts";
+} from "../configuration/service";
+import type { ConfigKind } from "../model/configuration";
+import type { CharacterProfileId } from "../model/ids";
+import type { ApplicationStateV1 } from "../model/profiles";
+import { computeActiveScopeKey, type ConfigJson } from "../storage/config-validator";
+import { readState, type StorageLike } from "../storage/repository";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { Session } from "../runtime/session";
+import type { SessionFacadeHandles } from "../runtime/session-factory";
+import type { TransportReconnectStatusPayload } from "../transport/types";
+import type { TransportState } from "../transport/types";
 import {
   resolveLegacyToolbarEndpoint,
   readLiveToolbarEndpointInput,
   type LegacyToolbarEndpointInput,
-} from "../transport/urls.ts";
+} from "../transport/urls";
 
 const WS_CONNECTING = 0;
 const WS_OPEN = 1;

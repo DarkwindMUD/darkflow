@@ -3,8 +3,8 @@ import type {
   DarkwindWindowLayoutNode,
   DarkwindWindowOpen,
   DarkwindWindowSubmit,
-} from "./darkwind-window.ts";
-import type { DarkwindStreetSamurai } from "./street-samurai.ts";
+} from "./darkwind-window";
+import type { DarkwindStreetSamurai } from "./street-samurai";
 
 export interface DarkwindSnoopOpen {
   id: string;

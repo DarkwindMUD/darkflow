@@ -7,9 +7,9 @@ import type {
   LocalDefinitions,
   TimerDefinition,
   TriggerDefinition,
-} from "../model/configuration.ts";
-import type { CharacterProfileId } from "../model/ids.ts";
-import { createEmptyLocalDefinitions } from "../model/profiles.ts";
+} from "../model/configuration";
+import type { CharacterProfileId } from "../model/ids";
+import { createEmptyLocalDefinitions } from "../model/profiles";
 
 /** One effective definition with provenance metadata for a resolved snapshot. */
 export interface EffectiveDefinition<T> {

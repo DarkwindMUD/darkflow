@@ -1,6 +1,13 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
 
+declare global {
+  interface Window {
+    __darkflowTerminalViewTest?: { remove(): Promise<void>; restore(): Promise<void> };
+    __darkflowTerminalViewTestEnabled?: boolean;
+  }
+}
+
 let fixtures: TransportFixtureOwner;
 
 test.beforeAll(async () => {
@@ -28,6 +35,13 @@ function gmcpPayload(messages: string[], packageName: string): Record<string, un
     : null;
 }
 
+async function skipChangedSettingsBackup(dialog: Locator): Promise<void> {
+  await dialog
+    .getByRole("dialog", { name: "Download changed settings?", exact: true })
+    .getByRole("button", { name: "Skip", exact: true })
+    .click();
+}
+
 test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async ({ page }) => {
   const endpoint = fixtures.endpoints.ws;
   await connect(page);
@@ -44,6 +58,7 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Terminal width").fill("75");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() => gmcpPayload(endpoint.gmcpMessages.slice(beforeFixed), "Darkwind.Client.NAWS"))
     .toMatchObject({ width: 75, height: automatic.height });
@@ -467,6 +482,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Scrollback behavior").selectOption("split");
   await dialog.getByRole("button", { name: "Apply" }).click();
+  await skipChangedSettingsBackup(dialog);
 
   const output = page.getByLabel("Terminal output", { exact: true });
   endpoint.sendText(Array.from({ length: 80 }, (_, index) => `split line ${index}\n`).join(""));
@@ -510,6 +526,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
   await dialog.getByLabel("Show emoji picker").uncheck();
   await dialog.getByRole("button", { name: "Apply" }).click();
+  await skipChangedSettingsBackup(dialog);
   await input.fill("say :smile:");
   await expect(picker).toBeHidden();
   await expect(input).toHaveValue("say :smile:");
@@ -552,6 +569,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByLabel("Screen reader announcements").check();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
 
   endpoint.sendText(" announced live\n");
   await expect(output).toContainText("pending prompt announced live");
@@ -561,6 +579,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByLabel("Screen reader announcements").uncheck();
   await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
   endpoint.sendText(" silent live\n");
   await expect(output).toContainText("silent live");

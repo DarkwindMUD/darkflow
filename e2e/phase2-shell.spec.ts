@@ -6,10 +6,10 @@ interface FakeSocketSnapshot {
   urls: string[];
 }
 
-test("Phase 2 uses one Svelte shell without loading the legacy client", async ({ page }) => {
+test("default root uses one Svelte shell without loading the legacy client", async ({ page }) => {
   const requests: string[] = [];
   page.on("request", (request) => requests.push(new URL(request.url()).pathname));
-  await page.goto("/phase2/");
+  await page.goto("/");
 
   const shell = page.getByTestId("phase2-shell");
   await expect(shell).toHaveCount(1);
@@ -35,8 +35,8 @@ test("Phase 2 uses one Svelte shell without loading the legacy client", async ({
   });
   await expect(shell).toHaveCount(0);
 
-  await page.goto("/");
-  await expect(page.locator("#toolbar")).toBeVisible();
+  await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
 });
 
 test("Phase 2 chrome applies the migrated theme and disposes desktop updates", async ({ page }) => {

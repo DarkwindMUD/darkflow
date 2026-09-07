@@ -5,7 +5,7 @@ import {
   runBootTransaction,
   writePhase1RuntimeSlot,
   type SessionBootstrapDiagnostic,
-} from "./bootstrap-transaction.ts";
+} from "./bootstrap-transaction";
 
 declare global {
   interface Window {

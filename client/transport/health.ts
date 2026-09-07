@@ -1,5 +1,5 @@
-import type { TransportHealthSnapshot } from "./types.ts";
-import type { WebSocketLike } from "./types.ts";
+import type { TransportHealthSnapshot } from "./types";
+import type { WebSocketLike } from "./types";
 
 export const WS_DIAG_LIMIT = 100;
 export const WS_HEALTH_INTERVAL_MS = 5000;

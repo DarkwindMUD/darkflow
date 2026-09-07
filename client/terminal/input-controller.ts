@@ -1,8 +1,8 @@
-import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot.ts";
-import type { Session } from "../runtime/session.ts";
-import { loadCommandHistory, saveCommandHistory } from "./history.ts";
-import { loadClientSettings } from "../app/client-settings.ts";
-import { createMentionPicker } from "./mention-picker.ts";
+import type { EffectiveConfigurationSnapshot } from "../configuration/snapshot";
+import type { Session } from "../runtime/session";
+import { loadCommandHistory, saveCommandHistory } from "./history";
+import { loadClientSettings } from "../app/client-settings";
+import { createMentionPicker } from "./mention-picker";
 // @ts-expect-error Shared emoji picker is legacy JavaScript without declarations.
 import * as emojiPicker from "../../public/js/emoji-picker.js";
 

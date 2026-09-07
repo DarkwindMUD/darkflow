@@ -5,7 +5,7 @@ import type {
   ServerProfile,
   TransportProtocol,
   WorkspaceSnapshot,
-} from "../model/profiles.ts";
+} from "../model/profiles";
 import type {
   AliasDefinition,
   AutomationStep,
@@ -15,22 +15,22 @@ import type {
   LocalDefinitions,
   TimerDefinition,
   TriggerDefinition,
-} from "../model/configuration.ts";
+} from "../model/configuration";
 import {
   createCharacterProfileId,
   createServerProfileId,
   type CharacterProfileId,
   type ServerProfileId,
   type UuidFactory,
-} from "../model/ids.ts";
-import { createEmptyConfigurationSetRefs, createEmptyLocalDefinitions } from "../model/profiles.ts";
-import type { GraphValidationIssue } from "../model/validators.ts";
+} from "../model/ids";
+import { createEmptyConfigurationSetRefs, createEmptyLocalDefinitions } from "../model/profiles";
+import type { GraphValidationIssue } from "../model/validators";
 import {
   DEFAULT_CONFIG_JSON,
   computeActiveScopeKey,
   validateConfigJsonInput,
   type ConfigJson,
-} from "./config-validator.ts";
+} from "./config-validator";
 import {
   LEGACY_ALIAS_STORAGE_KEY,
   LEGACY_FUNCTION_STORAGE_KEY,
@@ -48,14 +48,10 @@ import {
   readLegacyScopedStore,
   readLegacySoundSettings,
   type LegacyScopedStore,
-} from "./legacy-keys.ts";
-import { commit, hasValidState, writeProvenance, type StorageLike } from "./repository.ts";
-import {
-  DEFAULT_THEME_KEY,
-  LEGACY_MIGRATION_WORLD_KEY,
-  type MigrationProvenance,
-} from "./schema.ts";
-import { validateApplicationState } from "./validators.ts";
+} from "./legacy-keys";
+import { commit, hasValidState, writeProvenance, type StorageLike } from "./repository";
+import { DEFAULT_THEME_KEY, LEGACY_MIGRATION_WORLD_KEY, type MigrationProvenance } from "./schema";
+import { validateApplicationState } from "./validators";
 
 /** Outcome of a legacy migration attempt. */
 export type MigrationResult =

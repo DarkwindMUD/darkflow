@@ -1,4 +1,4 @@
-import type { ApplicationStateV1 } from "../model/profiles.ts";
+import type { ApplicationStateV1 } from "../model/profiles";
 import type {
   AliasDefinition,
   ConfigKind,
@@ -9,12 +9,12 @@ import type {
   LocalDefinitions,
   TimerDefinition,
   TriggerDefinition,
-} from "../model/configuration.ts";
-import type { CharacterProfileId, ConfigSetId } from "../model/ids.ts";
-import { commit, readState, type StorageLike } from "../storage/repository.ts";
+} from "../model/configuration";
+import type { CharacterProfileId, ConfigSetId } from "../model/ids";
+import { commit, readState, type StorageLike } from "../storage/repository";
 
-import { resolveEffectiveConfiguration } from "./resolve.ts";
-import type { EffectiveConfigurationSnapshot } from "./snapshot.ts";
+import { resolveEffectiveConfiguration } from "./resolve";
+import type { EffectiveConfigurationSnapshot } from "./snapshot";
 
 /** Listener invoked when a subscribed character receives a fresh effective snapshot. */
 export type EffectiveConfigurationListener = (snapshot: EffectiveConfigurationSnapshot) => void;

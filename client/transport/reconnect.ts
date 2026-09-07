@@ -1,14 +1,14 @@
-import type { SessionEventBus } from "../runtime/event-bus.ts";
-import type { ResourceScope } from "../runtime/resource-scope.ts";
-import type { Disposer } from "../runtime/resource-scope.ts";
-import type { TransportHealth } from "./health.ts";
-import { buildConnectionUrl, buildTransportLadder } from "./urls.ts";
+import type { SessionEventBus } from "../runtime/event-bus";
+import type { ResourceScope } from "../runtime/resource-scope";
+import type { Disposer } from "../runtime/resource-scope";
+import type { TransportHealth } from "./health";
+import { buildConnectionUrl, buildTransportLadder } from "./urls";
 import type {
   TransportEndpoint,
   TransportName,
   TransportReconnectStatusPayload,
   WebSocketLike,
-} from "./types.ts";
+} from "./types";
 
 export const WS_FORCE_RECONNECT_DELAY_MS = 250;
 export const RECONNECT_BASE_MS = 1000;

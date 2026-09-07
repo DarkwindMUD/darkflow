@@ -9,13 +9,13 @@ import {
   writePhase1RuntimeSlot,
   type Phase1RuntimeRecord,
   type SessionBootstrapDiagnostic,
-} from "./bootstrap-transaction.ts";
+} from "./bootstrap-transaction";
 import {
   DEFAULT_CONFIG_JSON,
   validateConfigJsonInput,
   type ConfigJson,
-} from "../storage/config-validator.ts";
-import type { TransportEndpoint, TransportName } from "../transport/types.ts";
+} from "../storage/config-validator";
+import type { TransportEndpoint, TransportName } from "../transport/types";
 
 declare global {
   interface Window {

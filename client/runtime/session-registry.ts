@@ -1,9 +1,9 @@
-import type { CharacterProfileId } from "../model/ids.ts";
+import type { CharacterProfileId } from "../model/ids";
 import {
   DuplicateLiveSessionError,
   type SessionDescriptor,
   type SessionRegistry,
-} from "../model/session-contract.ts";
+} from "../model/session-contract";
 
 /** Creates a one-live-session-per-character registry backed by an in-memory map. */
 export function createSessionRegistry(): SessionRegistry {

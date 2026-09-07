@@ -1,5 +1,5 @@
-import type { CharacterProfileId } from "../model/ids.ts";
-import { commit, readState, type StorageLike } from "../storage/repository.ts";
+import type { CharacterProfileId } from "../model/ids";
+import { commit, readState, type StorageLike } from "../storage/repository";
 
 const MAX_COMMAND_HISTORY = 200;
 const MAX_COMMAND_LENGTH = 4096;

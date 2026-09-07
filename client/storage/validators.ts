@@ -4,9 +4,9 @@ import {
   parseApplicationState,
   validateApplicationState,
   type ValidationResult,
-} from "../model/validators.ts";
-import type { ApplicationStateV1 } from "../model/profiles.ts";
-import type { MigrationProvenance } from "./schema.ts";
+} from "../model/validators";
+import type { ApplicationStateV1 } from "../model/profiles";
+import type { MigrationProvenance } from "./schema";
 
 export const validateMigrationProvenance = typia.createValidate<MigrationProvenance>();
 export const parseMigrationProvenance = typia.json.createValidateParse<MigrationProvenance>();

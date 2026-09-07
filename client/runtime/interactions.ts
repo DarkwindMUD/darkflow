@@ -24,16 +24,16 @@ import type {
   DarkwindSnoopStatus,
   InteractionFishing,
   SessionInteractionSnapshot,
-} from "../gmcp/contracts/interactions.ts";
+} from "../gmcp/contracts/interactions";
 import type {
   DarkwindWindowClose,
   DarkwindWindowOpen,
   DarkwindWindowUpdate,
-} from "../gmcp/contracts/darkwind-window.ts";
+} from "../gmcp/contracts/darkwind-window";
 import {
   normalizeDarkwindStreetSamurai,
   type DarkwindStreetSamurai,
-} from "../gmcp/contracts/street-samurai.ts";
+} from "../gmcp/contracts/street-samurai";
 import {
   validateDarkwindAnnouncementsList,
   validateDarkwindAnnouncementsNew,
@@ -58,11 +58,11 @@ import {
   validateDarkwindWindowOpen,
   validateDarkwindWindowUpdate,
 } from "../gmcp/contracts/validators";
-import type { SessionGmcpBus } from "../gmcp/bus.ts";
-import type { SessionTransport, TransportReconnectStatusPayload } from "../transport/types.ts";
-import type { SessionEventBus } from "./event-bus.ts";
-import type { Unsubscribe } from "./events.ts";
-import type { ResourceScope } from "./resource-scope.ts";
+import type { SessionGmcpBus } from "../gmcp/bus";
+import type { SessionTransport, TransportReconnectStatusPayload } from "../transport/types";
+import type { SessionEventBus } from "./event-bus";
+import type { Unsubscribe } from "./events";
+import type { ResourceScope } from "./resource-scope";
 
 const MAX_SNOOP_ENTRIES = 1000;
 const AUTH_RESPONSE_TIMEOUT_MS = 8000;

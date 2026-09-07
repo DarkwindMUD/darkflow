@@ -1,4 +1,4 @@
-import type { GmcpSubscriptionPayload } from "../bus.ts";
+import type { GmcpSubscriptionPayload } from "../bus";
 
 /** Re-export bus subscription payload as Darkwind.Client.Subscriptions type. */
 export type { GmcpSubscriptionPayload as DarkwindClientSubscriptions };

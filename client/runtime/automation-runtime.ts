@@ -1,4 +1,4 @@
-import type { ResourceScope } from "./resource-scope.ts";
+import type { ResourceScope } from "./resource-scope";
 
 const GMCP_VARIABLE_PREFIX = "gmcp";
 

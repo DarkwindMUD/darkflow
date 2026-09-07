@@ -1474,6 +1474,7 @@
     {/if}
     <div class="df-panels-menu" onfocusout={handleLauncherFocusOut}>
       <button
+        bind:this={sheetTrigger}
         type="button"
         class="df-panels-menu-trigger toolbar-icon-btn"
         class:active={launcherOpen}
@@ -1510,16 +1511,6 @@
       <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
     {/if}
   </div>
-  <button
-    bind:this={sheetTrigger}
-    class="mobile-panels-trigger"
-    data-tutorial-target="panels-menu"
-    type="button"
-    aria-controls="phase2-workspace-host"
-    aria-expanded={sheetOpen}
-    aria-haspopup="dialog"
-    onclick={openSheet}>Panels</button
-  >
   <p bind:this={workspaceStatusEl} class="workspace-status" data-testid="workspace-status">
     {status}
   </p>
@@ -1767,16 +1758,11 @@
     margin-left: 0;
   }
 
-  .mobile-panels-trigger,
   .mobile-sheet-overlay {
     display: none;
   }
 
   @media (max-width: 700px) {
-    .mobile-panels-trigger {
-      display: none;
-    }
-
     .mobile-sheet-overlay {
       position: fixed;
       inset: 0;

@@ -1,4 +1,4 @@
-import type { SessionId } from "../model/ids.ts";
+import type { SessionId } from "../model/ids";
 
 /** Resource kinds owned by a session resource scope. */
 export type ResourceKind =

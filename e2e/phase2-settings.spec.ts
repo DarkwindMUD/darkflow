@@ -733,7 +733,7 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
     beforeInvalid,
   );
 
-  exported.data.clientSettings.repeatLastCommand = false;
+  (exported.data.clientSettings as Record<string, unknown>).repeatLastCommand = false;
   await dialog.locator(".hidden-file-input").setInputFiles({
     name: "settings.json",
     mimeType: "application/json",
@@ -1163,8 +1163,9 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
 
   await dialog.getByRole("button", { name: "Close settings" }).click();
   await skipChangedSettingsBackup(dialog);
-  await page.keyboard.press("F2");
   const input = page.getByLabel("Command input", { exact: true });
+  await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
+  await page.keyboard.press("F2");
   await input.fill("fn");
   await input.press("Enter");
   await expect
@@ -1276,7 +1277,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await dialog.getByRole("button", { name: "Close settings" }).click();
   await skipChangedSettingsBackup(dialog);
   await connect(page);
-  await page.getByLabel("Command input", { exact: true }).focus();
+  await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("F3");
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedfn");

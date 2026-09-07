@@ -312,7 +312,7 @@ test("failed and disposed transfers do not leave partial owners", async ({ page 
     Object.defineProperty(rail, "insertBefore", {
       configurable: true,
       value() {
-        delete (rail as HTMLElement & { insertBefore?: unknown }).insertBefore;
+        Reflect.deleteProperty(rail, "insertBefore");
         throw new Error("fixture destination failure");
       },
     });

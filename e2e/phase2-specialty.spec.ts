@@ -595,8 +595,13 @@ test("Visual Effects stay cosmetic across settings, motion, recovery, reconnect,
   const settingsStart = endpoint.gmcpMessages.length;
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   await settings.getByLabel("Enable visual effects").check();
   await settings.getByRole("button", { name: "Apply", exact: true }).click();
+  await settings
+    .getByRole("dialog", { name: "Download changed settings?", exact: true })
+    .getByRole("button", { name: "Skip", exact: true })
+    .click();
   await expect(settings).toHaveCount(0);
   await expect(root).toBeVisible();
   await expect

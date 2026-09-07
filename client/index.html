@@ -1,150 +1,32 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="theme-color" content="#0d1117">
-<meta name="color-scheme" content="dark">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Darkflow</title>
-<link rel="icon" href="assets/brand/darkflow-icon-32.png" sizes="32x32" type="image/png">
-<link rel="icon" href="assets/brand/darkflow-icon-64.png" sizes="64x64" type="image/png">
-<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
-<link rel="manifest" href="site.webmanifest">
-<link rel="stylesheet" href="css/main.css">
-<link rel="stylesheet" href="css/panels.css">
-<link rel="stylesheet" href="css/combat-visual.css">
-<link rel="stylesheet" href="css/visual-effects.css">
-<link rel="stylesheet" href="css/tutorial.css">
-<link rel="stylesheet" href="css/windows.css">
-<link rel="stylesheet" href="css/street-samurai-dashboard.css">
-<link rel="stylesheet" href="css/ide.css">
-<link rel="stylesheet" href="css/fishing.css">
-<link rel="stylesheet" href="css/room-playlist.css">
-</head>
-<body>
-
-<div id="app-background" aria-hidden="true"></div>
-<div id="visual-effects-root" aria-hidden="true" hidden>
-  <div class="visual-effects-planet"></div>
-  <div class="visual-effects-terrain"></div>
-  <div class="visual-effects-low-health"></div>
-  <div class="visual-effects-spell-cast">
-    <div class="visual-effects-fire">
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-      <span class="visual-fire-flame"></span>
-    </div>
-    <div class="visual-effects-frost"></div>
-    <div class="visual-effects-lightning">
-      <span class="visual-lightning-arc"></span>
-      <span class="visual-lightning-arc"></span>
-      <span class="visual-lightning-arc"></span>
-      <span class="visual-lightning-arc"></span>
-      <span class="visual-lightning-arc"></span>
-      <span class="visual-lightning-arc"></span>
-    </div>
-  </div>
-  <div class="visual-effects-outgoing-damage"></div>
-  <div class="visual-effects-incoming-damage"></div>
-</div>
-
-<div id="toolbar">
-  <div class="toolbar-left">
-    <span class="toolbar-brand" id="toolbar-brand">
-      <img src="assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true">
-      <span>Darkflow</span>
-    </span>
-    <span id="toolbar-connect-fields">
-      <input type="text" id="host" placeholder="Host" aria-label="Host">
-      <span style="color:#484f58">:</span>
-      <input type="number" id="port" value="4242" min="1" max="65535" aria-label="Port">
-      <select id="protocol-select" class="toolbar-select" title="Connection protocol" aria-label="Connection protocol">
-        <option value="wss">wss</option>
-        <option value="ws">ws</option>
-        <option value="telnets">telnets</option>
-        <option value="telnet">telnet</option>
-      </select>
-      <button id="connect-btn">Connect</button>
-    </span>
-    <span id="toolbar-status" class="toolbar-status" style="display:none">
-      <span id="connection-dot" class="conn-dot dot-disconnected"></span>
-      <span id="connection-state">Disconnected</span>
-    </span>
-  </div>
-  <div class="toolbar-right">
-    <span id="audio-widget-root" aria-live="polite" hidden></span>
-    <button id="notifications-btn" class="toolbar-icon-btn disabled" title="Events (coming soon)" aria-label="Events">&#x1F514;</button>
-    <button id="mail-btn" class="toolbar-icon-btn" title="Announcements" aria-label="Announcements">&#x1F4F0;</button>
-    <span class="toolbar-separator"></span>
-    <button id="left-dock-toggle" class="toolbar-icon-btn active" title="Left sidebar" aria-label="Toggle left sidebar">&#x25E7;</button>
-    <button id="right-dock-toggle" class="toolbar-icon-btn active" title="Right sidebar" aria-label="Toggle right sidebar">&#x25E8;</button>
-    <button id="mobile-panels-btn" class="toolbar-icon-btn" title="Panels" aria-label="Panels">&#x2630;</button>
-    <span class="panels-menu-wrap">
-      <button id="panels-menu-btn" class="toolbar-icon-btn" title="Panels" aria-label="Panels menu">&#x2630;</button>
-      <div id="panels-menu" class="panels-menu"></div>
-    </span>
-    <span class="toolbar-separator"></span>
-    <button id="gmcp-toggle" class="toolbar-icon-btn" title="GMCP Debug" aria-label="GMCP debug">&#x2756;</button>
-    <span class="gear-menu-wrap">
-      <button id="gear-btn" class="toolbar-icon-btn" title="Settings (Ctrl/Cmd+,)" aria-label="Settings (Ctrl/Cmd+,)">&#x2699;</button>
-    </span>
-  </div>
-</div>
-
-<div id="main-content">
-  <div id="left-dock" class="dock-column"></div>
-  <div id="center-column">
-    <div id="output-shell">
-      <button id="output-live-btn" type="button" title="Return to live terminal">Live</button>
-      <button id="output-pause-btn" type="button" aria-pressed="false" title="Resume live terminal">Paused</button>
-      <button id="output-escape-hint" type="button" title="Press Escape to return to live terminal">Return to live</button>
-      <div id="output" class="output-pane" aria-label="Terminal output"></div>
-      <div id="output-split">
-        <div id="output-history" class="output-pane" aria-label="Terminal history"></div>
-        <div id="output-divider" role="separator" aria-orientation="horizontal" aria-label="Resize terminal split"></div>
-        <div id="output-live" class="output-pane" aria-label="Live terminal output"></div>
-      </div>
-      <div id="screenreader-announcer" class="sr-only" aria-live="polite" aria-atomic="false"></div>
-      <div id="avatar-meter" aria-live="polite">
-        <div class="avatar-meter-fill"></div>
-        <div class="avatar-meter-label">Wrathful Avatar 0%</div>
-      </div>
-    </div>
-    <div id="gmcp-panel"></div>
-  </div>
-  <div id="right-dock" class="dock-column"></div>
-</div>
-
-<div id="input-bar">
-  <input type="text" id="command-input" placeholder="Enter command..." autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Command input">
-  <button id="send-btn">Send</button>
-</div>
-
-<div id="status-bar">
-  <span id="status-connection">Not connected</span>
-  <span id="status-latency" class="status-latency" hidden title="Connection health"></span>
-  <span id="status-uptime"></span>
-  <span id="status-versions"></span>
-</div>
-
-<div id="update-banner">
-  <span id="update-message">A new client version is available.</span>
-  <a href="#" id="update-refresh">Refresh to update</a>
-</div>
-
-<script src="/vendor/howler.core.min.js"></script>
-<script type="module" src="/app/bootstrap.ts"></script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d1117" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Darkflow</title>
+    <link rel="icon" href="/assets/brand/darkflow-icon-32.png" sizes="32x32" type="image/png" />
+    <link rel="icon" href="/assets/brand/darkflow-icon-64.png" sizes="64x64" type="image/png" />
+    <link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+    <link rel="stylesheet" href="/css/main.css" />
+    <link rel="stylesheet" href="/css/panels.css" />
+    <link rel="stylesheet" href="/css/ide.css" />
+    <link rel="stylesheet" href="/css/windows.css" />
+    <link rel="stylesheet" href="/css/fishing.css" />
+    <link rel="stylesheet" href="/css/room-playlist.css" />
+    <link rel="stylesheet" href="/css/combat-visual.css" />
+    <link rel="stylesheet" href="/css/tutorial.css" />
+    <link rel="stylesheet" href="/css/visual-effects.css" />
+    <link rel="stylesheet" href="/css/street-samurai-dashboard.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="/vendor/howler.core.min.js"></script>
+    <script type="module" src="/app/phase2.ts"></script>
+  </body>
 </html>

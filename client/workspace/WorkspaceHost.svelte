@@ -146,10 +146,13 @@
     state: { mapZoom: 1 },
     placement: { kind: "floating", bounds: { left: 40, top: 40, width: 520, height: 420 } },
   };
+  // The Scene: the player's figure in the current room, and the duel when a
+  // fight is on. It keeps the "enemy" id the server-side tutorial and saved
+  // layouts already know.
   const combatPanel: WorkspacePanelSpec = {
     id: "enemy",
     kind: "enemy",
-    title: "Enemy",
+    title: "Scene",
     state: {},
   };
   const chatPanel: WorkspacePanelSpec = {
@@ -175,7 +178,7 @@
   type PanelMenuGroupName = "Character" | "Progress" | "Social" | "System" | "World";
   type PanelMenuItem = {
     group: PanelMenuGroupName;
-    kind: "information" | "world" | "chat" | "dps" | "gmcp-debug";
+    kind: "information" | "world" | "chat" | "dps" | "scene" | "gmcp-debug";
     panel: WorkspacePanelSpec;
   };
   const informationPanelGroups: Record<InformationPanelId, PanelMenuGroupName> = {
@@ -204,6 +207,7 @@
       panel,
     })),
     ...worldPanels.map((panel): PanelMenuItem => ({ group: "World", kind: "world", panel })),
+    { group: "World", kind: "scene", panel: combatPanel },
     { group: "Social", kind: "chat", panel: chatPanel },
     { group: "Character", kind: "dps", panel: dpsPanel },
     ...(debugGmcp
@@ -428,7 +432,7 @@
   let rightRail: Scrollview | undefined;
   let leftRailVisible = $state(true);
   let rightRailVisible = $state(true);
-  let workspace: Workspace | undefined;
+  let workspace: (Workspace & WorkspaceInspector) | undefined;
   /** Set once the save pipeline exists; rail edits are not Dockview layout events. */
   let requestSave: (() => void) | undefined;
   let movePanel:
@@ -523,7 +527,14 @@
       ownerOf(panel.id)?.hasPanel(panel.id),
     );
     openWorldPanelIds = visibleWorldPanels.map((panel) => panel.id);
-    session.world.setVisiblePanels(visibleWorldPanels.map((panel) => panel.id));
+    combatPanelOpen = workspace?.hasPanel(combatPanel.id) ?? false;
+    // The Scene paints the room's image behind its figures, so while it is
+    // open the room and its art are wanted just as they are for Room Image.
+    const worldSubscriptions = visibleWorldPanels.map((panel) => panel.id);
+    if (combatPanelOpen && !worldSubscriptions.includes("roomImage")) {
+      worldSubscriptions.push("roomImage");
+    }
+    session.world.setVisiblePanels(worldSubscriptions);
     chatPanelOpen = workspace?.hasPanel(chatPanel.id) ?? false;
     dpsPanelOpen = workspace?.hasPanel(dpsPanel.id) ?? false;
   }
@@ -616,6 +627,36 @@
     syncVisiblePanels();
   }
 
+  // Where the Scene opens. Under Room Image when that panel is in the grid,
+  // so it never lands on top of the terminal; otherwise to the right of the
+  // terminal. A floating anchor is never used: Dockview cannot split a
+  // floating group, so a panel placed against one becomes a tab inside that
+  // window instead, which is how the panel used to end up hiding a floated
+  // terminal.
+  function scenePlacement(target: Workspace & WorkspaceInspector): PanelPlacement {
+    const roomImage = target.inspectPanel("roomImage");
+    if (roomImage && !roomImage.floating) {
+      return { kind: "grid", direction: "below", referencePanelId: "roomImage" };
+    }
+    const terminalInfo = target.inspectPanel(terminal.id);
+    if (terminalInfo && !terminalInfo.floating) {
+      return { kind: "grid", direction: "right", referencePanelId: terminal.id };
+    }
+    return { kind: "grid", direction: "right" };
+  }
+
+  async function toggleScenePanel(activate = true): Promise<void> {
+    if (!workspace) return;
+    // Closing goes through the panel's close guard so a fight in progress is
+    // handed back to text, the same as the tab's close button.
+    if (workspace.hasPanel(combatPanel.id)) await workspace.requestClosePanel(combatPanel.id);
+    else {
+      workspace.addOrUpdatePanel({ ...combatPanel, placement: scenePlacement(workspace) });
+      if (activate) workspace.activatePanel(combatPanel.id);
+    }
+    syncVisiblePanels();
+  }
+
   async function toggleGmcpDebugPanel(activate = true): Promise<void> {
     if (!workspace || (!debugGmcp && !workspace.hasPanel(gmcpDebugPanel.id))) return;
     if (workspace.hasPanel(gmcpDebugPanel.id)) await workspace.removePanel(gmcpDebugPanel.id);
@@ -646,6 +687,7 @@
     if (item.kind === "world") return worldPanelOpen(item.panel);
     if (item.kind === "gmcp-debug") return gmcpDebugOpen;
     if (item.kind === "dps") return dpsPanelOpen;
+    if (item.kind === "scene") return combatPanelOpen;
     return chatPanelOpen;
   }
 
@@ -654,6 +696,7 @@
     else if (item.kind === "world") void toggleWorldPanel(item.panel, false);
     else if (item.kind === "gmcp-debug") void toggleGmcpDebugPanel(false);
     else if (item.kind === "dps") void toggleDpsPanel(false);
+    else if (item.kind === "scene") void toggleScenePanel(false);
     else void toggleChatPanel(false);
   }
 
@@ -819,6 +862,8 @@
       enemy: {
         canClose: () => {
           combatPanelOpen = false;
+          // Mid-fight this hands the encounter back to text; between fights
+          // there is no encounter and it is a no-op.
           session.combat.dismissEncounter();
           return true;
         },
@@ -1169,7 +1214,7 @@
      * Apply a persisted snapshot. A version 1 payload predates the rails, so its
      * rail membership is whatever `fillRailsWithDefaults` rebuilds.
      */
-    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel, dpsPanel];
+    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel, dpsPanel, combatPanel];
     const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
       if (next.version === 1) {
         if (!currentWorkspace.restore(next, persistedPanels)) return false;
@@ -1283,7 +1328,6 @@
       fishingPanelOpen ||
       areaMapPanelOpen ||
       idePanelOpen ||
-      combatPanelOpen ||
       gmcpDebugOpen;
     const flush = () => {
       if (timer !== undefined) {
@@ -1335,7 +1379,7 @@
       const transientPanelIds = [...serverPanelIds.values()];
       const hadFishingPanel = fishingPanelOpen;
       const hadAreaMapPanel = areaMapPanelOpen;
-      const hadCombatPanel = combatPanelOpen;
+      const hadCombatPanel = currentWorkspace.hasPanel(combatPanel.id);
       if (hadCombatPanel) {
         combatPanelOpen = false;
         session.combat.dismissEncounter();
@@ -1496,24 +1540,8 @@
       }
       if (hasTransientPanels()) cancelPendingSave();
     };
-    // Where a fight opens. Under Room Image when that panel is in the grid, so
-    // the Enemy panel never lands on top of the terminal; otherwise to the
-    // right of the terminal. A floating anchor is never used: Dockview cannot
-    // split a floating group, so a panel placed against one becomes a tab
-    // inside that window instead, which is how the Enemy panel used to end up
-    // hiding a floated terminal.
-    const combatPlacement = (): PanelPlacement => {
-      const roomImage = currentWorkspace.inspectPanel("roomImage");
-      if (roomImage && !roomImage.floating) {
-        return { kind: "grid", direction: "below", referencePanelId: "roomImage" };
-      }
-      const terminalInfo = currentWorkspace.inspectPanel(terminal.id);
-      if (terminalInfo && !terminalInfo.floating) {
-        return { kind: "grid", direction: "right", referencePanelId: terminal.id };
-      }
-      return { kind: "grid", direction: "right" };
-    };
-    // An Enemy panel that shares a group with the terminal would only cover it
+    const combatPlacement = (): PanelPlacement => scenePlacement(currentWorkspace);
+    // A Scene panel that shares a group with the terminal would only cover it
     // when activated, so a new fight moves it out instead.
     const combatPanelCoversTerminal = (): boolean => {
       const enemy = currentWorkspace.inspectPanel(combatPanel.id);
@@ -1547,10 +1575,9 @@
           requestAnimationFrame(restoreFocus);
         }
         combatPanelOpen = true;
-      } else if (combatPanelOpen) {
-        combatPanelOpen = false;
-        void currentWorkspace.removePanel(combatPanel.id);
       }
+      // When the fight ends the Scene stays: its stage returns to the room
+      // with the player alone, and the next fight pops the opponent back in.
       if (!next.model.active || !next.model.visualEnabled) seenCombatEncounter = "";
       if (hasTransientPanels()) cancelPendingSave();
     };
@@ -1831,7 +1858,7 @@
       {/if}
     </div>
     {#if combatPanelOpen}
-      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
+      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Scene</button>
     {/if}
   </div>
   <p bind:this={workspaceStatusEl} class="workspace-status" data-testid="workspace-status">
@@ -1930,17 +1957,13 @@
       >
         {dpsPanelOpen ? "Close DPS Meter" : "Open DPS Meter"}
       </button>
-      {#if combatPanelOpen}
-        <button
-          type="button"
-          onclick={() => selectPanel(() => workspace?.activatePanel(combatPanel.id))}>Enemy</button
-        >
-        <button
-          type="button"
-          onclick={() => selectPanel(() => void workspace?.requestClosePanel(combatPanel.id))}
-          >Close Enemy</button
-        >
-      {/if}
+      <button
+        type="button"
+        aria-pressed={combatPanelOpen}
+        onclick={() => selectPanel(() => void toggleScenePanel())}
+      >
+        {combatPanelOpen ? "Close Scene" : "Open Scene"}
+      </button>
     </div>
   </div>
 </div>

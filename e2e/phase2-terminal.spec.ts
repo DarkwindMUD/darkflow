@@ -229,6 +229,14 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
         legacyKey: "",
         command: "score",
       },
+      {
+        id: "key-east",
+        enabled: true,
+        code: "ArrowRight",
+        label: "Right",
+        legacyKey: "",
+        command: "east",
+      },
     ];
     character.localDefinitions.timers = [
       {
@@ -483,6 +491,17 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
     .poll(() => endpoint.commands)
     .toEqual(expect.arrayContaining(["look", "wave", "say true", "tick"]));
   expect(endpoint.commands.filter((command) => command === "score")).toHaveLength(2);
+
+  await page.getByRole("button", { name: "Float Avatar", exact: true }).click();
+  const floatingAvatarTab = page.locator('.dv-tab:has([data-panel-id="avatar"])');
+  await floatingAvatarTab.click();
+  await expect(floatingAvatarTab).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await page.keyboard.press("ArrowRight");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "east"))
+    .toHaveLength(2);
+  await expect(floatingAvatarTab).toBeFocused();
 
   await input.fill("look sw");
   await input.press("Tab");

@@ -29,6 +29,19 @@ function isInteractiveTarget(target: EventTarget | null): boolean {
   );
 }
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement &&
+    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
+  );
+}
+
+function isBlockingDialogTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const dialog = target.closest<HTMLElement>('dialog, [role="dialog"]');
+  return dialog !== null && !dialog.classList.contains("dv-resize-container");
+}
+
 /** One native command input bound only to the public session terminal capability. */
 export function createTerminalInputController({
   session,
@@ -204,10 +217,25 @@ export function createTerminalInputController({
       openBatch(commands);
     }
   };
+  const onMappedKeydown = (event: KeyboardEvent) => {
+    if (
+      event.defaultPrevented ||
+      event.ctrlKey ||
+      event.altKey ||
+      event.metaKey ||
+      isEditableTarget(event.target) ||
+      isBlockingDialogTarget(event.target)
+    )
+      return;
+    const mappedCommand = getMappedCommand?.(event);
+    if (!mappedCommand) return;
+    event.preventDefault();
+    event.stopPropagation();
+    execute(mappedCommand);
+  };
   const onDocumentKeydown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
-    if (event.target instanceof HTMLElement && event.target.closest('dialog, [role="dialog"]'))
-      return;
+    if (isBlockingDialogTarget(event.target)) return;
     if (isInteractiveTarget(event.target) && event.target !== input) return;
     if (event.key === "Escape" && returnOutputToLive?.()) {
       event.preventDefault();
@@ -215,12 +243,6 @@ export function createTerminalInputController({
       return;
     }
     if (isInteractiveTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return;
-    const mappedCommand = getMappedCommand?.(event);
-    if (mappedCommand) {
-      event.preventDefault();
-      execute(mappedCommand);
-      return;
-    }
     if (event.key === "Escape") {
       completion.reset();
       input.value = "";
@@ -250,6 +272,7 @@ export function createTerminalInputController({
   input.addEventListener("paste", onPaste);
   sendButton.addEventListener("click", send);
   batchForm.addEventListener("submit", onBatchSubmit);
+  document.addEventListener("keydown", onMappedKeydown, true);
   document.addEventListener("keydown", onDocumentKeydown);
   window.addEventListener("pagehide", flushHistory);
   window.addEventListener("darkflow:settings-import-start", pausePersistence);
@@ -262,6 +285,7 @@ export function createTerminalInputController({
       input.removeEventListener("paste", onPaste);
       sendButton.removeEventListener("click", send);
       batchForm.removeEventListener("submit", onBatchSubmit);
+      document.removeEventListener("keydown", onMappedKeydown, true);
       document.removeEventListener("keydown", onDocumentKeydown);
       window.removeEventListener("pagehide", flushHistory);
       window.removeEventListener("darkflow:settings-import-start", pausePersistence);

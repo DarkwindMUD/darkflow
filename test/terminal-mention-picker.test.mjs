@@ -15,6 +15,7 @@ class FakeElement extends EventTarget {
     this.style = {};
     this.hidden = false;
     this.className = "";
+    this.classList = { contains: (name) => this.className.split(/\s+/).includes(name) };
     this.textContent = "";
     this.value = "";
     this.selectionStart = 0;
@@ -393,9 +394,22 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   assert.equal(dialogEscape.defaultPrevented, false);
   assert.equal(document.activeElement, dialogButton);
 
+  const floatingPanel = document.createElement("section");
+  const floatingTab = document.createElement("div");
+  floatingPanel.className = "dv-resize-container";
+  floatingPanel.setAttribute("role", "dialog");
+  floatingPanel.appendChild(floatingTab);
+  floatingTab.focus();
+  document.dispatchKeydown(floatingTab, new FakeKeyboardEvent("F1"));
+  assert.equal(executed.at(-1), "score");
+  assert.equal(document.activeElement, floatingTab);
+
   const toolbarButton = document.createElement("button");
   toolbarButton.focus();
   document.dispatchKeydown(toolbarButton, new FakeKeyboardEvent(" "));
+  assert.equal(document.activeElement, toolbarButton);
+  document.dispatchKeydown(toolbarButton, new FakeKeyboardEvent("F1"));
+  assert.equal(executed.at(-1), "score");
   assert.equal(document.activeElement, toolbarButton);
 
   document.body.focus();
@@ -404,7 +418,6 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
 
   document.body.focus();
   document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
-  assert.equal(executed.at(-1), "score");
   assert.equal(document.activeElement, document.body);
   document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
   assert.deepEqual(executed.slice(-2), ["score", "score"]);

@@ -1116,6 +1116,7 @@
           <div hidden={!settings.keyMapperEnabled}>
             {#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
           </div>
+          {#if open}<DefinitionEditor {session} kind="commandButtons" />{/if}
           <SettingsCheckbox
             bind:checked={settings.tabObservabilityEnabled}
             label="Send tab-away / tab-back on tab changes"

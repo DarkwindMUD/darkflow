@@ -34,6 +34,9 @@ multi-connection work is unblocked.
   retain their current versioned owners.
 - Session resources and cross-session events remain session-scoped; Phase 3 must
   not infer ownership from the active tab or global DOM.
+- Key mapping definitions resolve from each session's effective configuration.
+  Phase 3 must route a global mapped key explicitly to the active session only;
+  inactive sessions must neither match nor execute it.
 
 ## Deferred cleanup
 

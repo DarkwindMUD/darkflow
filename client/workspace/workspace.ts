@@ -34,8 +34,9 @@ export interface WorkspaceSnapshot {
 
 /**
  * What actually gets persisted: one Dockview tree plus the ordered panel ids of
- * every scrolling rail root. Rail keys stay opaque strings -- which rails exist
- * is a layout decision, and this contract stays vendor- and layout-neutral.
+ * every scrolling rail root, plus whether each desktop rail is open. Rail keys
+ * stay opaque strings -- which rails exist is a layout decision, and this
+ * contract stays vendor- and layout-neutral.
  * Version 1 payloads remain readable as a bare Dockview tree.
  */
 export interface CompositeWorkspaceSnapshot {
@@ -44,6 +45,7 @@ export interface CompositeWorkspaceSnapshot {
     collapsed: Record<string, string[]>;
     dockview: unknown;
     mapZoom?: number;
+    railVisibility?: { left: boolean; right: boolean };
     scrollviews: Record<string, string[]>;
   };
 }

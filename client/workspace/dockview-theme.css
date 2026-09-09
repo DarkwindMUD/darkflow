@@ -110,6 +110,12 @@ html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating
   outline: none;
 }
 
+/* Dockview clears focused outlines; this temporary target cue must win that vendor state. */
+.df-floating-snap-target {
+  outline: 2px solid rgb(88 166 255 / 75%) !important;
+  outline-offset: 2px;
+}
+
 .df-workspace :is(.dv-default-tab, .dv-default-tab-action, button):focus-visible {
   outline: 2px solid var(--df-accent-blue, #58a6ff);
   outline-offset: -2px;

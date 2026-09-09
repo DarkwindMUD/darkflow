@@ -1,5 +1,6 @@
 import { expect, test as base, type Page } from "@playwright/test";
 import type { SerializedDockview } from "dockview";
+import { attractFloatingResize } from "../client/workspace/floating-snap";
 import type {
   PanelObservation,
   PanelPlacement,
@@ -206,6 +207,94 @@ test("restoring a workspace removes tabless floating groups without losing real 
   expect((await observePanel(page, terminal.id)).title).toBe(terminal.title);
   await page.evaluate((id) => window.__darkflowWorkspace.remove(id), floating.id);
   await expect(page.locator(".dv-resize-container")).toHaveCount(0);
+});
+
+test("floating groups attract by position without linking their movement", async ({ page }) => {
+  const target = lifecyclePanel("snap-target", "target", {
+    kind: "floating",
+    bounds: { left: 80, top: 80, width: 260, height: 180 },
+  });
+  const moving = lifecyclePanel("snap-moving", "moving", {
+    kind: "floating",
+    bounds: { left: 500, top: 100, width: 220, height: 160 },
+  });
+  await page.evaluate(
+    (panels) => panels.forEach((panel) => window.__darkflowWorkspace.upsert(panel)),
+    [target, moving],
+  );
+
+  const targetFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${target.id}"]`),
+  });
+  const movingFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${moving.id}"]`),
+  });
+  const targetBefore = await targetFrame.boundingBox();
+  const movingBefore = await movingFrame.boundingBox();
+  const titlebar = await movingFrame.locator(".dv-floating-titlebar").boundingBox();
+  expect(targetBefore).not.toBeNull();
+  expect(movingBefore).not.toBeNull();
+  expect(titlebar).not.toBeNull();
+  const expectedLeft = targetBefore!.x + targetBefore!.width + 6;
+  const expectedTop = targetBefore!.y;
+  const grabX = titlebar!.x + titlebar!.width / 2;
+  const grabY = titlebar!.y + titlebar!.height / 2;
+
+  await page.mouse.move(grabX, grabY);
+  await page.mouse.down();
+  await page.mouse.move(grabX + 2, grabY + 2);
+  const firstMove = await movingFrame.boundingBox();
+  expect(Math.abs(firstMove!.x - movingBefore!.x)).toBeLessThanOrEqual(2);
+  expect(Math.abs(firstMove!.y - movingBefore!.y)).toBeLessThanOrEqual(2);
+  await page.mouse.move(
+    grabX + expectedLeft + 12 - movingBefore!.x,
+    grabY + expectedTop - movingBefore!.y,
+    { steps: 8 },
+  );
+  await expect(targetFrame).toHaveClass(/df-floating-snap-target/);
+  await page.mouse.up();
+  await expect(targetFrame).not.toHaveClass(/df-floating-snap-target/);
+
+  await expect
+    .poll(() => movingFrame.boundingBox())
+    .toMatchObject({ x: expectedLeft, y: expectedTop });
+  expect(await targetFrame.boundingBox()).toEqual(targetBefore);
+
+  const snapped = await observePanel(page, moving.id);
+  const snapshot = await page.evaluate(() => window.__darkflowWorkspace.save());
+  await page.evaluate(
+    (id) =>
+      window.__darkflowWorkspace.move(id, {
+        kind: "floating",
+        bounds: { left: 400, top: 80, width: 260, height: 180 },
+      }),
+    target.id,
+  );
+  expect((await observePanel(page, moving.id)).bounds).toEqual(snapped.bounds);
+  expect(
+    await page.evaluate(({ saved, panels }) => window.__darkflowWorkspace.restore(saved, panels), {
+      saved: snapshot,
+      panels: [target, moving],
+    }),
+  ).toBe(true);
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  expectRestoredLayout(layoutShape(await observePanel(page, moving.id)), layoutShape(snapped));
+});
+
+test("calculates floating bottom-right resize attraction", () => {
+  const target = { height: 240, left: 400, top: 80, width: 260 };
+
+  expect(attractFloatingResize(80, 80, 382, 308, [target])).toEqual({
+    bottom: 320,
+    right: 394,
+    target,
+  });
+  expect(attractFloatingResize(80, 80, 365, 291, [target])).toEqual({
+    bottom: 291,
+    right: 365,
+  });
 });
 
 test("emits user layout changes, relayouts on host resize, and keeps terminal focus on activation", async ({

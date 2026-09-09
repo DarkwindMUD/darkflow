@@ -138,7 +138,6 @@
     kind: "enemy",
     title: "Enemy",
     state: {},
-    placement: { kind: "grid", direction: "right", referencePanelId: terminal.id },
   };
   const chatPanel: WorkspacePanelSpec = {
     id: "chat",
@@ -364,6 +363,10 @@
       converted += 1;
     }
     ws.activatePanel(terminal.id);
+    leftRailVisible = legacy.railVisibility.left;
+    rightRailVisible = legacy.railVisibility.right;
+    leftRail?.setInert(!leftRailVisible);
+    rightRail?.setInert(!rightRailVisible);
     requestAnimationFrame(() => {
       const boundsById: Record<
         string,
@@ -433,6 +436,7 @@
     rail.setInert(visible);
     if (side === "left") leftRailVisible = !visible;
     else rightRailVisible = !visible;
+    requestSave?.();
   }
 
   function togglePanels(): void {
@@ -968,6 +972,7 @@
         ...(railFor("map")
           ? { mapZoom: normalizeMapZoom(railFor("map")?.getPanelState("map")?.mapZoom) }
           : {}),
+        railVisibility: { left: leftRailVisible, right: rightRailVisible },
         scrollviews: { left: leftRail?.ids() ?? [], right: rightRail?.ids() ?? [] },
       },
     });
@@ -995,6 +1000,12 @@
       }
       if (!currentWorkspace.restore({ version: 1, layout: next.layout.dockview }, panels)) {
         return false;
+      }
+      if (next.layout.railVisibility) {
+        leftRailVisible = next.layout.railVisibility.left;
+        rightRailVisible = next.layout.railVisibility.right;
+        leftRail?.setInert(!leftRailVisible);
+        rightRail?.setInert(!rightRailVisible);
       }
       for (const [side, rail] of [
         ["left", leftRail],
@@ -1302,8 +1313,27 @@
         seenCombatEncounter = encounter;
         if (reveal) {
           const focused = document.activeElement;
+          const width = Math.min(580, host.clientWidth || innerWidth);
+          const height = Math.min(465, host.clientHeight || innerHeight);
+          currentWorkspace.addOrUpdatePanel({
+            ...combatPanel,
+            placement:
+              innerWidth <= 700
+                ? { kind: "grid", direction: "right", referencePanelId: terminal.id }
+                : {
+                    kind: "floating",
+                    bounds: {
+                      left: Math.max(0, Math.round(((host.clientWidth || innerWidth) - width) / 2)),
+                      top: Math.max(
+                        0,
+                        Math.round(((host.clientHeight || innerHeight) - height) / 2),
+                      ),
+                      width,
+                      height,
+                    },
+                  },
+          });
           if (exists) currentWorkspace.activatePanel(combatPanel.id);
-          else currentWorkspace.addOrUpdatePanel(combatPanel);
           const restoreFocus = () => {
             if (focused instanceof HTMLElement && focused.isConnected) {
               focused.focus({ preventScroll: true });

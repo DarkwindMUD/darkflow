@@ -42,6 +42,7 @@ export interface LegacyWorkspacePanel {
 
 export interface LegacyWorkspaceLayout {
   panels: LegacyWorkspacePanel[];
+  railVisibility: { left: boolean; right: boolean };
 }
 
 type JsonObject = Record<string, JsonValue>;
@@ -60,10 +61,16 @@ function isDockviewSnapshot(
   if (value.version === 1) return true;
   if (value.version !== 2) return false;
 
-  const { collapsed, dockview, scrollviews } = value.layout;
+  const { collapsed, dockview, railVisibility, scrollviews } = value.layout;
   if (!isObject(collapsed) || !isObject(dockview) || !isObject(scrollviews)) return false;
   if (!["left", "right"].every((side) => Array.isArray(scrollviews[side]))) return false;
   if (!["left", "right"].every((side) => Array.isArray(collapsed[side]))) return false;
+  if (
+    railVisibility !== undefined &&
+    (!isObject(railVisibility) ||
+      !["left", "right"].every((side) => typeof railVisibility[side] === "boolean"))
+  )
+    return false;
 
   const orders = Object.values(scrollviews);
   const collapsedIds = Object.values(collapsed);
@@ -122,6 +129,7 @@ export function convertLegacyWorkspace(
   const profiles = isObject(payload.profiles) ? payload.profiles : null;
   const profile = profiles && isObject(profiles[layout]) ? profiles[layout] : payload;
   if (!isObject(profile.panels)) return null;
+  const docks = isObject(profile.docks) ? profile.docks : null;
 
   const panels: LegacyWorkspacePanel[] = [];
   for (const [id, value] of Object.entries(profile.panels)) {
@@ -143,7 +151,15 @@ export function convertLegacyWorkspace(
       state,
     });
   }
-  return panels.length ? { panels } : null;
+  return panels.length || docks
+    ? {
+        panels,
+        railVisibility: {
+          left: docks?.left !== true,
+          right: docks?.right !== true,
+        },
+      }
+    : null;
 }
 
 /** Loads one character's valid Dockview layout or requests a recoverable default. */

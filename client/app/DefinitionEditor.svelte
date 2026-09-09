@@ -61,6 +61,7 @@
   let stale = $state(false);
   let status = $state("");
   let editor = $state<HTMLElement>();
+  let keyCapture = $state<HTMLButtonElement>();
   let deleteCancel = $state<HTMLButtonElement>();
   let pendingDelete = $state<{
     definition: Definition;
@@ -394,9 +395,10 @@
     source = { kind: "local" };
     stale = false;
     status = "";
-    queueMicrotask(() =>
-      editor?.querySelector<HTMLInputElement>("input:not([type=checkbox])")?.focus(),
-    );
+    queueMicrotask(() => {
+      if (kind === "keyMappings") keyCapture?.focus();
+      else editor?.querySelector<HTMLInputElement>("input:not([type=checkbox])")?.focus();
+    });
   }
 
   function cancel(): void {
@@ -553,6 +555,7 @@
       {#if draft}
         <div class="mapping-row new-mapping">
           <button
+            bind:this={keyCapture}
             aria-label="Key for new mapping"
             class="key-input"
             type="button"

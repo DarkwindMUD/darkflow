@@ -443,6 +443,16 @@
     requestClose("discard");
   }
   function requestClose(intent: "discard" | "apply"): void {
+    const invalidVariable =
+      intent === "apply"
+        ? dialog?.querySelector<HTMLInputElement>("#settings-panel-variables input:invalid")
+        : null;
+    if (invalidVariable) {
+      selectTab("variables");
+      status = "Variable names cannot be empty.";
+      queueMicrotask(() => invalidVariable.reportValidity());
+      return;
+    }
     closeIntent = intent;
     closeReturnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -611,6 +621,7 @@
   onclose={handleDialogClose}
 >
   <form
+    novalidate
     inert={preparedImport !== null || closePrompt}
     onsubmit={(event) => {
       event.preventDefault();

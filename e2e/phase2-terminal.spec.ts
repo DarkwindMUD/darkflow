@@ -483,14 +483,16 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
     await input.press("Enter");
   }
   await input.press("F2");
-  expect(endpoint.commands).not.toContain("score");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "score"))
+    .toHaveLength(1);
   await input.evaluate((element) => element.blur());
   await page.keyboard.press("F2");
   await page.keyboard.press("F2");
   await expect
     .poll(() => endpoint.commands)
     .toEqual(expect.arrayContaining(["look", "wave", "say true", "tick"]));
-  expect(endpoint.commands.filter((command) => command === "score")).toHaveLength(2);
+  expect(endpoint.commands.filter((command) => command === "score")).toHaveLength(3);
 
   await page.getByRole("button", { name: "Float Avatar", exact: true }).click();
   const floatingAvatarTab = page.locator('.dv-tab:has([data-panel-id="avatar"])');

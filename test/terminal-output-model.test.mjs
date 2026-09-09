@@ -23,7 +23,7 @@ test("processes complete lines once and preserves reentrant output order", () =>
   model = createTerminalOutputModel({
     processLine(text, fragments) {
       processed.push(text);
-      if (text === "incoming") model.appendSystemMessage("nested\n");
+      if (text === "incoming") model.appendSystemMessage("nested");
       if (text === "gag") return { fragments: [], gag: true };
       if (text === "highlight") {
         return { fragments: [{ text: "bright", style: { bold: true } }], gag: false };
@@ -123,7 +123,7 @@ test("completes a protected source record after nested output prunes earlier his
   model = createTerminalOutputModel({
     recordLimit: 2,
     processLine(text, fragments) {
-      if (text === "outer") model.appendSystemMessage("nested\n");
+      if (text === "outer") model.appendSystemMessage("nested");
       return { fragments, gag: false };
     },
   });

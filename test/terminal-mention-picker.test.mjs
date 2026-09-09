@@ -375,8 +375,16 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   assert.equal(sends, 1);
   assert.equal(document.activeElement, input);
 
+  input.dispatchEvent(new FakeKeyboardEvent("F1"));
+  assert.equal(executed.at(-1), "score");
+  assert.equal(input.value, "keep me");
+  assert.equal(document.activeElement, input);
+
   const otherInput = document.createElement("input");
   otherInput.focus();
+  const sendsBeforeOtherInput = sends;
+  document.dispatchKeydown(otherInput, new FakeKeyboardEvent("F1"));
+  assert.equal(sends, sendsBeforeOtherInput);
   const editorEscape = new FakeKeyboardEvent("Escape");
   document.dispatchKeydown(otherInput, editorEscape);
   assert.equal(returnCalls, 1);

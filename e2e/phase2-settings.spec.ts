@@ -626,6 +626,32 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
     });
 });
 
+test("Phase 2 Settings Apply ignores hidden definition draft validation", async ({ page }) => {
+  await page.goto("/phase2/");
+  const dialog = settingsDialog(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Variables");
+  await dialog.getByRole("button", { name: "Add variable", exact: true }).click();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog.getByText("Variable names cannot be empty.", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Remove", exact: true }).click();
+  await settingsTab(dialog, "Functions");
+  await dialog.getByRole("button", { name: "New function", exact: true }).click();
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Terminal background opacity").fill("41");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          JSON.parse(localStorage.getItem("darkwind-client-settings")!).terminalBackgroundOpacity,
+      ),
+    )
+    .toBe(41);
+});
+
 test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme imports without writes", async ({
   page,
 }, testInfo) => {
@@ -1171,7 +1197,8 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await keys.getByLabel("Command for F2").fill("inventory");
   await keys.getByLabel("Command for F2").press("Tab");
   await keys.getByRole("button", { name: "Add mapping" }).click();
-  await keys.getByLabel("Key for new mapping").press("F2");
+  await expect(keys.getByLabel("Key for new mapping")).toBeFocused();
+  await page.keyboard.press("F2");
   await keys.getByLabel("Command for new mapping").fill("duplicate");
   await keys.getByLabel("Command for new mapping").press("Tab");
   await expect(keys.getByText("Key mappings must have unique identities.")).toBeVisible();

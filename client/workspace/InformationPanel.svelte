@@ -25,9 +25,7 @@
   function panelData(snapshot: SessionInformationSnapshot): unknown {
     switch (panelId) {
       case "avatar":
-        // The shared renderer reads the avatar frame directly; vitals ride
-        // alongside so it can draw the charge/active meter.
-        return { ...snapshot.avatar, vitals: snapshot.vitals };
+        return snapshot.avatar;
       case "status":
         return snapshot.status;
       case "vitals":

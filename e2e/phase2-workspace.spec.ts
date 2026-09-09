@@ -48,6 +48,42 @@ test("desktop panel selector toggles from its label and trigger", async ({ page 
   await expect(menu).toBeHidden();
 });
 
+test("magnetic snapping outlines the target pane", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop floating panes only");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Float Status", exact: true }).click();
+
+  const movingFrame = page.locator(".dv-resize-container").filter({
+    has: panelDragHandle(page, "status"),
+  });
+  const targetGroup = page.locator(".dv-groupview").filter({
+    has: panelDragHandle(page, "terminal"),
+  });
+  const [moving, target, titlebar] = await Promise.all([
+    movingFrame.boundingBox(),
+    targetGroup.boundingBox(),
+    movingFrame.locator(".dv-floating-titlebar").boundingBox(),
+  ]);
+  expect(moving).not.toBeNull();
+  expect(target).not.toBeNull();
+  expect(titlebar).not.toBeNull();
+
+  const grabX = titlebar!.x + titlebar!.width / 2;
+  const grabY = titlebar!.y + titlebar!.height / 2;
+  const snapLeft = target!.x - moving!.width - 6;
+  await page.mouse.move(grabX, grabY);
+  await page.mouse.down();
+  await page.mouse.move(grabX + 2, grabY + 2);
+  await page.mouse.move(grabX + snapLeft + 12 - moving!.x, grabY + target!.y - moving!.y, {
+    steps: 8,
+  });
+
+  await expect(targetGroup).toHaveClass(/df-floating-snap-target/);
+  await expect(targetGroup).toHaveCSS("outline", "rgba(88, 166, 255, 0.75) solid 2px");
+  await page.mouse.up();
+  await expect(targetGroup).not.toHaveClass(/df-floating-snap-target/);
+});
+
 /** Open the Panels menu and toggle Avatar (dirties the layout to trigger a save). */
 async function toggleAvatar(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Panels", exact: true }).click();
@@ -103,7 +139,7 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   const terminalIdentity = await terminal.getAttribute("data-terminal-identity");
   await terminal.focus();
   await page.locator("[data-terminal-identity]").click();
-  await expect(terminal).toBeFocused();
+  await expect(page.getByLabel("Command input", { exact: true })).toBeFocused();
 
   // One real output island keeps its identity and focus across layout work.
   const seeded = await terminalState(page);
@@ -124,6 +160,17 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   expect(await terminalState(page)).toEqual(seeded);
   expect(await terminal.getAttribute("data-terminal-identity")).toBe(terminalIdentity);
+  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+        return character.workspace.payload.dockview.layout.railVisibility;
+      }),
+    )
+    .toEqual({ left: false, right: true });
 
   const saved = await page.evaluate(() => {
     const runtime = (
@@ -137,12 +184,20 @@ test("Phase 2 persists and restores one real-session workspace", async ({ page }
   expect(saved.payload.dockview.version).toBe(2);
   expect(saved.payload.dockview.layout.scrollviews.left).toContain("status");
   expect(saved.payload.dockview.layout.collapsed.left).toContain("status");
+  expect(saved.payload.dockview.layout.railVisibility).toEqual({ left: false, right: true });
 
   await page.reload();
   await expect(page.getByTestId("workspace-host")).toBeVisible();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
   await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Toggle left sidebar" })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
+  await expect(page.locator("#phase2-right-rail")).toBeVisible();
+  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
   await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
 
   await disposeSession(page);
@@ -165,6 +220,7 @@ test("legacy panel state converts rail order, collapse, and floating bounds", as
         version: 2,
         profiles: {
           classic: {
+            docks: { left: false, right: true },
             panels: {
               avatar: { dock: "left", order: 0, collapsed: false, visible: false },
               status: { dock: "left", order: 1, collapsed: true, visible: true },
@@ -188,6 +244,7 @@ test("legacy panel state converts rail order, collapse, and floating bounds", as
 
   await page.reload();
   await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
+  await expect(page.locator("#phase2-right-rail")).toBeHidden();
   await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
   const chatFrame = page.locator('[data-floating-drag-handle][data-panel-id="chat"]').locator("..");
   await expect(chatFrame).toBeVisible();
@@ -208,6 +265,7 @@ test("legacy panel state converts rail order, collapse, and floating bounds", as
   await page.reload();
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
   await expect(page.getByRole("button", { name: "Expand Status", exact: true })).toBeVisible();
+  await expect(page.locator("#phase2-right-rail")).toBeHidden();
   await expect
     .poll(async () => await chatFrame.boundingBox())
     .toMatchObject({ x: 300, y: 200, width: 420, height: 260 });

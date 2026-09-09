@@ -168,7 +168,7 @@ export function createSessionInformation(
     omens ? { ...vitals, divine_patron: omens.patron ?? "" } : vitals;
 
   listen<CharVitals>("Char.Vitals", validateCharVitals, (vitals) =>
-    update({ vitals: withPatron(vitals, snapshot.omens) }),
+    update({ vitals: { ...withPatron(vitals, snapshot.omens), receivedAt: Date.now() } }),
   );
   listen<CharStatus>("Char.Status", validateCharStatus, (status) =>
     update({ status: { ...snapshot.status, ...status } }),

@@ -173,6 +173,14 @@ export function createTerminalInputController({
     batchDialog.showModal();
     batchInput.focus();
   };
+  const executeMappedKey = (event: KeyboardEvent) => {
+    const mappedCommand = getMappedCommand?.(event);
+    if (!mappedCommand) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    execute(mappedCommand);
+    return true;
+  };
   const onKeydown = (event: KeyboardEvent) => {
     if (
       event.defaultPrevented ||
@@ -180,7 +188,9 @@ export function createTerminalInputController({
       handleEmojiPickerKeydown(event)
     )
       return;
-    if (event.key === "Enter") {
+    if (!event.ctrlKey && !event.altKey && !event.metaKey && executeMappedKey(event)) {
+      return;
+    } else if (event.key === "Enter") {
       event.preventDefault();
       send();
     } else if (event.key === "Tab") {
@@ -227,11 +237,7 @@ export function createTerminalInputController({
       isBlockingDialogTarget(event.target)
     )
       return;
-    const mappedCommand = getMappedCommand?.(event);
-    if (!mappedCommand) return;
-    event.preventDefault();
-    event.stopPropagation();
-    execute(mappedCommand);
+    executeMappedKey(event);
   };
   const onDocumentKeydown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;

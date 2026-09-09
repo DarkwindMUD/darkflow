@@ -122,7 +122,7 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
 
   return {
     appendOutput,
-    appendSystemMessage: (text) => appendOutput(text, 'system-line'),
+    appendSystemMessage: (text) => appendOutput(text.endsWith('\n') ? text : text + '\n', 'system-line'),
     clear() {
       if (disposed) return;
       records.length = 0;

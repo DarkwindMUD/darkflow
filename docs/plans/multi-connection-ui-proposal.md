@@ -204,7 +204,11 @@ payload. Managers do not infer ownership from the active tab or global DOM.
 
 - Background sessions remain connected and process GMCP, triggers, aliases, and
   timers.
-- Only the active session accepts command input and global terminal shortcuts.
+- Only the active session accepts command input, global terminal shortcuts, and
+  key mappings. Global key dispatch resolves the active session explicitly,
+  evaluates only that session's effective key mappings, and executes the mapped
+  command only through that session; background-session DOM listeners must not
+  respond.
 - Inactive sessions update model state but throttle or defer DOM rendering until
   activation.
 - Notifications carry `sessionId`; activating one selects the correct tab and
@@ -260,7 +264,7 @@ payload. Managers do not infer ownership from the active tab or global DOM.
 | **0 — Decision spike and build contract** | Pin compatible TypeScript 7, Typia, ttsc, and `@ttsc/unplugin` versions; register `ttsc()` before the Svelte Vite plugin; prove transformed validation in dev, HMR, tests, and production; prove Svelte mount/update/dispose inside Dockview; build static assets; wire Express, `/proxy`, Docker, and Electron packaging | Typia transform sentinel, validator regeneration after imported-type edits, browser HMR, `npm test`, Electron smoke/package, Docker build, and telnet `/proxy` all pass; approve or reject Dockview |
 | **1 — Session core**                      | Extract `Session`, server and character profiles, shared configuration sets, effective-config resolution, scoped transport/reconnect, validated GMCP bus, event envelope, storage schemas/migration, and deterministic disposal; adapt the existing single-session UI to it                                               | One-session behavior remains at parity; malformed GMCP, configuration precedence, shared-set propagation, and reconnect teardown tests pass                                                         |
 | **2 — Svelte workspace parity**           | Svelte app shell; approved workspace adapter; split `panel-manager` data responsibilities from layout; migrate panels, settings, terminal host, windows, IDE, input, notifications, sound, and the mobile panel sheet; bundle CodeMirror                                                                                  | Single-session web, Electron, and mobile feature-parity matrix passes                                                                                                                               |
-| **3 — Multi-connection**                  | Tab create/close/switch/reorder; multiple character profiles on one server profile; shared-set attachment/duplicate/detach UX; background policy; session-aware notifications                                                                                                                                             | Four concurrent sessions remain isolated while selected configuration changes propagate atomically across attached profiles                                                                         |
+| **3 — Multi-connection**                  | Tab create/close/switch/reorder; multiple character profiles on one server profile; shared-set attachment/duplicate/detach UX; background policy; session-aware notifications; active-session key mapping dispatch                                                                                                        | Four concurrent sessions remain isolated; one mapped key executes only in the active session; selected configuration changes propagate atomically across attached profiles                          |
 | **4 — Cleanup**                           | Remove legacy `public/js/` paths and compatibility adapters; update protocol docs and debug tooling                                                                                                                                                                                                                       | One frontend source tree; all release gates pass                                                                                                                                                    |
 
 Phases are sequential at their gates. Independent panel ports may proceed in

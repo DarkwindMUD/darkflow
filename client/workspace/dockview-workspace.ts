@@ -9,6 +9,7 @@ import {
   type TabPartInitParameters,
 } from "dockview";
 import { get, writable, type Writable } from "svelte/store";
+import { attractFloatingResize, FLOATING_SNAP_DISTANCE, FLOATING_SNAP_GAP } from "./floating-snap";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
 import { PanelCardHeader, SveltePanelBody } from "./panel-parts";
 import type {
@@ -50,6 +51,62 @@ interface DockviewPanelLike {
       }): void;
     };
   };
+}
+
+type FloatingBounds = { height: number; left: number; top: number; width: number };
+type FloatingSnapTarget = FloatingBounds & { element: HTMLElement };
+
+// Legacy snapping adjusts only the current drag position; it never links the panes.
+function attractFloatingGroup<T extends FloatingBounds>(
+  proposed: FloatingBounds,
+  others: readonly T[],
+): { left: number; target: T; top: number } | undefined {
+  const right = proposed.left + proposed.width;
+  const bottom = proposed.top + proposed.height;
+  const overlaps = (start: number, end: number, otherStart: number, otherEnd: number) =>
+    end >= otherStart - FLOATING_SNAP_DISTANCE && otherEnd >= start - FLOATING_SNAP_DISTANCE;
+  let left = proposed.left;
+  let top = proposed.top;
+  let nearestLeft = FLOATING_SNAP_DISTANCE + 1;
+  let nearestTop = FLOATING_SNAP_DISTANCE + 1;
+  let target: T | undefined;
+
+  for (const other of others) {
+    const otherRight = other.left + other.width;
+    const otherBottom = other.top + other.height;
+    if (overlaps(proposed.top, bottom, other.top, otherBottom)) {
+      for (const candidate of [
+        otherRight + FLOATING_SNAP_GAP,
+        other.left - proposed.width - FLOATING_SNAP_GAP,
+        other.left,
+        otherRight - proposed.width,
+      ]) {
+        const distance = Math.abs(proposed.left - candidate);
+        if (distance < nearestLeft && distance <= FLOATING_SNAP_DISTANCE) {
+          nearestLeft = distance;
+          left = candidate;
+          target = other;
+        }
+      }
+    }
+    if (overlaps(proposed.left, right, other.left, otherRight)) {
+      for (const candidate of [
+        otherBottom + FLOATING_SNAP_GAP,
+        other.top - proposed.height - FLOATING_SNAP_GAP,
+        other.top,
+        otherBottom - proposed.height,
+      ]) {
+        const distance = Math.abs(proposed.top - candidate);
+        if (distance < nearestTop && distance <= FLOATING_SNAP_DISTANCE) {
+          nearestTop = distance;
+          top = candidate;
+          target = other;
+        }
+      }
+    }
+  }
+
+  return target ? { left, target, top } : undefined;
 }
 
 export interface WorkspacePanelInspection {
@@ -115,6 +172,8 @@ export function createWorkspace(
   const pendingUnmounts = new Set<Promise<void>>();
   const layoutSubscribers = new Set<(snapshot: WorkspaceSnapshot) => void>();
   const panelDragSubscribers = new Set<(event: { cancel(): void; panelId: string }) => void>();
+  let dragSnapTargets: FloatingSnapTarget[] = [];
+  let activeSnapTarget: HTMLElement | undefined;
   let disposed = false;
   let disposePromise: Promise<void> | undefined;
   let requestClosePanel: (id: string) => Promise<boolean> = async () => false;
@@ -171,9 +230,58 @@ export function createWorkspace(
     // `overflow: hidden`.
     floatingGroupBounds: "boundedWithinViewport",
     floatingGroupDragHandle: "titlebar",
+    transformFloatingGroupDrag: ({ proposed, others }) => {
+      const snapped = attractFloatingGroup(
+        proposed,
+        dragSnapTargets.length > 0 ? dragSnapTargets : others,
+      );
+      setSnapTarget(
+        snapped?.target &&
+          "element" in snapped.target &&
+          snapped.target.element instanceof HTMLElement
+          ? snapped.target.element
+          : undefined,
+      );
+      return snapped ? { left: snapped.left, top: snapped.top } : undefined;
+    },
     keyboardNavigation: true,
     singleTabMode: "fullwidth",
   });
+
+  const setSnapTarget = (target?: HTMLElement): void => {
+    if (activeSnapTarget === target) return;
+    activeSnapTarget?.classList.remove("df-floating-snap-target");
+    activeSnapTarget = target;
+    activeSnapTarget?.classList.add("df-floating-snap-target");
+  };
+
+  const snapshotDockedBounds = (origin?: DOMRect): FloatingSnapTarget[] =>
+    api.groups
+      .filter((group) => group.api.location.type === "grid")
+      .map((group) => {
+        const bounds = group.element.getBoundingClientRect();
+        return {
+          height: bounds.height,
+          left: bounds.left - (origin?.left ?? 0),
+          top: bounds.top - (origin?.top ?? 0),
+          width: bounds.width,
+          element: group.element,
+        };
+      });
+
+  const snapshotFloatingBounds = (frame: HTMLElement, origin?: DOMRect): FloatingSnapTarget[] =>
+    [...(frame.parentElement?.querySelectorAll<HTMLElement>(":scope > .dv-resize-container") ?? [])]
+      .filter((candidate) => candidate !== frame)
+      .map((candidate) => {
+        const bounds = candidate.getBoundingClientRect();
+        return {
+          height: bounds.height,
+          left: bounds.left - (origin?.left ?? 0),
+          top: bounds.top - (origin?.top ?? 0),
+          width: bounds.width,
+          element: candidate,
+        };
+      });
 
   const primeFloatingDragPosition = (event: PointerEvent): void => {
     if (event.button !== 0 || event.shiftKey) return;
@@ -182,15 +290,21 @@ export function createWorkspace(
     if (!frame || !container) return;
     const frameBounds = frame.getBoundingClientRect();
     const containerBounds = container.getBoundingClientRect();
+    dragSnapTargets = [
+      ...snapshotFloatingBounds(frame, containerBounds),
+      ...snapshotDockedBounds(containerBounds),
+    ];
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== event.pointerId) return;
       frame.style.left = `${frameBounds.left - containerBounds.left + moveEvent.clientX - event.clientX}px`;
       frame.style.top = `${frameBounds.top - containerBounds.top + moveEvent.clientY - event.clientY}px`;
       frame.style.right = "auto";
       frame.style.bottom = "auto";
-      cleanup();
+      window.removeEventListener("pointermove", move, true);
     };
     const cleanup = () => {
+      dragSnapTargets = [];
+      setSnapTarget();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", cleanup, true);
       window.removeEventListener("pointercancel", cleanup, true);
@@ -207,20 +321,30 @@ export function createWorkspace(
     const frameBounds = frame.getBoundingClientRect();
     const offsetX = frameBounds.right - event.clientX;
     const offsetY = frameBounds.bottom - event.clientY;
+    const siblingBounds = snapshotFloatingBounds(frame).concat(snapshotDockedBounds());
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== event.pointerId || !moveEvent.isTrusted) return;
       moveEvent.stopImmediatePropagation();
+      const snapped = attractFloatingResize(
+        frameBounds.left,
+        frameBounds.top,
+        moveEvent.clientX + offsetX,
+        moveEvent.clientY + offsetY,
+        siblingBounds,
+      );
+      setSnapTarget(snapped.target?.element);
       window.dispatchEvent(
         new PointerEvent("pointermove", {
           buttons: moveEvent.buttons,
-          clientX: moveEvent.clientX + offsetX,
-          clientY: moveEvent.clientY + offsetY,
+          clientX: snapped.right,
+          clientY: snapped.bottom,
           pointerId: moveEvent.pointerId,
           pointerType: moveEvent.pointerType,
         }),
       );
     };
     const cleanup = () => {
+      setSnapTarget();
       window.removeEventListener("pointermove", move, true);
       window.removeEventListener("pointerup", cleanup, true);
       window.removeEventListener("pointercancel", cleanup, true);

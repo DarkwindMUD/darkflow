@@ -118,6 +118,7 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
       collapsed: { left: ["avatar"], right: [] },
       dockview: dockviewA.layout,
       mapZoom: 0.9,
+      railVisibility: { left: false, right: true },
       scrollviews: { left: ["avatar"], right: ["group"] },
     },
   };
@@ -138,6 +139,7 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
         version: 2,
         profiles: {
           floating: {
+            docks: { left: true, right: false },
             panels: {
               terminal: {
                 dock: "float", visible: true, collapsed: false, order: 0,
@@ -155,6 +157,7 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
     });
 
     assert.deepEqual(converted, {
+      railVisibility: { left: false, right: true },
       panels: [
         {
           id: "terminal", dock: "float", order: 0, collapsed: false,
@@ -237,6 +240,14 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
       snapshot: compositeA,
       recovered: false,
     });
+    const previousVersionTwo = structuredClone(validGraph);
+    delete previousVersionTwo.characterProfiles[characterAId].workspace.payload.dockview.layout
+      .railVisibility;
+    assert.equal(
+      persistence.loadCharacterWorkspace(createGraphStorage(previousVersionTwo), characterAId)
+        .recovered,
+      false,
+    );
 
     for (const layout of [
       { dockview: dockviewA.layout, scrollviews: { left: ["avatar"], right: [] } },
@@ -248,6 +259,12 @@ test("character workspace persistence executes through Vite SSR", async (t) => {
       {
         collapsed: { left: ["missing"], right: [] },
         dockview: dockviewA.layout,
+        scrollviews: { left: ["avatar"], right: [] },
+      },
+      {
+        collapsed: { left: [], right: [] },
+        dockview: dockviewA.layout,
+        railVisibility: { left: "hidden", right: true },
         scrollviews: { left: ["avatar"], right: [] },
       },
     ]) {

@@ -1,6 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import type { Session } from "../runtime/session.ts";
+  import { CONFIG_KINDS } from "../model/configuration.ts";
+  import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
   import DefinitionEditor from "./DefinitionEditor.svelte";
   import {
     DEFAULT_PHASE2_CLIENT_SETTINGS,
@@ -96,6 +98,7 @@
   let importConfirm = $state<HTMLButtonElement>();
   let closeReturnFocus: HTMLElement | null = null;
   let importing = $state(false);
+  let originalConfiguration: CharacterConfigurationSnapshot | null = null;
   let baseline = "";
   const audioCategories = $derived(Object.entries(audio.categoryEnabled));
 
@@ -108,7 +111,8 @@
       terminalFontFamily: result.settings.terminalFontFamily,
       terminalFontSize: result.settings.terminalFontSize,
     };
-    theme = session.configuration.getSnapshot().themeKey;
+    originalConfiguration = structuredClone(session.configuration.getSnapshot());
+    theme = originalConfiguration.themeKey;
     variables = session.terminal.automation
       .listVariableNames()
       .map((name) => ({ name, value: session.terminal.automation.getVariable(name) ?? "" }));
@@ -310,6 +314,7 @@
     for (const name of runtime.listVariableNames())
       if (!nextNames.has(name)) runtime.removeVariable(name);
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
+    originalConfiguration = null;
     originalAppearance = null;
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
@@ -387,6 +392,53 @@
     persistWindow();
     dialog?.close();
   }
+  function restoreConfiguration(): boolean {
+    if (!originalConfiguration) return true;
+    const original = originalConfiguration;
+    const current = session.configuration.getSnapshot();
+    for (const kind of CONFIG_KINDS) {
+      if (
+        JSON.stringify(current.localDefinitions[kind]) ===
+        JSON.stringify(original.localDefinitions[kind])
+      )
+        continue;
+      const result = session.configuration.replaceLocalDefinitions(
+        kind,
+        structuredClone(original.localDefinitions[kind]) as never,
+      );
+      if (!result.success) {
+        status = result.message;
+        return false;
+      }
+    }
+    for (const originalSet of Object.values(original.attachedConfigurationSets)) {
+      const currentSet =
+        session.configuration.getSnapshot().attachedConfigurationSets[originalSet.id];
+      if (
+        !currentSet ||
+        JSON.stringify(currentSet.definitions) === JSON.stringify(originalSet.definitions)
+      )
+        continue;
+      const result = session.configuration.publishConfigurationSet({
+        configSetId: originalSet.id,
+        expectedRevision: currentSet.revision,
+        definitions: structuredClone(originalSet.definitions),
+      });
+      if (!result.success) {
+        status = result.message;
+        return false;
+      }
+    }
+    if (session.configuration.getSnapshot().themeKey !== original.themeKey) {
+      const result = session.configuration.setThemeKey(original.themeKey);
+      if (!result.success) {
+        status = result.message;
+        return false;
+      }
+    }
+    originalConfiguration = null;
+    return true;
+  }
   export function close(): void {
     requestClose("discard");
   }
@@ -406,7 +458,7 @@
     closeIntent = null;
     closePrompt = false;
     if (intent === "apply") save();
-    else closeNow();
+    else if (restoreConfiguration()) closeNow();
   }
   function neverAskAgain(): void {
     const current = loadClientSettings(localStorage).settings;
@@ -670,8 +722,8 @@
                   />
                   <span class="background-preview" aria-hidden="true">
                     {#if preset.thumbnail}<img src={preset.thumbnail} alt="" />{:else}<span
-                        class="background-none"></span
-                      >{/if}
+                        class="background-none"
+                      ></span>{/if}
                   </span>
                   <span class="background-label">{preset.label}</span>
                 </label>

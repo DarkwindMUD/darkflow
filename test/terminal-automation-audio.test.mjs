@@ -53,6 +53,7 @@ function createHarness({
   aliases = [],
   triggers = [],
   functions = [],
+  keyMappings = [],
   timers = [],
   play = true,
   scheduleWait = () => Promise.resolve(),
@@ -63,7 +64,7 @@ function createHarness({
     triggers: triggers.map(entry),
     highlights: [],
     functions: functions.map(entry),
-    keyMappings: [],
+    keyMappings: keyMappings.map(entry),
     timers: timers.map(entry),
   };
   const played = [];
@@ -120,6 +121,40 @@ function createHarness({
     timerCallbacks,
   };
 }
+
+test("legacy symbolic key mappings remain compatible", () => {
+  const harness = createHarness({
+    keyMappings: [
+      {
+        id: "key-percent",
+        enabled: true,
+        code: "%",
+        label: "%",
+        legacyKey: "%",
+        command: "percent-command",
+      },
+    ],
+  });
+
+  assert.equal(
+    harness.automation.getMappedCommand({
+      defaultPrevented: false,
+      repeat: false,
+      code: "Digit5",
+      key: "%",
+    }),
+    "percent-command",
+  );
+  assert.equal(
+    harness.automation.getMappedCommand({
+      defaultPrevented: false,
+      repeat: false,
+      code: "Digit5",
+      key: "5",
+    }),
+    null,
+  );
+});
 
 test("known sounds use the public local audio capability across automation contexts", () => {
   const harness = createHarness({

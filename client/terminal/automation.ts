@@ -230,8 +230,10 @@ export function createTerminalAutomation({
           (definition) =>
             definition.enabled &&
             definition.command &&
-            ((definition.code && definition.code === event.code) ||
-              (definition.legacyKey && definition.legacyKey === event.key)),
+            (definition.legacyKey
+              ? definition.legacyKey === event.key &&
+                (definition.code === event.code || definition.code === definition.legacyKey)
+              : definition.code === event.code),
         );
       return mapping?.command ?? null;
     },

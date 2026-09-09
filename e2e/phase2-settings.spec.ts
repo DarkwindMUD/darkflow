@@ -306,6 +306,12 @@ async function settingsGroup(dialog: ReturnType<typeof settingsDialog>, tab: str
   return dialog.getByRole("group", { name });
 }
 
+async function confirmDefinitionDelete(page: Page, label: string): Promise<void> {
+  const confirmation = page.getByRole("dialog", { name: `Delete ${label}`, exact: true });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Delete", exact: true }).click();
+}
+
 async function skipChangedSettingsBackup(dialog: ReturnType<typeof settingsDialog>): Promise<void> {
   const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
   await new Promise((resolve) => setTimeout(resolve, 50));
@@ -952,7 +958,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await dialog.getByLabel("Search settings").fill("");
   await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
   await settingsTab(dialog, "Aliases");
-  await dialog.getByRole("button", { name: "Add aliases" }).click();
+  await dialog.getByRole("button", { name: "New alias" }).click();
   await dialog.getByRole("textbox", { name: "Trigger", exact: true }).fill("draft-alias");
   await dialog.getByLabel("Search settings").fill("Connection");
   await dialog.getByLabel("Search settings").fill("");
@@ -1162,36 +1168,64 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   const dialog = settingsDialog(page);
 
   const keys = await settingsGroup(dialog, "Controls", "Key mappings");
-  await keys.getByRole("button", { name: "Edit F2" }).click();
-  let editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Command").fill("inventory");
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
-  await keys.getByRole("button", { name: "Add key mappings" }).click();
-  editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Key code").fill("F2");
-  await editor.getByLabel("Label").fill("Duplicate F2");
-  await editor.getByLabel("Command").fill("duplicate");
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
+  await keys.getByLabel("Command for F2").fill("inventory");
+  await keys.getByLabel("Command for F2").press("Tab");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await keys.getByLabel("Key for new mapping").press("F2");
+  await keys.getByLabel("Command for new mapping").fill("duplicate");
+  await keys.getByLabel("Command for new mapping").press("Tab");
   await expect(keys.getByText("Key mappings must have unique identities.")).toBeVisible();
-  await editor.getByRole("button", { name: "Cancel edit" }).click();
-  await keys.getByRole("button", { name: "Add key mappings" }).click();
-  editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Key code").fill("F4");
-  await editor.getByLabel("Label").fill("F4");
-  await editor.getByLabel("Command").fill("north");
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
-  await keys.getByRole("button", { name: "Edit F4" }).click();
-  editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Enabled", { exact: true }).uncheck();
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
-  await keys.getByRole("button", { name: "Delete F4" }).click();
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await keys.getByLabel("Key for new mapping").press("F4");
+  await keys.getByLabel("Command for new mapping").fill("north");
+  await keys.getByLabel("Command for new mapping").press("Tab");
+  await keys.getByLabel("Enable F4").uncheck();
+  await keys
+    .getByLabel("Command for F4")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await confirmDefinitionDelete(page, "F4");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  const keyInput = keys.getByLabel("Key for new mapping");
+  await keyInput.dispatchEvent("keydown", {
+    key: "%",
+    code: "Digit5",
+    shiftKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  await expect(keyInput).toContainText("%");
+  await expect(keyInput.locator("..").getByText("(Digit5)", { exact: true })).toBeVisible();
+  await keys.getByLabel("Command for new mapping").fill("percent-command");
+  await keys.getByLabel("Command for new mapping").press("Tab");
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  const intlBackslash = keys.getByLabel("Key for new mapping");
+  await intlBackslash.dispatchEvent("keydown", {
+    key: "Intl Backslash",
+    code: "IntlBackslash",
+    bubbles: true,
+    cancelable: true,
+  });
+  await expect(intlBackslash).toHaveText("IntlBackslash");
+  await expect(intlBackslash.getByText("(IntlBackslash)", { exact: true })).toHaveCount(0);
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
 
   const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
   await highlights.getByRole("button", { name: "Edit glow" }).click();
-  editor = highlights.getByRole("region", { name: "Edit highlights" });
+  let editor = highlights.getByRole("region", { name: "Edit highlights" });
   await editor.getByLabel("Foreground").fill("blue");
   await editor.getByRole("button", { name: "Save highlights" }).click();
-  await highlights.getByRole("button", { name: "Add highlights" }).click();
+  await highlights.getByRole("button", { name: "New highlight" }).click();
   editor = highlights.getByRole("region", { name: "Edit highlights" });
   await editor.getByLabel("Pattern").fill("spark");
   await editor.getByRole("button", { name: "Save highlights" }).click();
@@ -1200,13 +1234,14 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save highlights" }).click();
   await highlights.getByRole("button", { name: "Delete spark" }).click();
+  await confirmDefinitionDelete(page, "spark");
 
   const functions = await settingsGroup(dialog, "Functions", "Functions");
   await functions.getByRole("button", { name: "Edit greet" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
   await editor.getByLabel("Script", { exact: true }).fill("send salute");
   await editor.getByRole("button", { name: "Save functions" }).click();
-  await functions.getByRole("button", { name: "Add functions" }).click();
+  await functions.getByRole("button", { name: "New function" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
   await editor.getByLabel("Name").fill("temporary");
   await editor.getByLabel("Script", { exact: true }).fill("send temporary");
@@ -1216,6 +1251,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save functions" }).click();
   await functions.getByRole("button", { name: "Delete temporary" }).click();
+  await confirmDefinitionDelete(page, "temporary");
 
   const persisted = await page.evaluate(() => {
     const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
@@ -1228,6 +1264,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   });
   expect(persisted.keyMappings).toMatchObject([
     { id: "key-local", code: "F2", command: "inventory", enabled: true },
+    { code: "Digit5", legacyKey: "%", command: "percent-command", enabled: true },
   ]);
   expect(persisted.highlights).toMatchObject([
     { id: "highlight-local", patternSource: "glow", style: { fg: "blue" }, enabled: true },
@@ -1236,24 +1273,86 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
     { id: "function-greet", name: "greet", script: "send salute", enabled: true },
   ]);
 
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
   await page.keyboard.press("F2");
+  await page.keyboard.press("5");
+  expect(endpoint.commands).not.toContain("percent-command");
+  await input.fill("");
+  await page.evaluate(() =>
+    document.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "%",
+        code: "Digit5",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    ),
+  );
   await input.fill("fn");
   await input.press("Enter");
   await expect
     .poll(() => endpoint.commands)
-    .toEqual(expect.arrayContaining(["inventory", "salute"]));
+    .toEqual(expect.arrayContaining(["inventory", "percent-command", "salute"]));
   endpoint.sendText("glow\n");
   await expect(page.getByLabel("Terminal output").locator(".ansi-fg-blue")).toContainText("glow");
 
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const reloadedKeys = await settingsGroup(settingsDialog(page), "Controls", "Key mappings");
-  await reloadedKeys.getByRole("button", { name: "Edit F2" }).click();
-  await expect(reloadedKeys.getByLabel("Command")).toHaveValue("inventory");
+  await expect(reloadedKeys.getByLabel("Command for F2")).toHaveValue("inventory");
+});
+
+test("Phase 2 confirms definition deletion and restores it when Settings is canceled", async ({
+  page,
+}) => {
+  await installDirectDefinitions(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const keys = await settingsGroup(dialog, "Controls", "Key mappings");
+
+  await keys.getByRole("button", { name: "Add mapping" }).click();
+  await expect(keys.getByLabel("Key for new mapping")).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit key mappings", exact: true })).toHaveCount(0);
+  await keys
+    .getByLabel("Command for new mapping")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+
+  await keys
+    .getByLabel("Command for F2")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  const confirmation = page.getByRole("dialog", { name: "Delete F2", exact: true });
+  await expect(confirmation).toBeVisible();
+  await confirmation.getByRole("button", { name: "Keep it" }).click();
+  await expect(keys.getByLabel("Command for F2")).toBeVisible();
+
+  await keys
+    .getByLabel("Command for F2")
+    .locator("..")
+    .getByRole("button", { name: "Remove" })
+    .click();
+  await confirmDefinitionDelete(page, "F2");
+  await expect(keys.getByLabel("Command for F2")).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reopened = settingsDialog(page);
+  const restored = await settingsGroup(reopened, "Controls", "Key mappings");
+  await expect(restored.getByLabel("Command for F2")).toBeVisible();
+  const aliases = await settingsGroup(reopened, "Aliases", "Aliases");
+  await expect(aliases.getByLabel("Search Aliases")).toBeVisible();
+  await expect(aliases.getByRole("button", { name: "New alias" })).toBeVisible();
+  await expect(aliases.getByRole("region", { name: "Edit aliases" })).toBeVisible();
+  for (const action of ["Up", "Down", "Duplicate", "Delete fn"])
+    await expect(aliases.getByRole("button", { name: action, exact: true })).toBeVisible();
 });
 
 test("Phase 2 routes shared direct definitions through stale-safe publication", async ({
@@ -1264,10 +1363,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = settingsDialog(page);
   const keys = await settingsGroup(dialog, "Controls", "Key mappings");
-  await expect(keys.getByText("Shared: Shared keys (revision 1)")).toBeVisible();
-  await keys.getByRole("button", { name: "Edit F3" }).click();
-  let editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await editor.getByLabel("Command").fill("draft-command");
+  await expect(keys.getByLabel("Command for F3")).toHaveValue("shared-before");
 
   const externalResult = await page.evaluate(() => {
     const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
@@ -1299,22 +1395,13 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     });
   });
   expect(externalResult.success).toBe(true);
-  await expect(
-    editor.getByText("This shared definition changed while you were editing it."),
-  ).toBeVisible();
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
-  await expect(
-    keys.getByText("Configuration set revision no longer matches the expected value."),
-  ).toBeVisible();
-  await editor.getByRole("button", { name: "Reload shared definition" }).click();
-  editor = keys.getByRole("region", { name: "Edit key mappings" });
-  await expect(editor.getByLabel("Command")).toHaveValue("external-command");
-  await editor.getByLabel("Command").fill("shared-after");
-  await editor.getByRole("button", { name: "Save key mappings" }).click();
+  await expect(keys.getByLabel("Command for F3")).toHaveValue("external-command");
+  await keys.getByLabel("Command for F3").fill("shared-after");
+  await keys.getByLabel("Command for F3").press("Tab");
 
   const highlights = await settingsGroup(dialog, "Highlights", "Highlights");
   await highlights.getByRole("button", { name: "Edit shimmer" }).click();
-  editor = highlights.getByRole("region", { name: "Edit highlights" });
+  let editor = highlights.getByRole("region", { name: "Edit highlights" });
   await editor.getByLabel("Pattern").fill("");
   await editor.getByRole("button", { name: "Save highlights" }).click();
   await expect(editor.getByLabel("Pattern")).toBeFocused();
@@ -1349,7 +1436,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     definitions: [{ id: "function-shared", script: "send shared-function-after" }],
   });
 
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await connect(page);
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
@@ -1376,11 +1463,22 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
       groupName === "Key mappings" ? "Controls" : groupName,
       groupName,
     );
+    if (groupName === "Key mappings") {
+      await group.getByLabel(`Enable ${label}`).uncheck();
+      await group
+        .getByLabel(`Command for ${label}`)
+        .locator("..")
+        .getByRole("button", { name: "Remove" })
+        .click();
+      await confirmDefinitionDelete(page, label);
+      continue;
+    }
     await group.getByRole("button", { name: `Edit ${label}` }).click();
     const activeEditor = group.getByRole("region", { name: `Edit ${groupName.toLowerCase()}` });
     await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
     await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
     await group.getByRole("button", { name: `Delete ${label}` }).click();
+    await confirmDefinitionDelete(page, label);
   }
   const emptied = await page.evaluate(() => {
     const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
@@ -1425,7 +1523,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   editor = aliases.getByRole("region", { name: "Edit aliases" });
   await editor.getByLabel("Template").fill("inventory");
   await editor.getByRole("button", { name: "Save aliases" }).click();
-  await aliases.getByRole("button", { name: "Add aliases" }).click();
+  await aliases.getByRole("button", { name: "New alias" }).click();
   editor = aliases.getByRole("region", { name: "Edit aliases" });
   await editor.getByLabel("Trigger").fill("temporary alias");
   await editor.getByRole("button", { name: "Add automation step" }).click();
@@ -1436,13 +1534,14 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "Delete temporary alias" }).click();
+  await confirmDefinitionDelete(page, "temporary alias");
 
   const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
   await triggers.getByRole("button", { name: "Edit danger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Template").fill("retreat");
   await editor.getByRole("button", { name: "Save triggers" }).click();
-  await triggers.getByRole("button", { name: "Add triggers" }).click();
+  await triggers.getByRole("button", { name: "New trigger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Pattern").fill("temporary trigger");
   await editor.getByRole("button", { name: "Add automation step" }).click();
@@ -1453,6 +1552,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save triggers" }).click();
   await triggers.getByRole("button", { name: "Delete temporary trigger" }).click();
+  await confirmDefinitionDelete(page, "temporary trigger");
 
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit pulse" }).click();
@@ -1461,7 +1561,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByLabel("Start automatically").check();
   await editor.getByLabel("Template").fill("timer-after");
   await editor.getByRole("button", { name: "Save timers" }).click();
-  await timers.getByRole("button", { name: "Add timers" }).click();
+  await timers.getByRole("button", { name: "New timer" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
   await editor.getByLabel("Name").fill("temporary timer");
   await editor.getByRole("button", { name: "Add automation step" }).click();
@@ -1472,12 +1572,13 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save timers" }).click();
   await timers.getByRole("button", { name: "Delete temporary timer" }).click();
+  await confirmDefinitionDelete(page, "temporary timer");
 
   const persisted = await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1")!);
   expect(persisted).not.toContain("timerHandles");
   expect(persisted).not.toContain("automationVariables");
 
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("quick");
@@ -1576,7 +1677,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     ]),
   );
 
-  await dialog.getByRole("button", { name: "Close settings" }).click();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedalias");
@@ -1609,5 +1710,6 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     await activeEditor.getByLabel("Enabled", { exact: true }).uncheck();
     await activeEditor.getByRole("button", { name: `Save ${groupName.toLowerCase()}` }).click();
     await group.getByRole("button", { name: `Delete ${label}` }).click();
+    await confirmDefinitionDelete(page, label);
   }
 });

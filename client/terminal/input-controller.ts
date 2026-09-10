@@ -283,6 +283,7 @@ export function createTerminalInputController({
   window.addEventListener("pagehide", flushHistory);
   window.addEventListener("darkflow:settings-import-start", pausePersistence);
   window.addEventListener("darkflow:settings-import-abort", resumePersistence);
+  window.addEventListener("darkflow:settings-import-applied", resumePersistence);
   window.addEventListener("darkflow:client-settings-changed", onSettingsChanged);
 
   return {
@@ -296,6 +297,7 @@ export function createTerminalInputController({
       window.removeEventListener("pagehide", flushHistory);
       window.removeEventListener("darkflow:settings-import-start", pausePersistence);
       window.removeEventListener("darkflow:settings-import-abort", resumePersistence);
+      window.removeEventListener("darkflow:settings-import-applied", resumePersistence);
       window.removeEventListener("darkflow:client-settings-changed", onSettingsChanged);
       unsubscribeConfiguration();
       unsubscribeConnection();

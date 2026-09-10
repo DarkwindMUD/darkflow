@@ -386,6 +386,34 @@ test("successful hosts are restored and an empty host stops reconnect", async ({
   await expect(page.getByLabel("Host")).toHaveValue("remembered.example");
 });
 
+test("an already-connected session can mount another shell without a reactive loop", async ({
+  page,
+}) => {
+  const pageErrors: string[] = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await installFakeWebSocket(page);
+  await page.goto("/phase2/");
+
+  await page.getByLabel("Host").fill("fixture.example");
+  await page.locator("#connect-btn").click();
+  await controlFakeSocket(page, "open");
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+
+  await page.evaluate(async () => {
+    const runtime = (
+      window as typeof window & { __darkflowPhase1Runtime?: { clientLoaded: boolean } }
+    ).__darkflowPhase1Runtime;
+    if (!runtime) throw new Error("Phase 2 runtime is unavailable");
+    runtime.clientLoaded = false;
+    const entry = `/app/phase2.ts?connected-session-remount=${Date.now()}`;
+    await import(entry);
+  });
+
+  await expect(page.getByTestId("phase2-shell")).toHaveCount(2);
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  expect(pageErrors).toEqual([]);
+});
+
 test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", async ({
   page,
 }) => {

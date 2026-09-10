@@ -294,7 +294,7 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
 }
 
 function settingsDialog(page: Page) {
-  return page.getByRole("dialog", { name: "Settings" });
+  return page.getByRole("dialog", { name: "Settings", exact: true });
 }
 
 async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: string): Promise<void> {
@@ -736,7 +736,7 @@ test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme 
   await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("fixture");
 });
 
-test("Phase 3 exports portable settings, previews imports, and backs up changed drafts", async ({
+test("Phase 3 imports settings without replacing the active session or profile state", async ({
   page,
 }, testInfo) => {
   await page.addInitScript(() => {
@@ -750,8 +750,23 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
       },
     });
   });
-  await page.goto("/phase2/");
+  await connect(page);
   await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  const preserved = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+    const server = state.serverProfiles[character.serverProfileId];
+    return {
+      characterIds: Object.keys(state.characterProfiles),
+      serverIds: Object.keys(state.serverProfiles),
+      history: character.commandHistory,
+      label: character.label,
+      serverHost: server.host,
+    };
+  });
+  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.evaluate(() =>
     localStorage.setItem(
       "darkwind-client-settings",
@@ -777,8 +792,25 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
     const applicationState = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
     const character =
       applicationState.characterProfiles[applicationState.defaults.defaultCharacterProfileId];
+    const server = applicationState.serverProfiles[character.serverProfileId];
+    character.label = "Imported character";
     character.commandHistory = ["imported-history"];
+    character.automationVariables = { imported: "yes" };
+    character.localDefinitions.aliases = [
+      {
+        id: "imported-alias",
+        enabled: true,
+        trigger: "zz",
+        description: "Imported alias",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+    ];
     character.workspace.payload.importedPanelSizeMarker = { terminal: 731, map: 213 };
+    character.workspace.payload.dockview.layout.railVisibility = { left: false, right: true };
+    server.host = "imported.example.com";
     return {
       format: "darkwind-client-settings-export",
       formatVersion: 2,
@@ -787,10 +819,13 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
       data: {
         applicationState,
         clientSettings: { theme: applicationState.defaults.themeKey },
-        sound: {},
+        sound: { enabled: false, volume: 0.25, categoryEnabled: { combat: false } },
       },
     };
   });
+  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+  await expect(page.locator("#phase2-left-rail")).toBeVisible();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
 
   await dialog.locator(".hidden-file-input").setInputFiles({
     name: "settings.json",
@@ -798,10 +833,8 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
     buffer: Buffer.from(JSON.stringify(exported)),
   });
   const confirmation = dialog.getByRole("dialog", { name: "Import settings" });
-  await expect(confirmation).toContainText("profiles");
-  await expect(
-    confirmation.getByRole("button", { name: "Import and reload", exact: true }),
-  ).toBeFocused();
+  await expect(confirmation).toContainText("replace your current settings");
+  await expect(confirmation.getByRole("button", { name: "Import", exact: true })).toBeFocused();
   if (testInfo.project.name === "chromium")
     await page.screenshot({ path: testInfo.outputPath("phase3-import-preview.png") });
   await page.keyboard.press("Escape");
@@ -824,35 +857,78 @@ test("Phase 3 exports portable settings, previews imports, and backs up changed 
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(exported)),
   });
-  const recoveryDownload = page.waitForEvent("download");
-  const reload = page.waitForEvent("load");
+  await page.evaluate(() => {
+    (window as typeof window & { __settingsImportSentinel?: boolean }).__settingsImportSentinel =
+      true;
+  });
+  const initialSessionId = await page.evaluate(
+    () =>
+      (window as typeof window & { __darkflowPhase1Session?: { sessionId: string } })
+        .__darkflowPhase1Session?.sessionId,
+  );
+  const importDownloads: string[] = [];
+  page.on("download", (item) => importDownloads.push(item.suggestedFilename()));
   await dialog
     .getByRole("dialog", { name: "Import settings" })
-    .getByRole("button", { name: "Import and reload", exact: true })
+    .getByRole("button", { name: "Import", exact: true })
     .click();
-  expect((await recoveryDownload).suggestedFilename()).toMatch(/-recovery\.json$/);
-  await reload;
-  await expect(page.getByTestId("phase2-shell")).toBeVisible();
+  await expect(dialog).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __darkflowPhase1Session?: { sessionId: string } })
+          .__darkflowPhase1Session?.sessionId,
+    ),
+  ).toBe(initialSessionId);
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  await expect(page.locator("#phase2-left-rail")).toBeHidden();
+  expect(importDownloads).toEqual([]);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as typeof window & { __settingsImportSentinel?: boolean }).__settingsImportSentinel,
+    ),
+  ).toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() => {
         const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
         const character = state.characterProfiles[state.defaults.defaultCharacterProfileId];
+        const server = state.serverProfiles[character.serverProfileId];
         return {
+          characterIds: Object.keys(state.characterProfiles),
+          serverIds: Object.keys(state.serverProfiles),
           history: character.commandHistory,
+          label: character.label,
+          serverHost: server.host,
           marker: character.workspace.payload.importedPanelSizeMarker,
+          variables: character.automationVariables,
+          alias: character.localDefinitions.aliases[0]?.trigger,
           repeatLastCommand: JSON.parse(localStorage.getItem("darkwind-client-settings")!)
             .repeatLastCommand,
         };
       }),
     )
     .toEqual({
-      history: ["imported-history"],
+      ...preserved,
       marker: { terminal: 731, map: 213 },
+      variables: { imported: "yes" },
+      alias: "zz",
       repeatLastCommand: false,
     });
+  const lookCount = fixtures.endpoints.ws.commands.filter((command) => command === "look").length;
+  const commandInput = page.getByRole("textbox", { name: "Command input", exact: true });
+  await commandInput.fill("zz");
+  await commandInput.press("Enter");
+  await expect
+    .poll(() => fixtures.endpoints.ws.commands.filter((command) => command === "look").length)
+    .toBe(lookCount + 1);
 
   await settingsButton.click();
+  await settingsTab(dialog, "Audio");
+  await expect(dialog.getByLabel("Enable audio")).not.toBeChecked();
+  await expect(dialog.getByLabel("Volume")).toHaveValue("25");
+  await expect(dialog.getByLabel("Combat")).not.toBeChecked();
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await settingsTab(dialog, "Controls");

@@ -4,6 +4,11 @@ import {
   validateClientSettingsDocument,
 } from "./client-settings";
 import type { ApplicationStateV1 } from "../model/profiles";
+import { createEmptyConfigurationSetRefs } from "../model/profiles";
+import type { LocalDefinitions } from "../model/configuration";
+import type { CharacterProfileId } from "../model/ids";
+import { resolveEffectiveConfiguration } from "../configuration/resolve";
+import type { EffectiveDefinition } from "../configuration/snapshot";
 import {
   convertLegacyLocalDefinitions,
   convertLegacyVariables,
@@ -361,20 +366,76 @@ export function prepareSettingsImport(
   return { success: false, message: "This settings export version is not supported." };
 }
 
-/** Replaces the three owners in fixed order and restores exact raw bytes after a failed write. */
+/** Applies portable settings to the active character without replacing profile identity or history. */
 export function applySettingsImport(
   storage: StorageLike,
   prepared: PreparedSettingsBundle,
-): { success: true } | { success: false; message: string; recoveryFailedOwner?: string } {
+  characterProfileId: CharacterProfileId,
+):
+  | { success: true; data: { automationVariables: Record<string, string> } }
+  | { success: false; message: string; recoveryFailedOwner?: string } {
+  const current = currentState(storage);
+  if (!current.success) return current;
+  const character = current.data.characterProfiles[characterProfileId];
+  if (!character)
+    return { success: false, message: "The active character profile is unavailable." };
+  const importedState = JSON.parse(canonicalJson(prepared.applicationState)) as ApplicationStateV1;
+  const importedCharacters = Object.values(importedState.characterProfiles);
+  const defaultImportedId = importedState.defaults.defaultCharacterProfileId;
+  const importedCharacter =
+    importedState.characterProfiles[characterProfileId] ??
+    (defaultImportedId ? importedState.characterProfiles[defaultImportedId] : null) ??
+    (importedCharacters.length === 1 ? importedCharacters[0] : null);
+  if (!importedCharacter)
+    return { success: false, message: "Choose an export with a default character profile." };
+  const resolved = resolveEffectiveConfiguration(importedState, importedCharacter.id);
+  if (!resolved.success || !resolved.data)
+    return { success: false, message: "The imported automation settings are invalid." };
+  const effective = resolved.data;
+  // ponytail: materialize shared definitions locally until multi-connection imports profile ownership.
+  const materialize = <T>(definitions: EffectiveDefinition<T>[]): T[] =>
+    definitions
+      .filter(({ source }) => source.kind !== "builtin")
+      .map(({ definition }) => structuredClone(definition));
+  const localDefinitions: LocalDefinitions = {
+    aliases: materialize(effective.aliases),
+    triggers: materialize(effective.triggers),
+    highlights: materialize(effective.highlights),
+    functions: materialize(effective.functions),
+    keyMappings: materialize(effective.keyMappings),
+    timers: materialize(effective.timers),
+  };
+  const automationVariables = structuredClone(importedCharacter.automationVariables ?? {});
+  const applicationState: ApplicationStateV1 = {
+    ...current.data,
+    defaults: {
+      ...current.data.defaults,
+      themeKey: String(prepared.clientSettings.theme),
+    },
+    characterProfiles: {
+      ...current.data.characterProfiles,
+      [characterProfileId]: {
+        ...character,
+        configSetRefs: createEmptyConfigurationSetRefs(),
+        localDefinitions,
+        automationVariables,
+        workspace: structuredClone(importedCharacter.workspace),
+        audio: structuredClone(importedCharacter.audio),
+      },
+    },
+  };
+  const validation = validateApplicationState(applicationState);
+  if (!validation.success || !validation.data)
+    return { success: false, message: "The imported settings are invalid." };
   const target = [
-    canonicalJson(prepared.applicationState),
+    canonicalJson(validation.data),
     canonicalJson(prepared.clientSettings),
     canonicalJson(prepared.sound),
   ];
   const snapshot = OWNER_KEYS.map((key) => ({ key, value: storage.getItem(key) }));
   try {
     OWNER_KEYS.forEach((key, index) => storage.setItem(key, target[index]!));
-    return { success: true };
+    return { success: true, data: { automationVariables } };
   } catch (error) {
     let recoveryFailedOwner: string | undefined;
     for (const entry of [...snapshot].reverse()) {

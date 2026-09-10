@@ -48,7 +48,7 @@ function graph(ids) {
   };
 }
 
-test("settings bundle validates, round-trips three owners, and keeps unknown client fields", async (t) => {
+test("settings bundle exports the full graph but imports only active-character settings", async (t) => {
   const server = await createServer({ configFile: path.join(repoRoot, "vite.config.ts"), appType: "custom", logLevel: "silent", server: { middlewareMode: true }, hmr: false, watch: null });
   t.after(() => server.close());
   assert.ok(isRunnableDevEnvironment(server.environments.ssr));
@@ -56,14 +56,62 @@ test("settings bundle validates, round-trips three owners, and keeps unknown cli
   const bundle = await ssr.runner.import("/app/settings-bundle.ts");
   const ids = await ssr.runner.import("/model/ids.ts");
   const uuid = ids.createSequentialUuidFactory("70000000-0000-4000-8000-");
-  const state = graph({ server: ids.createServerProfileId(uuid), character: ids.createCharacterProfileId(uuid) });
+  const targetIds = {
+    server: ids.createServerProfileId(uuid),
+    character: ids.createCharacterProfileId(uuid),
+  };
+  const state = graph(targetIds);
   const initial = {
     "darkflow-session-core-v1": JSON.stringify(state),
-    "darkwind-client-settings": JSON.stringify({ theme: "darkflow-default", deferred: { keep: true } }),
-    "darkwind-sound-settings": JSON.stringify({ enabled: false, volume: 0.4, categoryEnabled: { combat: false } }),
+    "darkwind-client-settings": JSON.stringify({ theme: "darkflow-default" }),
+    "darkwind-sound-settings": JSON.stringify({}),
   };
   const store = storage(initial);
-  const exported = bundle.buildSettingsBundle(store, {
+  const sourceIds = {
+    server: ids.createServerProfileId(uuid),
+    character: ids.createCharacterProfileId(uuid),
+  };
+  const source = graph(sourceIds);
+  const sharedSet = ids.createConfigSetId(uuid);
+  source.characterProfiles[sourceIds.character].label = "Imported";
+  source.characterProfiles[sourceIds.character].commandHistory = ["source-history"];
+  source.characterProfiles[sourceIds.character].workspace = {
+    version: 1,
+    payload: { imported: true },
+  };
+  source.characterProfiles[sourceIds.character].automationVariables = { target: "dragon" };
+  source.characterProfiles[sourceIds.character].configSetRefs.aliases = [sharedSet];
+  source.configurationSets[sharedSet] = {
+    id: sharedSet,
+    label: "Imported aliases",
+    kind: "aliases",
+    revision: 1,
+    definitions: [
+      {
+        id: "shared-look",
+        enabled: true,
+        trigger: "l",
+        description: "Look",
+        group: "",
+        isRegex: false,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+    ],
+  };
+  const sourceStore = storage({
+    "darkflow-session-core-v1": JSON.stringify(source),
+    "darkwind-client-settings": JSON.stringify({
+      theme: "darkflow-default",
+      deferred: { keep: true },
+    }),
+    "darkwind-sound-settings": JSON.stringify({
+      enabled: false,
+      volume: 0.4,
+      categoryEnabled: { combat: false },
+    }),
+  });
+  const exported = bundle.buildSettingsBundle(sourceStore, {
     clientSettings: { repeatLastCommand: false, gmcpDebugEnabled: true },
   });
   assert.equal(exported.success, true);
@@ -73,11 +121,31 @@ test("settings bundle validates, round-trips three owners, and keeps unknown cli
   assert.deepEqual(prepared.data.clientSettings.deferred, { keep: true });
   assert.equal(prepared.data.clientSettings.repeatLastCommand, false);
   assert.equal(prepared.data.clientSettings.gmcpDebugEnabled, true);
-  assert.deepEqual(
-    Object.values(prepared.data.applicationState.characterProfiles)[0].automationVariables,
-    { target: "goblin" },
+  assert.deepEqual(prepared.data.applicationState, source);
+  prepared.data.applicationState.configurationSets[sharedSet].definitions[0] = new Proxy(
+    prepared.data.applicationState.configurationSets[sharedSet].definitions[0],
+    {},
   );
-  assert.deepEqual(bundle.applySettingsImport(store, prepared.data), { success: true });
+  const result = bundle.applySettingsImport(store, prepared.data, targetIds.character);
+  assert.equal(result.success, true);
+  const imported = JSON.parse(store.getItem("darkflow-session-core-v1"));
+  assert.deepEqual(Object.keys(imported.serverProfiles), [targetIds.server]);
+  assert.deepEqual(Object.keys(imported.characterProfiles), [targetIds.character]);
+  assert.equal(imported.characterProfiles[targetIds.character].label, "Main");
+  assert.equal(imported.characterProfiles[targetIds.character].serverProfileId, targetIds.server);
+  assert.deepEqual(imported.characterProfiles[targetIds.character].commandHistory, ["look"]);
+  assert.deepEqual(imported.characterProfiles[targetIds.character].workspace, {
+    version: 1,
+    payload: { imported: true },
+  });
+  assert.deepEqual(imported.characterProfiles[targetIds.character].automationVariables, {
+    target: "dragon",
+  });
+  assert.deepEqual(
+    imported.characterProfiles[targetIds.character].localDefinitions.aliases,
+    source.configurationSets[sharedSet].definitions,
+  );
+  assert.deepEqual(imported.characterProfiles[targetIds.character].configSetRefs.aliases, []);
   assert.deepEqual(JSON.parse(store.getItem("darkwind-sound-settings")).categoryEnabled.combat, false);
 });
 
@@ -124,16 +192,34 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
   assert.equal(prepared.success, true, prepared.success ? "" : prepared.message);
   for (const write of [1, 2, 3]) {
     const failing = storage(Object.fromEntries(before), [write]);
-    const result = bundle.applySettingsImport(failing, prepared.data);
+    const result = bundle.applySettingsImport(
+      failing,
+      prepared.data,
+      state.defaults.defaultCharacterProfileId,
+    );
     assert.equal(result.success, false);
     assert.deepEqual(failing.snapshot(), before);
   }
   const incomplete = storage(Object.fromEntries(before), [3, 4]);
-  assert.equal(bundle.applySettingsImport(incomplete, prepared.data).recoveryFailedOwner, "darkwind-sound-settings");
+  assert.equal(
+    bundle.applySettingsImport(
+      incomplete,
+      prepared.data,
+      state.defaults.defaultCharacterProfileId,
+    ).recoveryFailedOwner,
+    "darkwind-sound-settings",
+  );
   const nullOwners = storage({ "darkflow-session-core-v1": initial["darkflow-session-core-v1"] }, [3]);
   const nullPrepared = bundle.prepareSettingsImport(exported.data.text, nullOwners);
   assert.equal(nullPrepared.success, true);
-  assert.equal(bundle.applySettingsImport(nullOwners, nullPrepared.data).success, false);
+  assert.equal(
+    bundle.applySettingsImport(
+      nullOwners,
+      nullPrepared.data,
+      state.defaults.defaultCharacterProfileId,
+    ).success,
+    false,
+  );
   assert.equal(nullOwners.getItem("darkwind-client-settings"), null);
   assert.equal(nullOwners.getItem("darkwind-sound-settings"), null);
 });

@@ -981,10 +981,10 @@
      * Apply a persisted snapshot. A version 1 payload predates the rails, so its
      * rail membership is whatever `fillRailsWithDefaults` rebuilds.
      */
+    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel];
     const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
-      const panels = [terminal, ...informationPanels, ...worldPanels, chatPanel];
       if (next.version === 1) {
-        if (!currentWorkspace.restore(next, panels)) return false;
+        if (!currentWorkspace.restore(next, persistedPanels)) return false;
         migrateVersionOneRailPanels(currentWorkspace);
         fillRailsWithDefaults();
         return true;
@@ -998,7 +998,9 @@
       ) {
         return false;
       }
-      if (!currentWorkspace.restore({ version: 1, layout: next.layout.dockview }, panels)) {
+      if (
+        !currentWorkspace.restore({ version: 1, layout: next.layout.dockview }, persistedPanels)
+      ) {
         return false;
       }
       if (next.layout.railVisibility) {
@@ -1033,33 +1035,35 @@
       return true;
     };
 
-    const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
-    const snapshot = loaded.success ? loaded.snapshot : null;
-    const legacy = loaded.success && loaded.snapshot === null ? loaded.legacy : null;
-    const loadMessage = !loaded.success
-      ? loaded.message
-      : loaded.snapshot === null
+    const applyStoredWorkspace = (loaded: ReturnType<typeof loadCharacterWorkspace>): void => {
+      const snapshot = loaded.success ? loaded.snapshot : null;
+      const legacy = loaded.success && loaded.snapshot === null ? loaded.legacy : null;
+      const loadMessage = !loaded.success
         ? loaded.message
-        : "";
-    const restored = snapshot !== null && restoreSnapshot(snapshot);
-    const convertedLegacy =
-      !restored && legacy !== null && applyLegacyLayout(currentWorkspace, legacy);
-    if (!restored) {
-      if (!convertedLegacy) applyDefaultLayout(currentWorkspace);
-      status = convertedLegacy
-        ? "Legacy workspace converted."
-        : snapshot === null
-          ? loadMessage
-          : "Saved workspace could not be restored; using the default layout.";
-    } else if (currentWorkspace.hasPanel(terminal.id)) {
-      status = "Workspace restored";
-    } else {
-      // A restored layout without the terminal island is repaired in place; the
-      // rest of the user's saved arrangement stays usable.
-      currentWorkspace.addOrUpdatePanel(terminal);
-      status = "Restored workspace was missing the terminal; it has been re-added.";
-    }
-    syncVisiblePanels();
+        : loaded.snapshot === null
+          ? loaded.message
+          : "";
+      const restored = snapshot !== null && restoreSnapshot(snapshot);
+      const convertedLegacy =
+        !restored && legacy !== null && applyLegacyLayout(currentWorkspace, legacy);
+      if (!restored) {
+        if (!convertedLegacy) applyDefaultLayout(currentWorkspace);
+        status = convertedLegacy
+          ? "Legacy workspace converted."
+          : snapshot === null
+            ? loadMessage
+            : "Saved workspace could not be restored; using the default layout.";
+      } else if (currentWorkspace.hasPanel(terminal.id)) {
+        status = "Workspace restored";
+      } else {
+        // A restored layout without the terminal island is repaired in place; the
+        // rest of the user's saved arrangement stays usable.
+        currentWorkspace.addOrUpdatePanel(terminal);
+        status = "Restored workspace was missing the terminal; it has been re-added.";
+      }
+      syncVisiblePanels();
+    };
+    applyStoredWorkspace(loadCharacterWorkspace(localStorage, characterProfileId));
     if (debugGmcp) {
       void toggleGmcpDebugPanel();
     }
@@ -1463,11 +1467,33 @@
     const resumePersistenceAfterImport = () => {
       suppressPersistence = false;
     };
+    const restoreWorkspaceAfterImport = async () => {
+      cancelPendingSave();
+      const loaded = loadCharacterWorkspace(localStorage, characterProfileId);
+      const legacy = loaded.success && loaded.snapshot === null ? loaded.legacy : null;
+      await Promise.all(
+        [leftRail, rightRail].flatMap((rail) =>
+          (rail?.ids() ?? []).map((id) => rail!.removePanel(id)),
+        ),
+      );
+      if (legacy)
+        await Promise.all(
+          persistedPanels
+            .slice(1)
+            .filter((panel) => currentWorkspace.hasPanel(panel.id))
+            .map((panel) => currentWorkspace.removePanel(panel.id)),
+        );
+      if (disposed) return;
+      applyStoredWorkspace(loaded);
+      suppressPersistence = false;
+      cancelPendingSave();
+    };
     window.addEventListener("resize", onResize);
     document.addEventListener("visibilitychange", flushOnLeave);
     window.addEventListener("pagehide", flushOnLeave);
     window.addEventListener("darkflow:settings-import-start", pausePersistenceForImport);
     window.addEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
+    window.addEventListener("darkflow:settings-import-applied", restoreWorkspaceAfterImport);
     window.addEventListener("darkflow:reset-workspace", resetWorkspace);
     shell.addEventListener("darkflow:map-panel-state", saveMapPanelState);
     onResize();
@@ -1479,6 +1505,7 @@
       window.removeEventListener("pagehide", flushOnLeave);
       window.removeEventListener("darkflow:settings-import-start", pausePersistenceForImport);
       window.removeEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
+      window.removeEventListener("darkflow:settings-import-applied", restoreWorkspaceAfterImport);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
       shell.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();

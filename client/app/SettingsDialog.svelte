@@ -205,29 +205,41 @@
     const nextImport = preparedImport;
     importing = true;
     window.dispatchEvent(new Event("darkflow:settings-import-start"));
-    if (!exportSettings(true)) {
-      window.dispatchEvent(new Event("darkflow:settings-import-abort"));
-      importing = false;
-      return;
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve));
-    if (!dialog?.open) {
-      window.dispatchEvent(new Event("darkflow:settings-import-abort"));
-      importing = false;
-      return;
-    }
-    const result = applySettingsImport(localStorage, nextImport);
+    const result = applySettingsImport(localStorage, nextImport, session.characterProfileId);
     if (!result.success) {
       window.dispatchEvent(new Event("darkflow:settings-import-abort"));
       status = result.recoveryFailedOwner
-        ? `${result.message} Recovery restoration also failed for ${result.recoveryFailedOwner}; use the downloaded backup.`
+        ? `${result.message} Recovery restoration also failed for ${result.recoveryFailedOwner}.`
         : `${result.message} Original settings were restored.`;
       preparedImport = null;
       importing = false;
       queueMicrotask(() => importAction?.focus());
       return;
     }
-    window.location.reload();
+    session.configuration.setThemeKey(String(nextImport.clientSettings.theme));
+    const runtime = session.terminal.automation;
+    const importedNames = new Set(Object.keys(result.data.automationVariables));
+    for (const name of runtime.listVariableNames())
+      if (!importedNames.has(name)) runtime.removeVariable(name);
+    for (const [name, value] of Object.entries(result.data.automationVariables))
+      runtime.setVariable(name, value);
+    const importedSound = nextImport.sound as {
+      enabled: boolean;
+      volume: number;
+      categoryEnabled: Record<string, boolean>;
+    };
+    session.audio.setEnabled(importedSound.enabled);
+    session.audio.setVolume(importedSound.volume);
+    for (const [category, enabled] of Object.entries(importedSound.categoryEnabled))
+      session.audio.setCategoryEnabled(category, enabled);
+    session.visualEffects.configure(loadClientSettings(localStorage).settings);
+    window.dispatchEvent(new Event("darkflow:client-settings-changed"));
+    window.dispatchEvent(new Event("darkflow:settings-import-applied"));
+    originalAppearance = null;
+    originalConfiguration = null;
+    preparedImport = null;
+    importing = false;
+    dialog?.close();
   }
   function dismissImport(): void {
     if (importing) return;
@@ -1043,25 +1055,16 @@
     <div class="settings-overlay" role="dialog" aria-labelledby="import-title">
       <div class="settings-confirmation">
         <h3 id="import-title">Import settings</h3>
-        <p>
-          Version {preparedImport.preview.formatVersion}: {preparedImport.preview.profiles} profiles and
-          {preparedImport.preview.configurationSets} shared configuration sets. Includes
-          {preparedImport.preview.owners.join(", ")}.
-        </p>
+        <p>This will replace your current settings.</p>
         {#if preparedImport.preview.legacyLayoutWarning}<p>
             {preparedImport.preview.legacyLayoutWarning}
           </p>{/if}
-        <p>
-          Importing replaces profiles, layouts, automations, client preferences, and sound settings.
-          Darkflow will download a recovery backup, disconnect, and reload after the import
-          succeeds.
-        </p>
         <div>
           <button type="button" disabled={importing} onclick={dismissImport}>Cancel</button><button
             bind:this={importConfirm}
             type="button"
             disabled={importing}
-            onclick={confirmImport}>Import and reload</button
+            onclick={confirmImport}>Import</button
           >
         </div>
       </div>

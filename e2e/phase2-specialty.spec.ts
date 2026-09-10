@@ -444,6 +444,11 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   await expect(tutorial).toBeVisible();
   await expect(tutorial).toContainText("Look around");
   await expect(page.locator(".tutorial-target-halo")).toBeVisible();
+  const headerBox = await page.locator(".app-chrome").boundingBox();
+  const tutorialBox = await tutorial.boundingBox();
+  expect(headerBox).not.toBeNull();
+  expect(tutorialBox).not.toBeNull();
+  expect(tutorialBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height);
 
   const commandCount = endpoint.commands.length;
   await tutorial.getByRole("button", { name: "Put look in the command line" }).click();

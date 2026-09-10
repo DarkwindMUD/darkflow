@@ -7,6 +7,7 @@
 
   interface Props {
     tutorial: SessionTutorial;
+    topOffset: number;
     onExampleCommand?: (command: string) => void;
   }
 
@@ -49,7 +50,7 @@
 
   const RENDER_RECOVERY_DELAYS_MS = [500, 1_500, 3_000] as const;
 
-  let { tutorial, onExampleCommand }: Props = $props();
+  let { tutorial, topOffset, onExampleCommand }: Props = $props();
   let snapshot = $state(untrack(() => tutorial.getSnapshot()));
   let collapsed = $state(false);
   let hintVisible = $state(false);
@@ -231,7 +232,7 @@
   </div>
 
   {#if cardVisible}
-    <div class="tutorial-hover-layer">
+    <div class="tutorial-hover-layer" style={`--tutorial-top-offset: ${topOffset}px`}>
       {#if targetRect}
         <div
           class="tutorial-target-halo"
@@ -379,19 +380,19 @@
 <style>
   .tutorial-hover-card,
   .tutorial-minimized-chip {
-    top: 14px;
+    top: calc(var(--tutorial-top-offset) + 14px);
     right: 14px;
   }
 
   .tutorial-hover-card {
     width: min(390px, calc(100vw - 28px));
-    max-height: calc(100vh - 28px);
+    max-height: calc(100vh - var(--tutorial-top-offset) - 28px);
   }
 
   @media (max-width: 700px) {
     .tutorial-hover-card,
     .tutorial-minimized-chip {
-      top: 8px;
+      top: calc(var(--tutorial-top-offset) + 8px);
       right: 8px;
     }
 

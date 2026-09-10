@@ -65,6 +65,7 @@
   let settingsOpen = $state(false);
   let settingsButton = $state<HTMLButtonElement>();
   let settingsDialog = $state<{ close(): void }>();
+  let headerHeight = $state(42);
   let announcementsOpen = $state(false);
   let announcementsButton = $state<HTMLButtonElement>();
   let interactionSnapshot = $state(untrack(() => session.interactions.getSnapshot()));
@@ -385,7 +386,7 @@
   tabindex="-1"
 >
   <div class="workspace-background" aria-hidden="true"></div>
-  <header class="app-chrome">
+  <header class="app-chrome" bind:offsetHeight={headerHeight}>
     <h1 class="toolbar-brand">
       <img src="/assets/brand/darkflow-icon-64.png" alt="" aria-hidden="true" />
       <span>{gameTitle(shell.gameName)}</span>
@@ -537,6 +538,7 @@
 {#if !shell.zorkOnly}
   <TutorialOverlay
     tutorial={session.tutorial}
+    topOffset={headerHeight}
     onExampleCommand={(command) => workspaceHost?.draftTerminalCommand(command)}
   />
   <VisualEffectsLayer {session} />

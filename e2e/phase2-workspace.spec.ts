@@ -434,6 +434,84 @@ test("a panel floated from a rail can stay docked in the center", async ({ page 
   await expect(page.locator('[data-rail="left"] > [data-panel-id="avatar"]')).toHaveCount(0);
 });
 
+test("terminal renders after restoring below another panel in a floating window", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "desktop floating layout only");
+  await page.goto("/phase0/");
+  await page.waitForFunction(() => typeof window.__darkflowWorkspace?.upsert === "function");
+  const dockview = await page.evaluate(() => {
+    const roomImage = {
+      id: "roomImage",
+      kind: "lifecycle",
+      title: "Room Image",
+      state: {},
+      placement: {
+        kind: "floating" as const,
+        bounds: { left: 300, top: 100, width: 600, height: 500 },
+      },
+    };
+    const terminal = { id: "terminal", kind: "terminal", title: "Terminal", state: {} };
+    window.__darkflowWorkspace.upsert(roomImage);
+    window.__darkflowWorkspace.upsert(terminal);
+    window.__darkflowWorkspace.move("terminal", {
+      kind: "grid",
+      direction: "below",
+      referencePanelId: "roomImage",
+    });
+    return window.__darkflowWorkspace.save().layout;
+  });
+  const phase2Dockview = JSON.parse(JSON.stringify(dockview), (_key, value) =>
+    value === "lifecycle" ? "roomImage" : value,
+  );
+
+  await openWorkspace(page);
+  await toggleAvatar(page);
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  await page.evaluate((nextDockview) => {
+    const runtime = (
+      window as unknown as { __darkflowPhase1Runtime: { characterProfileId: string } }
+    ).__darkflowPhase1Runtime;
+    const state = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const layout =
+      state.characterProfiles[runtime.characterProfileId].workspace.payload.dockview.layout;
+    layout.dockview = nextDockview;
+    layout.railVisibility = { left: false, right: false };
+    layout.scrollviews.left = layout.scrollviews.left.filter((id: string) => id !== "roomImage");
+    layout.scrollviews.right = layout.scrollviews.right.filter((id: string) => id !== "roomImage");
+    localStorage.setItem("darkflow-session-core-v1", JSON.stringify(state));
+  }, phase2Dockview);
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  const groupedWindow = page.locator(".dv-resize-container").filter({
+    has: panelDragHandle(page, "roomImage"),
+  });
+  await expect(page.locator("[data-terminal-identity]")).toBeVisible();
+  const commandInput = page.getByLabel("Command input", { exact: true });
+  await expect(commandInput).toBeVisible();
+  await expect(
+    groupedWindow.locator('[data-panel-drag-handle][data-panel-id="terminal"]'),
+  ).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.locator("[data-terminal-identity]").evaluate((element) => element.clientHeight),
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      commandInput.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return (
+          document
+            .elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2)
+            ?.closest('[data-panel-id="terminal"]') !== null
+        );
+      }),
+    )
+    .toBe(true);
+});
+
 test("duplicate persisted ownership keeps the Dockview panel", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile-chromium", "desktop rails only");
   await openWorkspace(page);

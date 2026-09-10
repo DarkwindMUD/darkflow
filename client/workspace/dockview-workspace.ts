@@ -354,6 +354,19 @@ export function createWorkspace(
     window.addEventListener("pointercancel", cleanup, true);
   };
 
+  const syncFloatingOverlayLayers = () => {
+    for (const panel of api.panels) {
+      const frame = panel.group.element.closest<HTMLElement>(".dv-resize-container");
+      const overlay = renderers.get(panel.id)?.element.closest<HTMLElement>(".dv-render-overlay");
+      const level = Number(frame?.getAttribute("aria-level"));
+      if (!frame || !overlay || !Number.isFinite(level)) continue;
+
+      // Dockview v7 only layers preserved content from a floating window's
+      // anchor group. Apply the same formula to other groups in that window.
+      overlay.style.zIndex = `calc(var(--dv-overlay-z-index, 999) + ${level * 2 + 1})`;
+    }
+  };
+
   const annotateFloatingTitlebars = () => {
     const floatingPanels = api.panels.filter((panel) => panel.api.location.type === "floating");
     const titlebars = host.querySelectorAll<HTMLElement>(".dv-floating-titlebar");
@@ -380,6 +393,7 @@ export function createWorkspace(
         delete titlebar.dataset.panelId;
       }
     }
+    syncFloatingOverlayLayers();
   };
   const removeEmptyFloatingGroups = () => {
     // Close controls belong to tabs. A restored empty floating group has none,
@@ -394,6 +408,7 @@ export function createWorkspace(
     for (const group of api.groups) {
       group.element.toggleAttribute("data-terminal-active", group.activePanel?.id === "terminal");
     }
+    syncFloatingOverlayLayers();
   };
   const emitLayout = () => {
     if (disposed || suppressLayoutEvents) {

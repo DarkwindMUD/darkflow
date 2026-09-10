@@ -127,7 +127,7 @@ export function normalizeTutorialState(payload) {
 
   return {
     epoch,
-    seq: boundedInteger(payload.seq),
+    seq: boundedInteger(payload.seq, 0, 0, Number.MAX_SAFE_INTEGER),
     tutorialVersion,
     status,
     awaitingContinue: protocolBoolean(

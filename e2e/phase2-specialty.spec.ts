@@ -468,21 +468,31 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   );
   endpoint.sendGmcp(
     "Darkwind.Tutorial.State",
-    tutorialState(6, { reason: "hint", hint_visible: 1 }),
+    tutorialState(10_001, { reason: "hint", hint_visible: 1 }),
   );
   await expect(tutorial.locator(".tutorial-hint")).toContainText("Hint: Type look.");
 
   await tutorial.getByRole("button", { name: "Skip tutorial", exact: true }).click();
   await expect(tutorial).toContainText("Skip the guided tutorial?");
   expect(framesSince(endpoint, tutorialStart, "Darkwind.Tutorial.Action")).not.toContain(
-    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":6,"step_id":"look"}',
+    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":10001,"step_id":"look"}',
   );
   await tutorial.getByRole("button", { name: "Skip tutorial", exact: true }).click();
   await expectFrame(
     endpoint,
     tutorialStart,
-    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":6,"step_id":"look"}',
+    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":10001,"step_id":"look"}',
   );
+  endpoint.sendGmcp(
+    "Darkwind.Tutorial.State",
+    tutorialState(10_002, {
+      status: "skipped",
+      awaiting_continue: 0,
+      actions: [],
+      reason: "skipped",
+    }),
+  );
+  await expect(tutorial).toHaveCount(0);
 
   endpoint.sendGmcp("Darkwind.Tutorial.Control", {
     visible: 0,
@@ -494,7 +504,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
       frame.includes('"tutorialPane":false'),
     ),
   ).toBe(false);
-  endpoint.sendGmcp("Darkwind.Tutorial.State", tutorialState(7));
+  endpoint.sendGmcp("Darkwind.Tutorial.State", tutorialState(10_003));
   await expect(tutorial).toBeVisible();
 
   const tutorialRecoveryStart = endpoint.gmcpMessages.length;
@@ -502,7 +512,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   await expectFrame(
     endpoint,
     tutorialRecoveryStart,
-    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":7,"reason":"tutorial-session-recovered"}',
+    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":10003,"reason":"tutorial-session-recovered"}',
   );
   const tutorialRecoveryFrames = endpoint.gmcpMessages.slice(tutorialRecoveryStart);
   const tutorialRecoveryReadyIndex = tutorialRecoveryFrames.findIndex(
@@ -514,13 +524,13 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   expect(tutorialRecoveryReadyIndex).toBeGreaterThanOrEqual(0);
   expect(
     tutorialRecoveryFrames.indexOf(
-      'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":7,"reason":"tutorial-session-recovered"}',
+      'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":10003,"reason":"tutorial-session-recovered"}',
     ),
   ).toBeGreaterThan(tutorialRecoveryReadyIndex);
 
   endpoint.sendGmcp(
     "Darkwind.Tutorial.State",
-    tutorialState(8, {
+    tutorialState(10_004, {
       step: {
         id: "restart",
         index: 2,
@@ -540,14 +550,14 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   await expectFrame(
     endpoint,
     tutorialStart,
-    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":8,"reason":"action-timeout"}',
+    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":10004,"reason":"action-timeout"}',
     7_000,
   );
   await expect(tutorial.getByRole("button", { name: "Restart tutorial" })).toBeEnabled();
 
   endpoint.sendGmcp(
     "Darkwind.Tutorial.State",
-    tutorialState(9, { status: "finished", actions: ["restart"] }),
+    tutorialState(10_005, { status: "finished", actions: ["restart"] }),
   );
   await expect(tutorial).toHaveCount(0);
   expect(
@@ -558,10 +568,10 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   for (const expected of [
     'Darkwind.Tutorial.Action {"action":"directions","epoch":"tutorial-a","seq":4,"step_id":"look"}',
     'Darkwind.Tutorial.Action {"action":"hint","epoch":"tutorial-a","seq":5,"step_id":"look"}',
-    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":6,"step_id":"look"}',
-    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":7,"reason":"tutorial-session-recovered"}',
-    'Darkwind.Tutorial.Action {"action":"restart","epoch":"tutorial-a","seq":8,"step_id":"restart"}',
-    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":8,"reason":"action-timeout"}',
+    'Darkwind.Tutorial.Action {"action":"skip","epoch":"tutorial-a","seq":10001,"step_id":"look"}',
+    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":10003,"reason":"tutorial-session-recovered"}',
+    'Darkwind.Tutorial.Action {"action":"restart","epoch":"tutorial-a","seq":10004,"step_id":"restart"}',
+    'Darkwind.Tutorial.Resync {"epoch":"tutorial-a","seq":10004,"reason":"action-timeout"}',
   ]) {
     expect(
       endpoint.gmcpMessages.slice(tutorialStart).filter((frame) => frame === expected),

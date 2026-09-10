@@ -226,14 +226,15 @@ test("tutorial actions are authorized, exact, timeout-resynced, and stale ordere
   harness.sent.length = 0;
   harness.gmcp.dispatch("Darkwind.Tutorial.State", statePayload({
     epoch: "tutorial-2",
-    seq: 1,
+    seq: 10_001,
     awaiting_continue: 1,
     actions: ["continue", "hint"],
   }));
   assert.equal(framesFor(harness.sent, "Darkwind.Tutorial.Action").length, 1);
+  assert.equal(payload(harness.sent.at(-1), "Darkwind.Tutorial.Action").seq, 10_001);
   harness.gmcp.dispatch("Darkwind.Tutorial.State", statePayload({
     epoch: "tutorial-2",
-    seq: 1,
+    seq: 10_001,
     awaiting_continue: 1,
     actions: ["continue", "hint"],
   }));

@@ -249,7 +249,7 @@ export function normalizeDarkwindTutorialState(input: unknown): DarkwindTutorial
   const value = extractDarkwindTutorialStateFields(input);
   if (!value) return null;
   const epoch = text(value.epoch, 128);
-  const seq = integer(value.seq);
+  const seq = sequence(value.seq);
   const version = integer(value.tutorial_version);
   const status = text(value.status, 32)?.toLowerCase();
   const awaitingContinue = protocolBoolean(value.awaiting_continue);

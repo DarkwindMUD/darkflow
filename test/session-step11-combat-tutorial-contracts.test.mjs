@@ -239,6 +239,13 @@ test("Step 11 Combat and Tutorial contracts bound and clean every direction", as
     assert.deepEqual(state.actions, ["continue", "directions", "hint", "restart", "skip"]);
     assert.equal(state.step.target, "command-input");
 
+    const staleState = contracts.normalizeDarkwindTutorialState(
+      tutorialState({ seq: 10_001, route: 0, reason: "stale", hint_visible: undefined }),
+    );
+    assert.equal(staleState.seq, 10_001);
+    assert.equal(staleState.route, null);
+    assert.equal(staleState.hint_visible, false);
+
     const unknownTarget = contracts.normalizeDarkwindTutorialState(
       tutorialState({ step: { ...tutorialState().step, target: "body > input" } }),
     );

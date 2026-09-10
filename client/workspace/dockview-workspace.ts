@@ -774,11 +774,9 @@ export function createWorkspace(
     requestAnimationFrame(() => {
       if (disposed) return;
       for (const floating of layout.floatingGroups ?? []) {
-        if (!floating.data) continue;
-        const panel = api.panels.find(
-          (candidate) => candidate.group.id === floating.data!.id,
-        ) as unknown as DockviewPanelLike | undefined;
-        const frame = panel?.group.element.closest<HTMLElement>(".dv-resize-container");
+        const groupId = floating.data?.id ?? firstSerializedGroupId(floating.grid?.root);
+        const group = api.groups.find((candidate) => candidate.id === groupId);
+        const frame = group?.element.closest<HTMLElement>(".dv-resize-container");
         if (!frame) continue;
         const position = floating.position;
         frame.style.width = `${position.width}px`;
@@ -1085,4 +1083,18 @@ export function createWorkspace(
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
+}
+
+function firstSerializedGroupId(node: unknown): string | undefined {
+  if (!isObject(node)) return undefined;
+  if (node.type === "leaf" && isObject(node.data) && typeof node.data.id === "string") {
+    return node.data.id;
+  }
+  if (node.type === "branch" && Array.isArray(node.data)) {
+    for (const child of node.data) {
+      const id = firstSerializedGroupId(child);
+      if (id) return id;
+    }
+  }
+  return undefined;
 }

@@ -464,6 +464,9 @@ test("terminal renders after restoring below another panel in a floating window"
   const phase2Dockview = JSON.parse(JSON.stringify(dockview), (_key, value) =>
     value === "lifecycle" ? "roomImage" : value,
   );
+  const floatingPosition = phase2Dockview.floatingGroups[0].position as
+    | { left: number; top: number; width: number; height: number }
+    | { right: number; top: number; width: number; height: number };
 
   await openWorkspace(page);
   await toggleAvatar(page);
@@ -487,6 +490,20 @@ test("terminal renders after restoring below another panel in a floating window"
   const groupedWindow = page.locator(".dv-resize-container").filter({
     has: panelDragHandle(page, "roomImage"),
   });
+  await expect
+    .poll(async () => {
+      const [frame, workspaceHost] = await Promise.all([
+        groupedWindow.boundingBox(),
+        page.getByTestId("workspace-host").boundingBox(),
+      ]);
+      if (!frame || !workspaceHost) return Number.POSITIVE_INFINITY;
+      const expectedX =
+        "left" in floatingPosition
+          ? workspaceHost.x + floatingPosition.left
+          : workspaceHost.x + workspaceHost.width - floatingPosition.right - floatingPosition.width;
+      return Math.abs(frame.x - expectedX);
+    })
+    .toBeLessThanOrEqual(2);
   await expect(page.locator("[data-terminal-identity]")).toBeVisible();
   const commandInput = page.getByLabel("Command input", { exact: true });
   await expect(commandInput).toBeVisible();

@@ -431,6 +431,7 @@ export function applySettingsImport(
     functions: materialize(effective.functions),
     keyMappings: materialize(effective.keyMappings),
     timers: materialize(effective.timers),
+    commandButtons: materialize(effective.commandButtons),
   };
   const automationVariables = structuredClone(importedCharacter.automationVariables ?? {});
   const applicationState: ApplicationStateV1 = {

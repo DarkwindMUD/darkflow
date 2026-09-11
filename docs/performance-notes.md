@@ -108,6 +108,37 @@ square PNGs of about 2.7 MB, and the first composition of a new painting
 was the one long task (about 76 ms) in the run. Decoding is already
 off-thread; the remaining option is to downscale off-thread as well with
 `createImageBitmap` and its resize options before the first draw.
+## The Auto-Angler and Connection Health
+
+Running the Auto-Angler lit up all three Connection Health axes at once.
+Profiled against a stand-in MUD that plays the whole fishing protocol,
+two things were wrong, neither of them in the angler itself:
+
+- **The workspace resubscribed every panel on every fishing event.** The
+  host re-added the Fishing panel on each interactions snapshot even when
+  it already existed. Dockview reported a layout change each time, the
+  host re-synced its visible panels, and both the information and world
+  runtimes sent a full `Darkwind.Client.Subscriptions` frame regardless of
+  whether the set had changed: 34 such frames a minute, two per bite,
+  hook, and catch, each asking the server to re-evaluate every panel. The
+  host now adds the panel only when it is missing, and both runtimes skip
+  the send when the panel set matches the last one sent on this
+  connection (the memo clears on disconnect). A minute of fishing now
+  carries only the fishing steps and health pings.
+- **The Fishing panel wrote layout properties every frame.** The bite bar,
+  cast meter, catch and tension meters, and the fish and bar markers were
+  positioned with `width`, `height`, and `bottom`, forcing a layout on
+  every frame of a cast, bite, and fight: 12,510 layouts in a minute.
+  They now use `scaleX`, `scaleY`, and `translateY` in container-height
+  units (`cqh`) on a size-contained track; the same minute lays out 113
+  times. The fight snapshot is raw state and the `aria-valuenow` values
+  are rounded so attribute writes happen when a whole number changes.
+
+The angler's own loop is a handful of messages per cycle, spaced by
+human-shaped delays, and its steering costs a fraction of a millisecond
+per frame. What remains while it runs is the panel's CSS animation paint
+(the water strip animates `background-position`; two pulses animate
+`border-color` and `box-shadow`), which is bounded to those elements.
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

@@ -70,7 +70,8 @@
   let phase = $state<Phase>("idle");
   let castPower = $state(0);
   let bitePercent = $state(100);
-  let fightState = $state<FightState | null>(null);
+  // Replaced wholesale every frame of a fight; raw state skips the deep proxy.
+  let fightState = $state.raw<FightState | null>(null);
   let held = $state(false);
   let castControl = $state<HTMLButtonElement>();
   let gameControl = $state<HTMLButtonElement>();
@@ -474,7 +475,7 @@
         class="fishing-bitebar"
         role="progressbar"
         aria-label="Time to hook"
-        aria-valuenow={bitePercent}
+        aria-valuenow={Math.round(bitePercent)}
         aria-valuemin="0"
         aria-valuemax="100"
       >
@@ -520,7 +521,7 @@
             class="fishing-meter fishing-progress"
             role="progressbar"
             aria-label="Catch progress"
-            aria-valuenow={fightState.progress}
+            aria-valuenow={Math.round(fightState.progress)}
             aria-valuemin="0"
             aria-valuemax="100"
           >
@@ -534,7 +535,7 @@
             class="fishing-meter fishing-tension"
             role="progressbar"
             aria-label="Line tension"
-            aria-valuenow={fightState.tension}
+            aria-valuenow={Math.round(fightState.tension)}
             aria-valuemin="0"
             aria-valuemax="100"
           >
@@ -602,7 +603,7 @@
           class="fishing-power"
           role="meter"
           aria-label="Cast power"
-          aria-valuenow={castPower}
+          aria-valuenow={Math.round(castPower)}
           aria-valuemin="0"
           aria-valuemax="100"
         >

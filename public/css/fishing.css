@@ -201,6 +201,10 @@
 .fishing-bitebar-fill {
   height: 100%;
   width: 100%;
+  /* Per-frame values animate with transforms: a width, height, or bottom
+     write forces a layout on every frame of the bite, cast, and fight. */
+  transform: scaleX(1);
+  transform-origin: left center;
   background: var(--df-warn, #ffb300);
   transform: scaleX(1);
   transform-origin: left center;
@@ -389,6 +393,7 @@
   bottom: 0;
   left: 0;
   right: 0;
+  bottom: 0;
   display: flex;
   align-items: flex-start;
   justify-content: center;

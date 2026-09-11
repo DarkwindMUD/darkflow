@@ -1898,9 +1898,13 @@ html[data-background-active="true"] #output-shell {
   display: flex;
 }
 
-/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip. */
+/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip.
+   Its box matches the 18px label so the label sits centred in it; the legacy
+   #avatar-meter keeps its own 16px basis through the id rule above. */
 .avatar-meter {
   display: flex;
+  flex-basis: 18px;
+  min-height: 18px;
 }
 
 .avatar-meter-fill {

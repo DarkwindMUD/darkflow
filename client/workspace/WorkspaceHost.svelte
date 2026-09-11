@@ -1347,7 +1347,16 @@
      * Apply a persisted snapshot. A version 1 payload predates the rails, so its
      * rail membership is whatever `fillRailsWithDefaults` rebuilds.
      */
-    const persistedPanels = [terminal, ...informationPanels, ...worldPanels, chatPanel, dpsPanel, combatPanel, commandBoardPanel, ...vitalBarPanels];
+    const persistedPanels = [
+      terminal,
+      ...informationPanels,
+      ...worldPanels,
+      chatPanel,
+      dpsPanel,
+      combatPanel,
+      commandBoardPanel,
+      ...vitalBarPanels,
+    ];
     const restoreSnapshot = (next: PersistedWorkspaceSnapshot): boolean => {
       if (next.version === 1) {
         if (!currentWorkspace.restore(next, persistedPanels)) return false;

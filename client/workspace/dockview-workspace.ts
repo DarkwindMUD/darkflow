@@ -297,6 +297,9 @@ export function createWorkspace(
     const frame = (event.currentTarget as HTMLElement).parentElement;
     const container = frame?.offsetParent;
     if (!frame || !container) return;
+    // Arm rail drops before Dockview's first sub-threshold move cancels its group drag.
+    const panels = api.panels.filter((panel) => frame.contains(panel.group.element));
+    if (panels.length === 1) publishPanelDrag(panels[0]!.id, event);
     const frameBounds = frame.getBoundingClientRect();
     const containerBounds = container.getBoundingClientRect();
     dragSnapTargets = [

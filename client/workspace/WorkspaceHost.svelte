@@ -226,7 +226,12 @@
   type DefaultRailPanelId = InformationPanelId | "room";
   type RailPanelId = DefaultRailPanelId | "map" | "roomImage" | "roomPlaylist";
   type RailSide = "left" | "right";
-  const optionalRailPanelIds: readonly RailPanelId[] = ["map", "roomImage", "roomPlaylist"];
+  const optionalRailPanelIds: readonly RailPanelId[] = [
+    "map",
+    "roomImage",
+    "roomPlaylist",
+    "connection-health",
+  ];
   const rightRailOrder: readonly DefaultRailPanelId[] = [
     "room",
     "group",

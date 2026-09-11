@@ -721,6 +721,43 @@ test("eligible docked tabs move directly into either rail", async ({ page }, tes
   );
 });
 
+test("a slow floating titlebar drag moves Connection Health into a rail", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop rails only");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Connection health", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Float Connection health", exact: true }).click();
+
+  const titlebar = page.locator('.dv-floating-titlebar[data-panel-id="connection-health"]');
+  const source = await titlebar.boundingBox();
+  const rail = await page.locator('[data-rail="right"]').boundingBox();
+  expect(source).not.toBeNull();
+  expect(rail).not.toBeNull();
+  const x = source!.x + source!.width / 2;
+  const y = source!.y + source!.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 1, y);
+  await page.waitForTimeout(100);
+  await page.mouse.move(rail!.x + rail!.width / 2, rail!.y + 40, { steps: 12 });
+  await page.mouse.up();
+
+  await expect(
+    page.locator('[data-rail="right"] > [data-panel-id="connection-health"]'),
+  ).toBeVisible();
+  await expect(titlebar).toHaveCount(0);
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+
+  await page.reload();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace restored");
+  await expect(
+    page.locator('[data-rail="right"] > [data-panel-id="connection-health"]'),
+  ).toBeVisible();
+});
+
 test("a panel floated from a rail can stay docked in the center", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "desktop center docking only");
   await openWorkspace(page);

@@ -16,6 +16,10 @@
   import type { ConfigSetId } from "../model/ids.ts";
   import type { Session } from "../runtime/session.ts";
   import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
+  // @ts-expect-error The preview adapter is intentionally shared plain JavaScript.
+  import { previewAliasInput } from "../../public/js/alias-preview-core.mjs";
+  // @ts-expect-error Shared legacy parser provides the persisted script diagnostics.
+  import { getAutomationScriptDiagnostics } from "../../public/js/automation-script-core.mjs";
 
   type Definition =
     | AliasDefinition
@@ -68,6 +72,22 @@
     metadata: ConfigSourceMetadata;
   } | null>(null);
   let search = $state("");
+  let selectedGroups = $state<string[] | null>(null);
+  let previousGroupKeys: string[] = [];
+  let original = $state<string | null>(null);
+  let previewInput = $state("");
+  let previewCollapsed = $state(
+    (() => {
+      try {
+        return (
+          JSON.parse(localStorage.getItem("darkwind-settings-automation-ui") ?? "{}")
+            .aliasPreviewCollapsed === true
+        );
+      } catch {
+        return false;
+      }
+    })(),
+  );
 
   const title = $derived(
     kind === "keyMappings" ? "Key mappings" : `${kind.charAt(0).toUpperCase()}${kind.slice(1)}`,
@@ -86,12 +106,45 @@
               : "highlight",
   );
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
+  const groups = $derived.by(() => {
+    const seen: Array<{ key: string; label: string; count: number }> = [];
+    if (kind !== "aliases") return [];
+    for (const { definition } of entries) {
+      const label = "group" in definition ? definition.group.trim() : "";
+      const key = label.toLowerCase();
+      const group = seen.find((item) => item.key === key);
+      if (group) group.count++;
+      else seen.push({ key, label: label || "Ungrouped", count: 1 });
+    }
+    return seen.sort((left, right) => left.label.localeCompare(right.label));
+  });
   const visibleEntries = $derived(
-    entries.filter(({ definition }) =>
-      labelFor(definition).toLowerCase().includes(search.trim().toLowerCase()),
-    ),
+    entries.filter(({ definition }) => {
+      const needle = search.trim().toLowerCase();
+      const group = "group" in definition ? definition.group.trim().toLowerCase() : "";
+      const matchesSearch =
+        !needle ||
+        `${labelFor(definition)} ${"description" in definition ? definition.description : ""} ${group}`
+          .toLowerCase()
+          .includes(needle);
+      return (
+        matchesSearch &&
+        (kind !== "aliases" || selectedGroups === null || selectedGroups.includes(group))
+      );
+    }),
   );
   const selectedEntry = $derived(entries.find(({ definition }) => definition.id === draft?.id));
+  const dirty = $derived(
+    draft !== null && original !== null && JSON.stringify(toDefinition(draft)) !== original,
+  );
+  const targetCatalogs = $derived({
+    aliases: entriesFor("aliases", "trigger"),
+    triggers: entriesFor("triggers", "pattern"),
+    timers: entriesFor("timers", "name"),
+    functions: entriesFor("functions", "name"),
+  });
+  const aliasWarnings = $derived(kind !== "aliases" || !draft ? [] : warningsForAlias(draft));
+  const preview = $derived(kind !== "aliases" || !draft ? null : previewFor(draft));
 
   $effect(() =>
     session.configuration.subscribe((next) => {
@@ -103,6 +156,19 @@
     }),
   );
   $effect(() => {
+    if (kind === "aliases") {
+      const keys = groups.map((group) => group.key);
+      const currentGroups = untrack(() => selectedGroups);
+      if (currentGroups === null) selectedGroups = keys;
+      else {
+        const wasAll = currentGroups.length === previousGroupKeys.length;
+        selectedGroups = [
+          ...currentGroups.filter((group) => keys.includes(group)),
+          ...(wasAll ? keys.filter((group) => !currentGroups.includes(group)) : []),
+        ];
+      }
+      previousGroupKeys = keys;
+    }
     if (kind === "keyMappings" || draft || !visibleEntries.length) return;
     const first = visibleEntries[0]!;
     untrack(() => edit(first.definition, first.source));
@@ -119,7 +185,7 @@
       patternSource: "",
       description: "",
       group: "",
-      ignoreCase: false,
+      ignoreCase: kind === "aliases",
       fg: "yellow",
       bg: "black",
       bold: false,
@@ -132,7 +198,7 @@
       durationMs: 1000,
       recurring: false,
       autoStart: false,
-      steps: [],
+      steps: kind === "aliases" ? [{ type: "send_command", template: "" }] : [],
     };
   }
 
@@ -306,6 +372,7 @@
   }
 
   function canMove(offset: number): boolean {
+    if (dirty) return false;
     if (!selectedEntry) return false;
     const editSource = sourceFor(selectedEntry.source);
     if (!editSource) return false;
@@ -315,6 +382,10 @@
   }
 
   function moveSelected(offset: number): void {
+    if (dirty) {
+      status = "Save or Cancel the current edit before reordering definitions.";
+      return;
+    }
     if (!selectedEntry) return;
     const editSource = sourceFor(selectedEntry.source);
     if (!editSource) return;
@@ -329,6 +400,10 @@
   }
 
   function duplicateSelected(): void {
+    if (dirty) {
+      status = "Save or Cancel the current edit before duplicating definitions.";
+      return;
+    }
     if (!selectedEntry) return;
     const editSource = sourceFor(selectedEntry.source);
     if (!editSource) return;
@@ -384,6 +459,7 @@
           }
         : { kind: "local" };
     stale = false;
+    original = JSON.stringify(toDefinition(draft));
     status = "";
     queueMicrotask(() =>
       editor?.querySelector<HTMLInputElement>("input:not([type=checkbox])")?.focus(),
@@ -391,9 +467,14 @@
   }
 
   function add(): void {
+    if (dirty) {
+      status = "Save or Cancel the current edit before creating another definition.";
+      return;
+    }
     draft = blankDraft();
     source = { kind: "local" };
     stale = false;
+    original = JSON.stringify(toDefinition(draft));
     status = "";
     queueMicrotask(() => {
       if (kind === "keyMappings") keyCapture?.focus();
@@ -405,6 +486,7 @@
     draft = null;
     source = null;
     stale = false;
+    original = null;
   }
 
   function targetDefinitions(editSource: EditSource): Definition[] {
@@ -457,11 +539,16 @@
       return;
     }
     status = `${title} saved.`;
+    original = JSON.stringify(definition);
     if (kind === "keyMappings") cancel();
     else selectDefinition(definition.id);
   }
 
   function requestRemove(definition: Definition, metadata: ConfigSourceMetadata): void {
+    if (dirty) {
+      status = "Save or Cancel the current edit before deleting definitions.";
+      return;
+    }
     pendingDelete = { definition, metadata };
     queueMicrotask(() => deleteCancel?.focus());
   }
@@ -504,6 +591,123 @@
     );
     if (entry) edit(entry.definition, entry.source);
     else cancel();
+  }
+
+  function entriesFor(targetKind: ConfigKind, field: "trigger" | "pattern" | "name") {
+    return snapshot.effectiveConfiguration[targetKind].map(({ definition }) => ({
+      id: definition.id,
+      label: String((definition as unknown as Record<string, unknown>)[field] || definition.id),
+    }));
+  }
+
+  function previewFor(value: Draft) {
+    const aliases = snapshot.effectiveConfiguration.aliases.map(({ definition }) =>
+      definition.id === value.id ? toDefinition(value) : structuredClone(definition),
+    );
+    return previewAliasInput({
+      aliases: aliases.some((definition) => definition.id === value.id)
+        ? aliases
+        : [...aliases, toDefinition(value)],
+      triggers: snapshot.effectiveConfiguration.triggers.map(({ definition }) =>
+        structuredClone(definition),
+      ),
+      timers: snapshot.effectiveConfiguration.timers.map(({ definition }) =>
+        structuredClone(definition),
+      ),
+      functions: snapshot.effectiveConfiguration.functions.map(({ definition }) =>
+        structuredClone(definition),
+      ),
+      variables: session.terminal.automation.getAutomationVariables(),
+      sample: previewInput,
+    });
+  }
+
+  function warningsForAlias(value: Draft): string[] {
+    const warnings: string[] = [];
+    if (!value.description.trim())
+      warnings.push("Name is recommended so this alias is easy to find.");
+    if (value.isRegex)
+      try {
+        new RegExp(value.trigger, value.ignoreCase ? "i" : "");
+      } catch (error) {
+        warnings.push(error instanceof Error ? error.message : "Invalid regular expression.");
+      }
+    for (const [index, step] of value.steps.entries()) {
+      if ((step.type === "send_command" || step.type === "show_message") && !step.template.trim())
+        warnings.push(`Step ${index + 1} needs content.`);
+      if (step.type === "set_variable" && (!step.name.trim() || !step.template.trim()))
+        warnings.push(`Step ${index + 1} needs a variable name and content.`);
+      if (
+        step.type === "wait" &&
+        (!Number.isFinite(step.seconds) || step.seconds < 0 || step.seconds > 86400)
+      )
+        warnings.push(`Step ${index + 1} needs a wait from 0 to 86400 seconds.`);
+      if (step.type === "run_alias" && !step.template.trim())
+        warnings.push(`Step ${index + 1} needs an alias command.`);
+      if (
+        step.type === "play_sound" &&
+        (!step.category.trim() ||
+          !step.sound.trim() ||
+          !Number.isFinite(step.volume) ||
+          step.volume < 0 ||
+          step.volume > 1)
+      )
+        warnings.push(`Step ${index + 1} needs a sound and volume from 0 to 1.`);
+      if (
+        (step.type === "set_alias_enabled" ||
+          step.type === "set_trigger_enabled" ||
+          step.type === "set_timer_enabled" ||
+          step.type === "control_timer" ||
+          step.type === "call_function") &&
+        !step.targetId &&
+        !step.target.trim()
+      )
+        warnings.push(`Step ${index + 1} needs a target.`);
+      if (step.type === "script")
+        warnings.push(
+          ...getAutomationScriptDiagnostics(step.script).map(
+            (message: string) => `Step ${index + 1}: ${message}`,
+          ),
+        );
+    }
+    return warnings;
+  }
+
+  function requestEdit(definition: Definition, metadata: ConfigSourceMetadata): void {
+    if (dirty) {
+      status = "Save or Cancel the current edit before selecting another definition.";
+      return;
+    }
+    edit(definition, metadata);
+  }
+
+  function moveListFocus(event: KeyboardEvent, index: number): void {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    event.preventDefault();
+    const target = visibleEntries[index + (event.key === "ArrowUp" ? -1 : 1)];
+    if (!target) return;
+    requestEdit(target.definition, target.source);
+    queueMicrotask(() =>
+      editor
+        ?.closest("fieldset")
+        ?.querySelector<HTMLButtonElement>(`[aria-label="Edit ${labelFor(target.definition)}"]`)
+        ?.focus(),
+    );
+  }
+
+  function togglePreview(): void {
+    previewCollapsed = !previewCollapsed;
+    const current = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("darkwind-settings-automation-ui") ?? "{}");
+      } catch {
+        return {};
+      }
+    })();
+    localStorage.setItem(
+      "darkwind-settings-automation-ui",
+      JSON.stringify({ ...current, aliasPreviewCollapsed: previewCollapsed }),
+    );
   }
 </script>
 
@@ -587,10 +791,38 @@
       />
       <button type="button" onclick={add}>New {noun}</button>
     </div>
+    {#if kind === "aliases" && groups.length}
+      <div class="group-filters" aria-label="Alias groups">
+        {#if groups.length >= 3}
+          <div class="group-filter-actions">
+            <button
+              type="button"
+              onclick={() => (selectedGroups = groups.map((group) => group.key))}>Select all</button
+            >
+            <button type="button" onclick={() => (selectedGroups = [])}>Unselect all</button>
+          </div>
+        {/if}
+        <div class="group-chips">
+          {#each groups as group (group)}
+            <label class="group-chip" class:selected={selectedGroups?.includes(group.key) ?? false}
+              ><input
+                type="checkbox"
+                checked={selectedGroups?.includes(group.key) ?? false}
+                onchange={(event) =>
+                  (selectedGroups = event.currentTarget.checked
+                    ? [...(selectedGroups ?? []), group.key]
+                    : (selectedGroups ?? []).filter((value) => value !== group.key))}
+              />
+              {group.label} ({group.count})</label
+            >
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="automation-layout">
       <div class="automation-list-pane">
         <div class="automation-list" aria-label={title}>
-          {#each visibleEntries as entry (entry.definition.id)}
+          {#each visibleEntries as entry, index (entry.definition.id)}
             <div
               class:active={selectedEntry?.definition.id === entry.definition.id}
               class="list-row"
@@ -599,9 +831,25 @@
                 class="list-select"
                 type="button"
                 aria-label={`Edit ${labelFor(entry.definition)}`}
-                onclick={() => edit(entry.definition, entry.source)}
+                onclick={() => requestEdit(entry.definition, entry.source)}
+                onkeydown={(event) => moveListFocus(event, index)}
               >
-                <strong>{labelFor(entry.definition)}</strong>
+                <strong
+                  >{kind === "aliases" && "description" in entry.definition
+                    ? entry.definition.description.trim() || labelFor(entry.definition)
+                    : labelFor(entry.definition)}</strong
+                >
+                {#if kind === "aliases"}
+                  <small
+                    >{"trigger" in entry.definition ? entry.definition.trigger : ""}
+                    {"isRegex" in entry.definition && entry.definition.isRegex
+                      ? "(regex)"
+                      : ""}</small
+                  >
+                  {#if "group" in entry.definition && entry.definition.group}<small
+                      >{entry.definition.group}</small
+                    >{/if}
+                {/if}
                 <span>{sourceLabel(entry.source)}</span>
               </button>
               <input
@@ -682,15 +930,50 @@
                   ><input type="checkbox" bind:checked={draft.autoStart} /> Start automatically</label
                 >
               {/if}
-              <label>Description <input bind:value={draft.description} /></label>
+              <label
+                >{kind === "aliases" ? "Name" : "Description"}
+                <input bind:value={draft.description} /></label
+              >
               <label>Group <input bind:value={draft.group} /></label>
               {#if kind !== "timers"}
                 <label
                   ><input type="checkbox" bind:checked={draft.isRegex} /> Regular expression</label
                 >
-                <label><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label>
+                {#if kind !== "aliases" || draft.isRegex}<label
+                    ><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label
+                  >{/if}
               {/if}
-              <AutomationStepsEditor bind:steps={draft.steps} />
+              {#if kind === "aliases" && aliasWarnings.length}
+                <ul class="warnings" aria-live="polite">
+                  {#each aliasWarnings as warning (warning)}<li>{warning}</li>{/each}
+                </ul>
+              {/if}
+              <AutomationStepsEditor bind:steps={draft.steps} {...targetCatalogs} />
+              {#if kind === "aliases"}
+                <section class="alias-preview">
+                  <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
+                    >Test input</button
+                  >
+                  {#if !previewCollapsed}
+                    <label
+                      >Test input <input
+                        bind:value={previewInput}
+                        placeholder="Example: gi sword"
+                      /></label
+                    >
+                    {#if previewInput.trim()}
+                      {#if preview?.match}<p>Matches: {preview.match.trigger}</p>{/if}
+                      {#each preview?.rows ?? [] as row, index (`${row.label}-${index}`)}<p>
+                          {row.label}: {row.text}{#if row.warnings.length}
+                            - {row.warnings.join(" ")}{/if}
+                        </p>{/each}
+                      {#each preview?.warnings ?? [] as warning (warning)}<p class="error">
+                          {warning}
+                        </p>{/each}
+                    {/if}
+                  {/if}
+                </section>
+              {/if}
             {/if}
             {#if stale}
               <p class="error">This shared definition changed while you were editing it.</p>
@@ -781,6 +1064,81 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
+  }
+
+  .warnings,
+  .alias-preview {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .warnings {
+    display: block;
+    color: var(--df-warning, #d29922);
+  }
+
+  .alias-preview {
+    display: grid;
+  }
+
+  .group-filters,
+  .group-filter-actions,
+  .group-chips {
+    display: flex;
+    gap: 0.5rem;
+    align-items: flex-start;
+  }
+
+  .group-filters,
+  .group-chips {
+    min-width: 0;
+  }
+
+  .group-filter-actions {
+    flex: none;
+  }
+
+  .group-chips {
+    flex: 1;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+  }
+
+  .group-filters label.group-chip {
+    position: relative;
+    display: inline-flex;
+    min-height: 1.5rem;
+    padding: 0.05rem 0.5rem;
+    border: 1px solid var(--df-btn-bg, #238636);
+    border-radius: 999px;
+    background: transparent;
+    font-size: 0.75rem;
+    line-height: 1.2;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .group-filters label.group-chip.selected {
+    background: var(--df-btn-bg, #238636);
+    color: var(--df-btn-fg, white);
+  }
+
+  .group-filters .group-chip input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    margin: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .group-filters label.group-chip:focus-within {
+    outline: 2px solid var(--df-btn-bg, #238636);
+    outline-offset: 2px;
   }
 
   .automation-toolbar input {

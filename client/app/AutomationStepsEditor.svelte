@@ -1,7 +1,21 @@
 <script lang="ts">
   import type { AutomationStep } from "../model/configuration.ts";
 
-  let { steps = $bindable() }: { steps: AutomationStep[] } = $props();
+  type Target = { id: string; label: string };
+  let {
+    steps = $bindable(),
+    aliases = [],
+    triggers = [],
+    timers = [],
+    functions = [],
+  }: {
+    steps: AutomationStep[];
+    aliases?: Target[];
+    triggers?: Target[];
+    timers?: Target[];
+    functions?: Target[];
+  } = $props();
+  let addType = $state<AutomationStep["type"]>("send_command");
 
   const stepTypes: Array<{ value: AutomationStep["type"]; label: string }> = [
     { value: "send_command", label: "Send command" },
@@ -44,6 +58,35 @@
   function replace(index: number, step: AutomationStep): void {
     steps = steps.map((current, currentIndex) => (currentIndex === index ? step : current));
   }
+
+  function move(index: number, offset: number): void {
+    const target = index + offset;
+    if (target < 0 || target >= steps.length) return;
+    const next = [...steps];
+    [next[index], next[target]] = [next[target]!, next[index]!];
+    steps = next;
+  }
+
+  function remove(index: number): void {
+    const next = steps.filter((_, item) => item !== index);
+    steps = next.length ? next : [blankStep("send_command")];
+  }
+
+  function targetOptions(step: AutomationStep): Target[] {
+    if (step.type === "set_alias_enabled" || step.type === "run_alias") return aliases;
+    if (step.type === "set_trigger_enabled") return triggers;
+    if (step.type === "set_timer_enabled" || step.type === "control_timer") return timers;
+    return functions;
+  }
+
+  function updateTarget(
+    step: Extract<AutomationStep, { target: string; targetId: string }>,
+    id: string,
+  ): void {
+    const target = targetOptions(step).find((item) => item.id === id);
+    step.targetId = id;
+    step.target = target?.label ?? "";
+  }
 </script>
 
 <fieldset>
@@ -64,10 +107,10 @@
       </label>
 
       {#if step.type === "send_command" || step.type === "show_message" || step.type === "run_alias"}
-        <label>Template <input bind:value={step.template} required /></label>
+        <label>Template <textarea bind:value={step.template} required></textarea></label>
       {:else if step.type === "set_variable"}
         <label>Variable name <input bind:value={step.name} required /></label>
-        <label>Template <input bind:value={step.template} /></label>
+        <label>Template <textarea bind:value={step.template}></textarea></label>
       {:else if step.type === "script"}
         <label>Script <textarea bind:value={step.script} required></textarea></label>
       {:else if step.type === "wait"}
@@ -75,7 +118,8 @@
           >Seconds <input
             type="number"
             min="0"
-            step="any"
+            max="86400"
+            step="0.1"
             bind:value={step.seconds}
             required
           /></label
@@ -89,8 +133,19 @@
             <option value="toggle">Toggle</option>
           </select>
         </label>
-        <label>Target <input bind:value={step.target} required /></label>
-        <label>Target ID <input bind:value={step.targetId} /></label>
+        <label
+          >Target <select
+            value={step.targetId}
+            onchange={(event) => updateTarget(step, event.currentTarget.value)}
+          >
+            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+              <option value="">Unresolved: {step.target || step.targetId}</option>
+            {:else}<option value="">Select target</option>{/if}
+            {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                >{target.label}</option
+              >{/each}
+          </select></label
+        >
       {:else if step.type === "control_timer"}
         <label>
           Mode
@@ -101,8 +156,19 @@
             <option value="run">Run now</option>
           </select>
         </label>
-        <label>Target <input bind:value={step.target} required /></label>
-        <label>Target ID <input bind:value={step.targetId} /></label>
+        <label
+          >Target <select
+            value={step.targetId}
+            onchange={(event) => updateTarget(step, event.currentTarget.value)}
+          >
+            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+              <option value="">Unresolved: {step.target || step.targetId}</option>
+            {:else}<option value="">Select target</option>{/if}
+            {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                >{target.label}</option
+              >{/each}
+          </select></label
+        >
       {:else if step.type === "play_sound"}
         <label>Category <input bind:value={step.category} required /></label>
         <label>Sound <input bind:value={step.sound} required /></label>
@@ -117,19 +183,49 @@
           /></label
         >
       {:else if step.type === "call_function"}
-        <label>Target <input bind:value={step.target} required /></label>
-        <label>Target ID <input bind:value={step.targetId} /></label>
-        <label>Template <input bind:value={step.template} /></label>
+        <label
+          >Target <select
+            value={step.targetId}
+            onchange={(event) => updateTarget(step, event.currentTarget.value)}
+          >
+            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+              <option value="">Unresolved: {step.target || step.targetId}</option>
+            {:else}<option value="">Select target</option>{/if}
+            {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                >{target.label}</option
+              >{/each}
+          </select></label
+        >
+        <label>Template <textarea bind:value={step.template}></textarea></label>
       {/if}
 
-      <button type="button" onclick={() => (steps = steps.filter((_, item) => item !== index))}
-        >Remove step</button
-      >
+      <div class="step-actions">
+        <button type="button" disabled={index === 0} onclick={() => move(index, -1)}
+          >Move step up</button
+        >
+        <button type="button" disabled={index === steps.length - 1} onclick={() => move(index, 1)}
+          >Move step down</button
+        >
+        <button type="button" onclick={() => remove(index)}>Remove step</button>
+      </div>
     </section>
   {/each}
-  <button type="button" onclick={() => (steps = [...steps, blankStep("send_command")])}
+  <label
+    >Add step type <select bind:value={addType}
+      >{#each stepTypes as option (option.value)}<option value={option.value}>{option.label}</option
+        >{/each}</select
+    ></label
+  >
+  <button type="button" onclick={() => (steps = [...steps, blankStep(addType)])}
     >Add automation step</button
   >
+  <details>
+    <summary>Template syntax</summary>
+    <p>
+      Use %0 for the remaining input, %1-%9 for captures, $name for variables, and
+      &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
+    </p>
+  </details>
 </fieldset>
 
 <style>
@@ -139,6 +235,12 @@
     display: grid;
     gap: 0.5rem;
     min-width: 0;
+  }
+
+  .step-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
   }
 
   section {

@@ -1606,6 +1606,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   let editor = aliases.getByRole("region", { name: "Edit aliases" });
   expect(
     await editor
+      .getByRole("region", { name: /^Automation step \d+$/ })
       .getByLabel("Step type")
       .evaluateAll((selects) => selects.map((select) => (select as HTMLSelectElement).value)),
   ).toEqual([
@@ -1629,8 +1630,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "New alias" }).click();
   editor = aliases.getByRole("region", { name: "Edit aliases" });
-  await editor.getByLabel("Trigger").fill("temporary alias");
-  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Trigger", { exact: true }).fill("temporary alias");
   await editor.getByLabel("Template").fill("temporary");
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "Edit temporary alias" }).click();
@@ -1678,9 +1678,13 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await timers.getByRole("button", { name: "Delete temporary timer" }).click();
   await confirmDefinitionDelete(page, "temporary timer");
 
-  const persisted = await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1")!);
-  expect(persisted).not.toContain("timerHandles");
-  expect(persisted).not.toContain("automationVariables");
+  const persistedDefinitions = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (Object.values(graph.characterProfiles)[0] as { localDefinitions: unknown })
+      .localDefinitions;
+  });
+  expect(JSON.stringify(persistedDefinitions)).not.toContain("timerHandles");
+  expect(JSON.stringify(persistedDefinitions)).not.toContain("automationVariables");
 
   await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
@@ -1698,6 +1702,137 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { aliases: Array<Record<string, unknown>> };
+    };
+    const localAliases = character.localDefinitions.aliases;
+    localAliases.find(({ id }) => id === "alias-local")!.group = "travel";
+    localAliases.find(({ id }) => id === "alias-local")!.description = "Quick route";
+    localAliases.find(({ id }) => id === "alias-all-steps")!.group = "Combat";
+    localAliases.find(({ id }) => id === "alias-function")!.group = "Utility";
+    const sharedAliases = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "aliases",
+    ) as { definitions: Array<Record<string, unknown>> };
+    sharedAliases.definitions[0]!.group = "Travel";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  const filters = aliases.getByLabel("Alias groups");
+
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(filters.getByLabel("Combat (1)")).toBeChecked();
+  await expect(filters.getByLabel("Utility (1)")).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "Unselect all" }).click();
+  await expect(aliases.getByText("No aliases match.")).toBeVisible();
+  await filters.getByLabel("Travel (2)").check();
+
+  const search = aliases.getByLabel("Search Aliases");
+  await search.fill("Quick route");
+  const quick = aliases.getByRole("button", { name: "Edit quick" });
+  await expect(quick.locator("strong")).toHaveText("Quick route");
+  await expect(quick.locator("small").first()).toContainText("quick");
+  await search.fill("travel");
+  await expect(quick).toBeVisible();
+  const sharedAlias = aliases.getByRole("button", { name: "Edit sharedalias" });
+  await expect(sharedAlias).toBeVisible();
+  await quick.focus();
+  await quick.press("ArrowUp");
+  await expect(sharedAlias).toBeFocused();
+  await expect(
+    aliases.getByRole("region", { name: "Edit aliases" }).getByLabel("Trigger", { exact: true }),
+  ).toHaveValue("sharedalias");
+  await search.fill("");
+
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  let editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByLabel("Ignore case")).toHaveCount(0);
+  await expect(
+    editor.getByText("Name is recommended so this alias is easy to find."),
+  ).toBeVisible();
+  await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
+  await editor.getByLabel("Regular expression").check();
+  await expect(editor.getByLabel("Ignore case")).toBeChecked();
+  await editor.getByLabel("Trigger", { exact: true }).fill("[");
+  await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
+  await editor.getByLabel("Regular expression").uncheck();
+  await editor.getByLabel("Trigger", { exact: true }).fill("travel draft");
+  await editor.getByLabel("Name", { exact: true }).fill("Draft route");
+  await editor.getByLabel("Template", { exact: true }).fill("score");
+
+  await quick.click();
+  await expect(
+    aliases.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+  await expect(editor.getByLabel("Trigger", { exact: true })).toHaveValue("travel draft");
+
+  await editor.getByLabel("Add step type").selectOption("set_alias_enabled");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const secondStep = editor.getByRole("region", { name: "Automation step 2" });
+  await secondStep.getByLabel("Target").selectOption("alias-local");
+  await expect(secondStep.getByLabel("Target")).toHaveValue("alias-local");
+  await secondStep.getByRole("button", { name: "Move step up" }).click();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("set_alias_enabled");
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByRole("button", { name: "Remove step" })
+    .click();
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByRole("button", { name: "Remove step" })
+    .click();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await editor.getByLabel("Template", { exact: true }).fill("score");
+
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor.getByLabel("Test input", { exact: true }).fill("travel draft");
+  await expect(editor.getByText("Matches: travel draft")).toBeVisible();
+  await expect(editor.getByText("Send: score")).toBeVisible();
+  await editor.getByLabel("Add step type").selectOption("script");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  await editor.getByLabel("Script", { exact: true }).fill("while 1 == 1\n  send ping\nend");
+  await expect(editor.getByText("Send: ping")).toHaveCount(10);
+  await expect(editor.getByText(/Loop preview stopped after 10 iterations/)).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+
+  await editor.getByRole("button", { name: "Test input", exact: true }).click();
+  await expect(editor.getByRole("button", { name: "Test input", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", aliasPreviewCollapsed: true });
+
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByRole("button", { name: "Test input", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
 });
 
 test("Phase 2 publishes shared automation definitions with stale protection", async ({ page }) => {

@@ -120,7 +120,7 @@ export function createTerminalInputController({
     getHistory: () => history,
     getAliases: () =>
       aliases
-        .filter(({ definition }) => definition.enabled)
+        .filter(({ definition }) => definition.enabled && !definition.isRegex)
         .map(({ definition }) => definition.trigger),
     aliasEnabled: () => loadClientSettings(localStorage).settings.aliasTabCompletionEnabled,
     historyEnabled: () => loadClientSettings(localStorage).settings.historyTabCompletionEnabled,

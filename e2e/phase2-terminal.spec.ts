@@ -116,6 +116,16 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
         steps: [{ type: "send_command", template: "look" }],
       },
       {
+        id: "alias-regex",
+        enabled: true,
+        trigger: "loom.*",
+        description: "Regex look",
+        group: "",
+        isRegex: true,
+        ignoreCase: true,
+        steps: [{ type: "send_command", template: "look" }],
+      },
+      {
         id: "alias-function",
         enabled: true,
         trigger: "fn",
@@ -466,6 +476,23 @@ test("Phase 2 terminal input sends once and recalls character history", async ({
   await input.evaluate((element) => element.blur());
   await page.keyboard.press("Escape");
   await expect(input).toHaveValue("");
+});
+
+test("Phase 2 alias completion excludes regex aliases", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await connect(page);
+  const input = page.getByLabel("Command input", { exact: true });
+  const request = 'Darkwind.Completion.Request {"line":"loo","cursor":3}';
+  const requestsBefore = endpoint.gmcpMessages.filter((message) => message === request).length;
+
+  await input.fill("loo");
+  await input.press("Tab");
+
+  await expect(input).toHaveValue("loo");
+  await expect
+    .poll(() => endpoint.gmcpMessages.filter((message) => message === request).length)
+    .toBe(requestsBefore + 1);
 });
 
 test("Phase 2 executes effective definitions and session variables", async ({ page }) => {

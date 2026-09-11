@@ -85,17 +85,24 @@ html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating
 }
 
 .df-workspace .dv-tabs-and-actions-container.dv-full-width-single-tab .dv-tabs-container .dv-tab {
-  padding: 0.25rem 0.5rem;
+  padding: 0.25rem 0.3rem;
 }
 
-/* Small accessible pane controls (collapse, float/dock, close). */
-.df-workspace .dv-default-tab-action {
-  min-width: 1.35rem;
-  border-radius: 4px;
+/* Small accessible pane controls (menu, collapse, float/dock, close). */
+.df-workspace .dv-default-tab .dv-default-tab-action {
+  min-width: 1rem;
+  padding: 3px;
+  border-radius: 0px;
   opacity: 0.7;
 }
 
-.df-workspace .dv-default-tab-action:hover {
+.df-workspace .dv-default-tab-action svg {
+  width: 12px;
+  height: 12px;
+  stroke-width: 3px;
+}
+
+.df-workspace .dv-default-tab .dv-default-tab-action:hover {
   background: var(--df-btn-hover, rgb(255 255 255 / 10%));
   opacity: 1;
 }
@@ -166,6 +173,7 @@ html[data-background-active="true"] .df-workspace :is(.dv-dockview, .dv-floating
 }
 
 .df-rail-card .dv-default-tab-content {
+  font-size: 0.75rem;
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;

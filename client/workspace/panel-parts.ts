@@ -94,7 +94,7 @@ export class PanelCardHeader {
       const slot = document.createElement("span");
       slot.style.alignItems = "center";
       slot.style.display = index === 0 ? "inline-flex" : "none";
-      slot.style.paddingTop = "2px";
+      slot.style.paddingTop = "0px";
       button.appendChild(slot);
       const root = mount(icon, { target: slot, props: { size: 14 } });
       this.#iconRoots.push(root);

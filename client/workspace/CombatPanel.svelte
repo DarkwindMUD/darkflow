@@ -88,6 +88,8 @@
             // showing, and the terrain tile otherwise.
             room: world.room,
             roomImage: roomImageUrl(world),
+            // Other players in the room, drawn as bystanders on the idle scene.
+            players: world.players,
           }) !== false;
         syncReadiness();
       } catch (error) {
@@ -112,9 +114,11 @@
       seenActivitySeq = activity.seq;
       renderer.playActivity(activity.latest);
     });
-    let lastBackdropKey = backdropKey(activeSession.world.getSnapshot());
+    const worldKey = (world: SessionWorldSnapshot): string =>
+      backdropKey(world) + "|" + world.players.map((player) => player.name).join(",");
+    let lastBackdropKey = worldKey(activeSession.world.getSnapshot());
     const unsubscribeWorld = activeSession.world.subscribe((world) => {
-      const key = backdropKey(world);
+      const key = worldKey(world);
       if (key === lastBackdropKey) return;
       lastBackdropKey = key;
       if (lastSnapshot) render(lastSnapshot);

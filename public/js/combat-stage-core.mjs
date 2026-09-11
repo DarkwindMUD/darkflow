@@ -441,3 +441,45 @@ export function idleOffset(side, now, reducedMotion) {
   const t = (now / 1000) * Math.PI * 0.9 + phase;
   return { x: 0, y: Math.sin(t) * 0.05 };
 }
+
+// Other players in the room stand in a band behind the main figures on the
+// idle scene: smaller, further back, and never on top of the player's spot.
+// The band holds at most MAX_BYSTANDERS; the rest are counted in `overflow`.
+export const MAX_BYSTANDERS = 6;
+export const BYSTANDER_MS = { in: 360, out: 300 };
+
+export function bystanderLayout(layout, count) {
+  const wanted = Math.max(0, Math.min(MAX_BYSTANDERS, Math.trunc(Number(count)) || 0));
+  const overflow = Math.max(0, (Math.trunc(Number(count)) || 0) - wanted);
+  const scale = 0.62;
+  const radius = layout.radius * scale;
+  const groundY = layout.groundY - layout.radius * 0.55;
+  const spots = [];
+  if (wanted > 0) {
+    const margin = radius * 1.4;
+    const span = Math.max(0, layout.width - margin * 2);
+    const keepOut = layout.radius * 1.15;
+    // Spread candidate slots across the band, drop the ones the player
+    // stands in front of, and widen the spread until enough remain.
+    for (let slots = wanted; slots <= wanted + 6 && spots.length < wanted; slots += 1) {
+      spots.length = 0;
+      for (let index = 0; index < slots; index += 1) {
+        const x = slots === 1 ? layout.width / 2 : margin + (span * index) / (slots - 1);
+        if (Math.abs(x - layout.player.x) < keepOut) continue;
+        spots.push({ x, y: groundY - radius * 0.1 });
+      }
+    }
+    spots.length = Math.min(spots.length, wanted);
+  }
+  return { scale, radius, groundY, spots, overflow };
+}
+
+// How a bystander looks partway through arriving (or leaving): fading in
+// while settling down onto the ground line.
+export function bystanderPresence(presence, reducedMotion) {
+  const p = Math.max(0, Math.min(1, Number(presence) || 0));
+  if (reducedMotion) return { alpha: p > 0 ? 1 : 0, y: 0 };
+  const eased = 1 - Math.pow(1 - p, 3);
+  return { alpha: p, y: -(1 - eased) * 0.3 || 0 };
+}
+

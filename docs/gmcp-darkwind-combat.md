@@ -190,6 +190,15 @@ a rate-limited polite live region. Reduced-motion mode removes lunges, shakes,
 flashes, moving damage numbers, and crossfades while preserving static outcome
 badges and summaries.
 
+Other players in the room stand in a band behind the scene while it is
+idle: smaller, further back, in muted colours, unarmed, facing the player,
+each named under its feet. They come from `Room.Players` and its add and
+remove messages, so an arrival fades in and a departure fades out; the
+band holds six and counts the rest as "+N". A fight clears the band and
+the idle scene brings it back. Nothing but a name is known about another
+player, so they draw as the initial-lettered silhouette; NPCs are not
+listed by any package and do not appear.
+
 ## Canvas Stage
 
 When the browser provides a 2D canvas, the Combat pane draws its stage on a

@@ -250,6 +250,8 @@ export function createCombatStageRenderer(bodyEl, options = {}) {
       scene,
       room: data.room || null,
       roomImage: data.roomImage || null,
+      // Other players in the room stand behind the figures on the idle scene.
+      players: Array.isArray(data.players) ? data.players : [],
       playerFallback: [view.player.fallbackImage, PLAYER_FALLBACK_IMAGE].filter(Boolean),
       targetFallback: view.target.isNpc ? NPC_FALLBACK_IMAGE : PLAYER_FALLBACK_IMAGE,
     });

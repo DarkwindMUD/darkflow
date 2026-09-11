@@ -27,6 +27,7 @@
   import ConnectionHealthPanel from "./ConnectionHealthPanel.svelte";
   import CombatPanel from "./CombatPanel.svelte";
   import CommandBoardPanel from "./CommandBoardPanel.svelte";
+  import AvatarBarPanel from "./AvatarBarPanel.svelte";
   import BuffBarPanel from "./BuffBarPanel.svelte";
   import GuildBarPanel from "./GuildBarPanel.svelte";
   import VitalBarPanel from "./VitalBarPanel.svelte";
@@ -204,6 +205,13 @@
       id: "buffBar",
       kind: "buffBar",
       title: "Buff Bar",
+      state: {},
+      minSize: { width: 120, height: 40 },
+    },
+    {
+      id: "avatarBar",
+      kind: "avatarBar",
+      title: "Wrathful Avatar",
       state: {},
       minSize: { width: 120, height: 40 },
     },
@@ -1059,6 +1067,7 @@
       spBar: { canClose: () => true, component: VitalBarPanel, floatable: true, session },
       guildBar: { canClose: () => true, component: GuildBarPanel, floatable: true, session },
       buffBar: { canClose: () => true, component: BuffBarPanel, floatable: true, session },
+      avatarBar: { canClose: () => true, component: AvatarBarPanel, floatable: true, session },
       dps: {
         canClose: () => true,
         collapsible: true,

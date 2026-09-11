@@ -61,6 +61,24 @@ pulses; debuffs are red and pulse while they last; untimed buffs show full
 with "active". `client/workspace/buff-bar.ts` holds the reading and pin
 helpers and `BuffBarPanel.svelte` the panel; WorkspaceHost lists it with the
 other vital bars.
+## Wrathful Avatar bar
+
+The legacy client showed the Wrathful Avatar charge as a meter under the
+terminal. This client shows it as a floating bar in the same family as the
+others, opened from the Panels menu as "Wrathful Avatar". It reads the
+avatar fields of `Char.Vitals`: while charging, the fill is the charge
+predicted from the last sync (`avatar_charge` plus
+`avatar_charge_rate_pct` per two seconds since `receivedAt`) over
+`avatar_charge_max`, and the text is the percentage, or READY at full
+with a brighter fill. While the avatar is active (`avatar_active_remaining`
+or the older `avatar_active`, over `avatar_active_max`) the bar counts the
+window down as ACTIVE m:ss and pulses. The fill takes the patron's colours
+(`divine_patron`: Mitra gold, Gaea green, Set violet, otherwise red). A
+character with no avatar fields shows `--`.
+
+`client/workspace/avatar-bar.ts` holds the reading (`avatarBarReading`)
+and `AvatarBarPanel.svelte` the panel, which refreshes once a second only
+while the prediction or countdown is moving.
 ## Wiring
 
 `client/workspace/vital-bar.ts` is the pure part: which fields a bar reads and

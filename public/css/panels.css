@@ -2978,6 +2978,16 @@ body.zork-only-mode #panels-menu {
 .vital-bar-buff {
   position: relative;
 }
+
+/* Wrathful Avatar bar: the fill carries the patron's gradient; charged and
+   ready it brightens, and while the avatar is active it pulses like a
+   critical vital. */
+.vital-bar-avatar.is-full .vital-bar-fill {
+  filter: brightness(1.12);
+}
+.vital-bar-avatar.is-full .vital-bar-value {
+  letter-spacing: 0.12em;
+}
 .vital-bar-select {
   position: absolute;
   z-index: 2;

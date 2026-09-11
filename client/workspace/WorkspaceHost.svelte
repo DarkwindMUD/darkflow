@@ -6,6 +6,13 @@
   import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
   import { onMount, tick } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
+  import {
+    loadClientSettings,
+    saveClientSettings,
+    setPanelPreference,
+    type PanelLayer,
+    type PanelPreference,
+  } from "../app/client-settings";
   import type { InteractionWindow } from "../gmcp/contracts/interactions.ts";
   import type { CharacterProfileId } from "../model/ids";
   import type { InformationPanelId } from "../runtime/information.ts";
@@ -25,6 +32,7 @@
   import RoomImagePanel from "./RoomImagePanel.svelte";
   import RoomPanel from "./RoomPanel.svelte";
   import RoomPlaylistPanel from "./RoomPlaylistPanel.svelte";
+  import PanelSettingsPopover from "./PanelSettingsPopover.svelte";
   import GmcpDebugPanel from "./GmcpDebugPanel.svelte";
   import {
     loadCharacterWorkspace,
@@ -40,6 +48,7 @@
     CompositeWorkspaceSnapshot,
     PersistedWorkspaceSnapshot,
     Workspace,
+    PanelSettingsTarget,
     WorkspacePanelSpec,
     WorkspaceRendererRegistry,
   } from "./workspace";
@@ -427,6 +436,42 @@
   let gmcpDebugOpen = $state(false);
   let launcherOpen = $state(false);
   let mobilePresentation = $state(false);
+  let panelSettingsTarget = $state<PanelSettingsTarget>();
+  let panelPreferenceRevision = $state(0);
+
+  function panelPreferenceFor(panelId: string): PanelPreference | undefined {
+    const settings = loadClientSettings(localStorage).settings;
+    const preference = settings.panelPreferences[panelId];
+    if (panelId === terminal.id) return preference?.layer ? { layer: preference.layer } : undefined;
+    return preference;
+  }
+
+  function popoverPreferenceFor(panelId: string): PanelPreference | undefined {
+    const settings = loadClientSettings(localStorage).settings;
+    const preference = settings.panelPreferences[panelId];
+    const fontSize =
+      panelId === terminal.id ? (settings.terminalFontSize ?? undefined) : preference?.fontSize;
+    if (fontSize === undefined && preference?.layer === undefined) return undefined;
+    const result: PanelPreference = {};
+    if (fontSize !== undefined)
+      result.fontSize = fontSize as NonNullable<PanelPreference["fontSize"]>;
+    if (preference?.layer) result.layer = preference.layer;
+    return result;
+  }
+
+  const openPanelPreference = $derived.by(() => {
+    panelPreferenceRevision;
+    return panelSettingsTarget ? popoverPreferenceFor(panelSettingsTarget.panelId) : undefined;
+  });
+  let applyPanelTextSize = $state<
+    (fontSize: NonNullable<PanelPreference["fontSize"]> | undefined) => boolean
+  >(() => false);
+  let applyPanelLayer = $state<(layer: PanelLayer) => boolean>(() => false);
+  let resetPanelSettings = $state<() => boolean>(() => false);
+
+  function closePanelSettings(): void {
+    panelSettingsTarget = undefined;
+  }
 
   function toggleRail(side: RailSide): void {
     if (!railsEnabled) return;
@@ -789,7 +834,25 @@
         ]),
       ),
     };
-    const registry = { ...rendererRegistry };
+    const registry = Object.fromEntries(
+      Object.entries(rendererRegistry).map(([kind, definition]) => [
+        kind,
+        kind === "server-window"
+          ? definition
+          : {
+              ...definition,
+              configure: (target: PanelSettingsTarget) => {
+                if (panelSettingsTarget?.button === target.button) {
+                  panelSettingsTarget = undefined;
+                  queueMicrotask(() => target.button.focus());
+                } else {
+                  panelSettingsTarget = target;
+                }
+              },
+              panelPreference: panelPreferenceFor,
+            },
+      ]),
+    ) as WorkspaceRendererRegistry;
     const diagnostics = new LifecycleDiagnostics();
     const currentWorkspace = createWorkspace(host, registry, diagnostics);
     workspace = currentWorkspace;
@@ -905,6 +968,54 @@
       diagnostics,
       railCallbacksFor(() => rightRail),
     );
+
+    const refreshPanelPreferences = () => {
+      panelPreferenceRevision += 1;
+      currentWorkspace.refreshPanelPresentation();
+      leftRail?.refreshPanelPresentation();
+      rightRail?.refreshPanelPresentation();
+    };
+    const savePanelSettings = (preference: PanelPreference): boolean => {
+      const target = panelSettingsTarget;
+      if (!target) return false;
+      let settings = loadClientSettings(localStorage).settings;
+      if (target.panelId === terminal.id) {
+        settings = { ...settings, terminalFontSize: preference.fontSize ?? null };
+        settings = setPanelPreference(
+          settings,
+          target.panelId,
+          preference.layer ? { layer: preference.layer } : {},
+        );
+      } else {
+        settings = setPanelPreference(settings, target.panelId, preference);
+      }
+      const result = saveClientSettings(
+        localStorage,
+        settings,
+        session.configuration.getSnapshot().themeKey,
+      );
+      if (!result.success) {
+        status = result.message;
+        panelPreferenceRevision += 1;
+        return false;
+      }
+      window.dispatchEvent(new Event("darkflow:client-settings-changed"));
+      return true;
+    };
+    applyPanelTextSize = (fontSize) => {
+      const target = panelSettingsTarget;
+      if (!target) return false;
+      const preference: PanelPreference = { ...popoverPreferenceFor(target.panelId) };
+      if (fontSize === undefined) delete preference.fontSize;
+      else preference.fontSize = fontSize;
+      return savePanelSettings(preference);
+    };
+    applyPanelLayer = (layer) => {
+      const target = panelSettingsTarget;
+      return target ? savePanelSettings({ ...popoverPreferenceFor(target.panelId), layer }) : false;
+    };
+    resetPanelSettings = () => savePanelSettings({});
+    window.addEventListener("darkflow:client-settings-changed", refreshPanelPreferences);
 
     movePanel = (id, destination, index, floatBounds = RAIL_FLOAT_BOUNDS) => {
       if (transferBusy) return;
@@ -1507,6 +1618,7 @@
       window.removeEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
       window.removeEventListener("darkflow:settings-import-applied", restoreWorkspaceAfterImport);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
+      window.removeEventListener("darkflow:client-settings-changed", refreshPanelPreferences);
       shell.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
       unsubscribeCombat();
@@ -1528,6 +1640,10 @@
       cancelActiveDrag = undefined;
       removeTerminalViewForTestImpl = () => Promise.resolve();
       restoreTerminalViewForTestImpl = () => Promise.resolve();
+      applyPanelTextSize = () => false;
+      applyPanelLayer = () => false;
+      resetPanelSettings = () => false;
+      panelSettingsTarget = undefined;
       workspace = undefined;
       const rails = [leftRail, rightRail];
       leftRail = undefined;
@@ -1654,6 +1770,15 @@
     ></div>
   </div>
 </section>
+
+<PanelSettingsPopover
+  target={panelSettingsTarget}
+  preference={openPanelPreference}
+  onClose={closePanelSettings}
+  onTextSize={applyPanelTextSize}
+  onLayer={applyPanelLayer}
+  onReset={resetPanelSettings}
+/>
 
 <div
   class:open={sheetOpen}

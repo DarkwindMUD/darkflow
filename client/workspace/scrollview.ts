@@ -92,6 +92,7 @@ export class Scrollview {
       {
         close: definition.canClose ? () => void this.#close(spec.id) : undefined,
         collapse: definition.collapsible ? () => this.#toggleCollapse(spec.id) : undefined,
+        configure: definition.configure,
         floatDock:
           definition.floatable && this.callbacks.onFloat ? () => this.#float(spec.id) : undefined,
       },
@@ -148,6 +149,10 @@ export class Scrollview {
 
   hasPanel(id: string): boolean {
     return this.#cards.has(id);
+  }
+
+  refreshPanelPresentation(): void {
+    for (const card of this.#cards.values()) card.body.refreshPresentation();
   }
 
   getPanelState(id: string): PanelState | undefined {

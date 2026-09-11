@@ -323,7 +323,7 @@ body.zork-only-mode #panels-menu {
   width: 18px;
   height: 18px;
   padding: 0;
-  font-size: 14px;
+  font-size: calc(14px * var(--pane-font-scale, 1));
   font-weight: 700;
   line-height: 18px;
   text-align: center;
@@ -331,7 +331,7 @@ body.zork-only-mode #panels-menu {
 
 .map-recenter-btn {
   margin-left: 2px;
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
 }
 
 .map-zoom-btn:disabled {
@@ -342,7 +342,7 @@ body.zork-only-mode #panels-menu {
 .map-zoom-level {
   min-width: 30px;
   color: var(--df-muted);
-  font-size: 9px;
+  font-size: calc(9px * var(--pane-font-scale, 1));
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -2353,7 +2353,7 @@ body.zork-only-mode #panels-menu {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
 }
 
 .lag-verdict {
@@ -2389,7 +2389,7 @@ body.zork-only-mode #panels-menu {
 .lag-axis-reason {
   grid-column: 1 / -1;
   color: var(--df-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   padding-left: 16px;
 }
 
@@ -2430,7 +2430,7 @@ body.zork-only-mode #panels-menu {
 .lag-spark-legend {
   display: flex;
   gap: 10px;
-  font-size: 10px;
+  font-size: calc(10px * var(--pane-font-scale, 1));
   color: var(--df-muted);
   padding-top: 2px;
 }
@@ -2460,7 +2460,7 @@ body.zork-only-mode #panels-menu {
   border: 1px solid var(--df-border);
   border-radius: 6px;
   padding: 4px 10px;
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   cursor: pointer;
 }
 
@@ -2468,7 +2468,7 @@ body.zork-only-mode #panels-menu {
 
 .lag-check-result {
   color: var(--df-muted);
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
 }
 
 .lag-check-warn { color: #fbbf24; }

@@ -1,12 +1,13 @@
 import ChevronsDownUp from "@lucide/svelte/icons/chevrons-down-up";
 import ChevronsUpDown from "@lucide/svelte/icons/chevrons-up-down";
 import Dock from "@lucide/svelte/icons/dock";
+import Ellipsis from "@lucide/svelte/icons/ellipsis";
 import SquareSquare from "@lucide/svelte/icons/square-square";
 import X from "@lucide/svelte/icons/x";
 import { mount, unmount } from "svelte";
 import type { Writable } from "svelte/store";
 import { LifecycleDiagnostics } from "./lifecycle-diagnostics";
-import type { PanelState, WorkspaceRendererDefinition } from "./workspace";
+import type { PanelSettingsTarget, PanelState, WorkspaceRendererDefinition } from "./workspace";
 
 /**
  * Vendor-neutral panel parts shared by the Dockview adapter and the Scrollview
@@ -19,6 +20,7 @@ let rootSequence = 0;
 export interface TabActions {
   close?: (() => void) | undefined;
   collapse?: (() => boolean) | undefined;
+  configure?: ((target: PanelSettingsTarget) => void) | undefined;
   floatDock?: (() => boolean) | undefined;
 }
 
@@ -29,6 +31,7 @@ export class PanelCardHeader {
   readonly #label = document.createElement("span");
   readonly #closeButton: HTMLButtonElement | undefined = undefined;
   readonly #collapseButton: HTMLButtonElement | undefined = undefined;
+  readonly #configureButton: HTMLButtonElement | undefined = undefined;
   readonly #floatButton: HTMLButtonElement | undefined = undefined;
   readonly #iconRoots: Record<string, unknown>[] = [];
   protected titleSubscription: { dispose(): void } | undefined;
@@ -49,6 +52,17 @@ export class PanelCardHeader {
     this.element.dataset.panelId = panelId;
     this.#label.className = "dv-default-tab-content";
     this.element.appendChild(this.#label);
+
+    if (actions.configure) {
+      this.#configureButton = this.#createAction([Ellipsis], () => {
+        actions.configure!({
+          button: this.#configureButton!,
+          floating: this.#floating || this.element.closest(".dv-resize-container") !== null,
+          panelId: this.panelId,
+          title: this.#title,
+        });
+      });
+    }
 
     if (actions.collapse) {
       this.#collapseButton = this.#createAction([ChevronsDownUp, ChevronsUpDown], () => {
@@ -144,12 +158,14 @@ export class PanelCardHeader {
     const close = `Close ${this.#title}`;
     const collapse = `${this.#collapsed ? "Expand" : "Collapse"} ${this.#title}`;
     const floatDock = `${this.#floating ? "Dock" : "Float"} ${this.#title}`;
+    const configure = `Settings for ${this.#title}`;
     this.#showActionIcon(this.#collapseButton, this.#collapsed ? 1 : 0);
     this.#showActionIcon(this.#floatButton, this.#floating ? 1 : 0);
     for (const [btn, label] of [
       [this.#closeButton, close],
       [this.#collapseButton, collapse],
       [this.#floatButton, floatDock],
+      [this.#configureButton, configure],
     ] as const) {
       if (!btn) continue;
       btn.setAttribute("aria-label", label);
@@ -191,6 +207,7 @@ export class SveltePanelBody {
     }
 
     this.state.set(params);
+    this.refreshPresentation();
     this.#root = mount(this.definition.component, {
       target: this.element,
       props: {
@@ -231,6 +248,17 @@ export class SveltePanelBody {
 
   whenDisposed(): Promise<void> {
     return this.#unmountPromise ?? Promise.resolve();
+  }
+
+  refreshPresentation(): void {
+    const fontSize = this.definition.panelPreference?.(this.panelId)?.fontSize;
+    if (fontSize === undefined) {
+      this.element.style.removeProperty("--pane-font-scale");
+      this.element.style.removeProperty("font-size");
+    } else {
+      this.element.style.setProperty("--pane-font-scale", String(fontSize / 12));
+      this.element.style.fontSize = `${fontSize}px`;
+    }
   }
 
   #finishDispose(): void {

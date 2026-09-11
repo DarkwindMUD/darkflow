@@ -48,6 +48,27 @@ function graph(ids) {
   };
 }
 
+test("panel preferences normalize locally and validate strictly for imports", async (t) => {
+  const server = await createServer({ configFile: path.join(repoRoot, "vite.config.ts"), appType: "custom", logLevel: "silent", server: { middlewareMode: true }, hmr: false, watch: null });
+  t.after(() => server.close());
+  const settings = await server.environments.ssr.runner.import("/app/client-settings.ts");
+  assert.deepEqual(
+    settings.normalizePanelPreferences({
+      status: { fontSize: 16, layer: "above" },
+      broken: { fontSize: 17, layer: "nope" },
+      future: { layer: "always-on-top" },
+    }),
+    { status: { fontSize: 16, layer: "above" }, future: { layer: "always-on-top" } },
+  );
+  assert.equal(
+    settings.validateClientSettingsDocument({
+      theme: "darkflow-default",
+      panelPreferences: { status: { fontSize: 17 } },
+    }).success,
+    false,
+  );
+});
+
 test("settings bundle exports the full graph but imports only active-character settings", async (t) => {
   const server = await createServer({ configFile: path.join(repoRoot, "vite.config.ts"), appType: "custom", logLevel: "silent", server: { middlewareMode: true }, hmr: false, watch: null });
   t.after(() => server.close());
@@ -104,6 +125,9 @@ test("settings bundle exports the full graph but imports only active-character s
     "darkwind-client-settings": JSON.stringify({
       theme: "darkflow-default",
       deferred: { keep: true },
+      panelPreferences: {
+        "future-panel": { fontSize: 16, layer: "above" },
+      },
     }),
     "darkwind-sound-settings": JSON.stringify({
       enabled: false,
@@ -119,6 +143,9 @@ test("settings bundle exports the full graph but imports only active-character s
   const prepared = bundle.prepareSettingsImport(exported.data.text, store);
   assert.equal(prepared.success, true, prepared.success ? "" : prepared.message);
   assert.deepEqual(prepared.data.clientSettings.deferred, { keep: true });
+  assert.deepEqual(prepared.data.clientSettings.panelPreferences, {
+    "future-panel": { fontSize: 16, layer: "above" },
+  });
   assert.equal(prepared.data.clientSettings.repeatLastCommand, false);
   assert.equal(prepared.data.clientSettings.gmcpDebugEnabled, true);
   assert.deepEqual(prepared.data.applicationState, source);
@@ -180,6 +207,11 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
     ["clientSettings", { ...validBundle.data.clientSettings, gmcpDebugEnabled: "bad" }],
     ["clientSettings", { ...validBundle.data.clientSettings, terminalFontFamily: "fantasy" }],
     ["clientSettings", { ...validBundle.data.clientSettings, terminalFontSize: 17 }],
+    ["clientSettings", { ...validBundle.data.clientSettings, panelPreferences: [] }],
+    [
+      "clientSettings",
+      { ...validBundle.data.clientSettings, panelPreferences: { status: { fontSize: 17 } } },
+    ],
     ["sound", { ...validBundle.data.sound, volume: 2 }],
   ]) {
     const invalid = structuredClone(validBundle);

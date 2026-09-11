@@ -267,7 +267,7 @@
     left: 0;
     padding: 0.35rem 0.5rem;
     color: #fff;
-    font-size: 0.75rem;
+    font-size: calc(0.75rem * var(--pane-font-scale, 1));
     text-align: center;
     text-shadow: 0 1px 2px #000;
     background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
@@ -280,7 +280,7 @@
     padding: 0.25rem 0.4rem;
     border-radius: 0.25rem;
     color: #fff;
-    font-size: 0.75rem;
+    font-size: calc(0.75rem * var(--pane-font-scale, 1));
     background: rgba(0, 0, 0, 0.7);
   }
 

@@ -48,7 +48,7 @@
 .room-playlist-status,
 .room-playlist-empty {
   color: var(--text-muted, #8b949e);
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
 }
 
 .room-playlist-button,
@@ -73,7 +73,7 @@
 }
 
 .room-playlist-now-title { font-weight: 600; }
-.room-playlist-now-meta { margin-top: 3px; color: var(--text-muted, #8b949e); font-size: 11px; }
+.room-playlist-now-meta { margin-top: 3px; color: var(--text-muted, #8b949e); font-size: calc(11px * var(--pane-font-scale, 1)); }
 
 .room-playlist-controls {
   display: flex;
@@ -82,7 +82,7 @@
   gap: 6px;
 }
 
-.room-playlist-volume { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: 11px; }
+.room-playlist-volume { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; font-size: calc(11px * var(--pane-font-scale, 1)); }
 .room-playlist-volume input { width: 78px; }
 
 .room-playlist-add { display: flex; gap: 6px; }
@@ -97,7 +97,7 @@
 }
 
 .room-playlist-queue { display: flex; flex-direction: column; gap: 5px; }
-.room-playlist-queue-heading { color: #e1bd6d; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
+.room-playlist-queue-heading { color: #e1bd6d; font-size: calc(12px * var(--pane-font-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; }
 .room-playlist-queue-item {
   display: grid;
   grid-template-columns: 24px minmax(0, 1fr) auto;
@@ -107,12 +107,12 @@
   border-radius: 4px;
   background: rgba(255, 255, 255, 0.03);
 }
-.room-playlist-queue-index { color: #e1bd6d; font-size: 11px; }
+.room-playlist-queue-index { color: #e1bd6d; font-size: calc(11px * var(--pane-font-scale, 1)); }
 .room-playlist-queue-copy { min-width: 0; }
-.room-playlist-queue-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
-.room-playlist-queue-meta { color: var(--text-muted, #8b949e); font-size: 10px; }
+.room-playlist-queue-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: calc(12px * var(--pane-font-scale, 1)); }
+.room-playlist-queue-meta { color: var(--text-muted, #8b949e); font-size: calc(10px * var(--pane-font-scale, 1)); }
 .room-playlist-queue-actions { display: flex; gap: 3px; }
-.room-playlist-queue-actions button { padding: 3px 5px; font-size: 10px; }
+.room-playlist-queue-actions button { padding: 3px 5px; font-size: calc(10px * var(--pane-font-scale, 1)); }
 
 .room-playlist-offline { padding: 18px; text-align: center; color: var(--text-muted, #8b949e); }
 .room-playlist-disabled > :not(.room-playlist-offline) { display: none; }

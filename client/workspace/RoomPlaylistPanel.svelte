@@ -711,6 +711,6 @@
     display: inline-flex;
     align-items: center;
     gap: 0.25rem;
-    font-size: 11px;
+    font-size: calc(11px * var(--pane-font-scale, 1));
   }
 </style>

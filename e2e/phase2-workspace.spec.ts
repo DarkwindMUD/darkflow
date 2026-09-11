@@ -25,6 +25,25 @@ function panelDragHandle(page: Page, panelId: string): Locator {
   return page.locator(`[data-panel-drag-handle][data-panel-id="${panelId}"]`);
 }
 
+async function moveFloatingPanel(
+  page: Page,
+  panelId: string,
+  deltaX: number,
+  deltaY: number,
+): Promise<void> {
+  const titlebar = await page
+    .locator(`.dv-floating-titlebar[data-panel-id="${panelId}"]`)
+    .boundingBox();
+  expect(titlebar).not.toBeNull();
+  const x = titlebar!.x + titlebar!.width / 2;
+  const y = titlebar!.y + titlebar!.height / 2;
+  await page.mouse.move(x, y);
+  await page.mouse.down();
+  await page.mouse.move(x + 2, y + 2);
+  await page.mouse.move(x + deltaX, y + deltaY, { steps: 6 });
+  await page.mouse.up();
+}
+
 test("desktop panel selector toggles from its label and trigger", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile-chromium", "desktop menu only");
   await openWorkspace(page);
@@ -46,6 +65,293 @@ test("desktop panel selector toggles from its label and trigger", async ({ page 
 
   await trigger.click();
   await expect(menu).toBeHidden();
+});
+
+test("built-in panel settings stay local and persist semantic floating layers", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop floating panes only");
+  await openWorkspace(page);
+
+  const settings = page.getByRole("button", { name: "Settings for Status", exact: true });
+  await expect(settings).toBeVisible();
+  await settings.click();
+  const popover = page.locator(".panel-settings-popover");
+  await expect(popover).toBeVisible();
+  await expect(popover.getByLabel("Text size").locator("option:checked")).toHaveText(
+    /\d+px \(Default\)/,
+  );
+  await settings.click();
+  await expect(popover).toBeHidden();
+  await expect(settings).toBeFocused();
+  await settings.click();
+  await expect(popover).toBeVisible();
+  await expect(popover.getByLabel("Layer", { exact: true })).toHaveCount(0);
+  await popover.getByLabel("Text size").selectOption("16");
+  await expect
+    .poll(() =>
+      page
+        .locator('[data-workspace-owned="true"][data-workspace-root-id^="status-"]')
+        .evaluate((element) => element.style.getPropertyValue("--pane-font-scale")),
+    )
+    .toBe(String(16 / 12));
+  await expect(
+    page.locator('[data-workspace-owned="true"][data-workspace-root-id^="avatar-"]'),
+  ).not.toHaveAttribute("style", /pane-font-scale/);
+
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Settings for Map", exact: true }).click();
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Map");
+  const defaultMapFontSize = await page
+    .locator(".map-panel-status")
+    .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize));
+  await popover.getByLabel("Text size").selectOption("16");
+  await expect
+    .poll(() =>
+      page
+        .locator(".map-panel-status")
+        .evaluate((element) => Number.parseFloat(getComputedStyle(element).fontSize)),
+    )
+    .toBeGreaterThan(defaultMapFontSize);
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Settings for Map", exact: true })).toBeFocused();
+  await page.getByRole("button", { name: "Float Status", exact: true }).click();
+  const floatingSettings = page.getByRole("button", { name: "Settings for Status", exact: true });
+  await floatingSettings.click();
+  await expect(popover.getByLabel("Layer", { exact: true })).toBeVisible();
+  const layerInfo = popover.getByRole("button", { name: "About panel layers" });
+  const layerHelp = popover.getByRole("tooltip");
+  await expect(layerInfo).toHaveAttribute("aria-describedby", "panel-layer-help");
+  const [layerLabelBounds, layerInfoBounds] = await Promise.all([
+    popover.locator('label[for="panel-layer-select"]').boundingBox(),
+    layerInfo.boundingBox(),
+  ]);
+  expect(layerLabelBounds).not.toBeNull();
+  expect(layerInfoBounds).not.toBeNull();
+  expect(
+    Math.abs(
+      layerLabelBounds!.y +
+        layerLabelBounds!.height / 2 -
+        (layerInfoBounds!.y + layerInfoBounds!.height / 2),
+    ),
+  ).toBeLessThanOrEqual(1);
+  await layerInfo.focus();
+  await expect(layerHelp).toHaveCSS("opacity", "1");
+  await expect(layerHelp).toContainText("Normal panels come forward when selected.");
+  await expect(layerHelp).not.toContainText("active-front");
+  await expect
+    .poll(async () => {
+      const [panel, menu] = await Promise.all([
+        page
+          .locator('[data-workspace-owned="true"][data-workspace-root-id^="status-"]')
+          .boundingBox(),
+        popover.boundingBox(),
+      ]);
+      if (!panel || !menu) return false;
+      return (
+        menu.x + menu.width <= panel.x ||
+        panel.x + panel.width <= menu.x ||
+        menu.y + menu.height <= panel.y ||
+        panel.y + panel.height <= menu.y
+      );
+    })
+    .toBe(true);
+  await popover.getByLabel("Layer", { exact: true }).selectOption("above");
+  await page.keyboard.press("Escape");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const settings = JSON.parse(localStorage.getItem("darkwind-client-settings") ?? "{}");
+        return settings.panelPreferences.status?.layer;
+      }),
+    )
+    .toBe("above");
+  const statusFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "status") });
+  await page.getByRole("button", { name: "Float Vitals", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Settings for Vitals", exact: true })
+    .evaluate((button) => (button as HTMLElement).click());
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Vitals");
+  await popover.getByLabel("Layer", { exact: true }).selectOption("always-on-top");
+  await page.keyboard.press("Escape");
+  await moveFloatingPanel(page, "vitals", 320, 0);
+  await page.getByRole("button", { name: "Float Avatar", exact: true }).click();
+  const vitalsFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "vitals") });
+  const avatarFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "avatar") });
+  await moveFloatingPanel(page, "avatar", 0, 260);
+  const zIndex = (frame: Locator) =>
+    frame.evaluate((element) => Number(getComputedStyle(element).zIndex));
+  await expect.poll(() => zIndex(avatarFrame)).toBeLessThan(await zIndex(statusFrame));
+  await expect.poll(() => zIndex(statusFrame)).toBeLessThan(await zIndex(vitalsFrame));
+
+  await page
+    .getByRole("button", { name: "Settings for Status", exact: true })
+    .evaluate((button) => (button as HTMLElement).click());
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Status");
+  await popover.getByLabel("Layer", { exact: true }).selectOption("normal");
+  await page.keyboard.press("Escape");
+  await page
+    .getByRole("button", { name: "Settings for Vitals", exact: true })
+    .evaluate((button) => (button as HTMLElement).click());
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Vitals");
+  await popover.getByLabel("Layer", { exact: true }).selectOption("normal");
+  await page.keyboard.press("Escape");
+  await panelDragHandle(page, "status").locator(".dv-default-tab-content").click();
+  await expect.poll(() => zIndex(statusFrame)).toBeGreaterThan(await zIndex(vitalsFrame));
+  await panelDragHandle(page, "vitals").locator(".dv-default-tab-content").click();
+  await expect.poll(() => zIndex(vitalsFrame)).toBeGreaterThan(await zIndex(statusFrame));
+
+  await page
+    .getByRole("button", { name: "Settings for Status", exact: true })
+    .evaluate((button) => (button as HTMLElement).click());
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Status");
+  await popover.getByRole("button", { name: "Reset this panel", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const settings = JSON.parse(localStorage.getItem("darkwind-client-settings") ?? "{}");
+        return settings.panelPreferences.status;
+      }),
+    )
+    .toBeUndefined();
+
+  if (testInfo.project.name === "chromium") {
+    await page.evaluate(() => {
+      const original = Storage.prototype.setItem;
+      (
+        window as typeof window & {
+          __panelSettingsOriginalSetItem?: typeof Storage.prototype.setItem;
+        }
+      ).__panelSettingsOriginalSetItem = original;
+      Storage.prototype.setItem = function (key, value) {
+        if (key === "darkwind-client-settings") throw new Error("panel settings fixture failure");
+        return original.call(this, key, value);
+      };
+    });
+    await popover.getByLabel("Text size").selectOption("20");
+    await expect(popover.getByLabel("Text size")).toHaveValue("");
+    await expect(page.getByTestId("workspace-status")).toHaveText(
+      "Client settings could not be saved.",
+    );
+    await page.evaluate(() => {
+      const target = window as typeof window & {
+        __panelSettingsOriginalSetItem?: typeof Storage.prototype.setItem;
+      };
+      if (target.__panelSettingsOriginalSetItem) {
+        Storage.prototype.setItem = target.__panelSettingsOriginalSetItem;
+        delete target.__panelSettingsOriginalSetItem;
+      }
+    });
+  }
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(popover).toBeHidden();
+  await expect(page.getByRole("dialog", { name: "Settings" })).toBeVisible();
+});
+
+test("floating panel settings switch from non-overlap to proximity for tall panels", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "focused floating geometry regression");
+  await openWorkspace(page);
+  await page.getByRole("button", { name: "Toggle right sidebar", exact: true }).click();
+  await page.getByRole("button", { name: "Float Status", exact: true }).click();
+
+  const frame = page.locator(".dv-resize-container").filter({
+    has: panelDragHandle(page, "status"),
+  });
+  const [initialFrame, workspace] = await Promise.all([
+    frame.boundingBox(),
+    page.getByTestId("workspace-host").boundingBox(),
+  ]);
+  expect(initialFrame).not.toBeNull();
+  expect(workspace).not.toBeNull();
+  await moveFloatingPanel(
+    page,
+    "status",
+    workspace!.x + workspace!.width - initialFrame!.x - initialFrame!.width - 48,
+    0,
+  );
+
+  const settings = page.getByRole("button", { name: "Settings for Status", exact: true });
+  await settings.click();
+  const [panel, button, popover] = await Promise.all([
+    frame.boundingBox(),
+    settings.boundingBox(),
+    page.locator(".panel-settings-popover").boundingBox(),
+  ]);
+  expect(panel).not.toBeNull();
+  expect(button).not.toBeNull();
+  expect(popover).not.toBeNull();
+  expect(popover!.y).toBeGreaterThanOrEqual(panel!.y + panel!.height);
+  expect(
+    Math.abs(popover!.x + popover!.width / 2 - (button!.x + button!.width / 2)),
+  ).toBeLessThanOrEqual(8);
+
+  await page.keyboard.press("Escape");
+  const resizeGrip = frame.locator(".dv-resize-handle-bottomright");
+  const grip = await resizeGrip.boundingBox();
+  expect(grip).not.toBeNull();
+  const resizePoint = { x: grip!.x + grip!.width / 2, y: grip!.y + grip!.height / 2 };
+  await resizeGrip.dispatchEvent("pointerdown", { ...resizePoint, pointerId: 1 });
+  await page.evaluate(({ x, y }) => {
+    window.dispatchEvent(new PointerEvent("pointermove", { clientX: x, clientY: y, pointerId: 1 }));
+    window.dispatchEvent(
+      new PointerEvent("pointermove", { clientX: x, clientY: y + 180, pointerId: 1 }),
+    );
+    window.dispatchEvent(new PointerEvent("pointerup", { clientX: x, clientY: y + 180 }));
+  }, resizePoint);
+  await expect
+    .poll(async () => (await frame.boundingBox())?.height ?? 0)
+    .toBeGreaterThan(popover!.height * 2);
+
+  await settings.click();
+  await expect
+    .poll(async () => {
+      const [currentButton, currentPopover] = await Promise.all([
+        settings.boundingBox(),
+        page.locator(".panel-settings-popover").boundingBox(),
+      ]);
+      if (!currentButton || !currentPopover) return Number.POSITIVE_INFINITY;
+      const horizontalDistance = Math.max(
+        currentPopover.x - currentButton.x - currentButton.width,
+        currentButton.x - currentPopover.x - currentPopover.width,
+        0,
+      );
+      const verticalDistance = Math.max(
+        currentPopover.y - currentButton.y - currentButton.height,
+        currentButton.y - currentPopover.y - currentPopover.height,
+        0,
+      );
+      return Math.hypot(horizontalDistance, verticalDistance);
+    })
+    .toBeLessThanOrEqual(6);
+  const [tallPanel, nearbyPopover] = await Promise.all([
+    frame.boundingBox(),
+    page.locator(".panel-settings-popover").boundingBox(),
+  ]);
+  expect(tallPanel).not.toBeNull();
+  expect(nearbyPopover).not.toBeNull();
+  expect(
+    Math.max(
+      0,
+      Math.min(nearbyPopover!.x + nearbyPopover!.width, tallPanel!.x + tallPanel!.width) -
+        Math.max(nearbyPopover!.x, tallPanel!.x),
+    ) *
+      Math.max(
+        0,
+        Math.min(nearbyPopover!.y + nearbyPopover!.height, tallPanel!.y + tallPanel!.height) -
+          Math.max(nearbyPopover!.y, tallPanel!.y),
+      ),
+  ).toBeGreaterThan(0);
 });
 
 test("magnetic snapping outlines the target pane", async ({ page }, testInfo) => {
@@ -597,11 +903,31 @@ test("a multi-panel floating window cannot be dropped into a rail", async ({ pag
     await page.keyboard.press("Escape");
   }
   await page.getByRole("button", { name: "Float Map", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Dock Map", exact: true })).toBeVisible();
+  const popover = page.locator(".panel-settings-popover");
+  await page.getByRole("button", { name: "Settings for Map", exact: true }).click();
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Map");
+  await popover.getByLabel("Layer", { exact: true }).selectOption("above");
+  await page.keyboard.press("Escape");
   await dockPanelAsTab(page, "roomImage", "map");
   const floating = page.locator(".dv-resize-container").filter({
     has: panelDragHandle(page, "map"),
   });
   await expect(floating.locator('[data-panel-drag-handle="true"]')).toHaveCount(2);
+  await page.getByRole("button", { name: "Float Status", exact: true }).click();
+  const statusFrame = page
+    .locator(".dv-resize-container")
+    .filter({ has: panelDragHandle(page, "status") });
+  await page.getByRole("button", { name: "Settings for Status", exact: true }).click();
+  await expect(popover).toHaveAttribute("aria-label", "Settings for Status");
+  await popover.getByLabel("Layer", { exact: true }).selectOption("above");
+  await page.keyboard.press("Escape");
+  const zIndex = (frame: Locator) =>
+    frame.evaluate((element) => Number(getComputedStyle(element).zIndex));
+  await panelDragHandle(page, "map").locator(".dv-default-tab-content").click();
+  await expect.poll(() => zIndex(floating)).toBeGreaterThan(await zIndex(statusFrame));
+  await panelDragHandle(page, "roomImage").locator(".dv-default-tab-content").click();
+  await expect.poll(() => zIndex(floating)).toBeLessThan(await zIndex(statusFrame));
   const titlebar = await floating.locator(".dv-floating-titlebar").boundingBox();
   const rail = await page.locator('[data-rail="left"]').boundingBox();
   expect(titlebar).not.toBeNull();

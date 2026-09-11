@@ -62,7 +62,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: inherit;
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
   font-weight: 600;
   color: var(--df-text);
 }
@@ -71,7 +71,7 @@
   display: inline-block;
   margin-left: 10px;
   padding: 1px 6px;
-  font-size: 10px;
+  font-size: calc(10px * var(--pane-font-scale, 1));
   font-weight: 600;
   color: var(--df-warn);
   border: 1px solid var(--df-warn);
@@ -91,7 +91,7 @@
 
 .ide-btn {
   padding: 4px 14px;
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   font-weight: 500;
   border: 1px solid var(--df-border);
   border-radius: 4px;
@@ -132,7 +132,7 @@
 
 .ide-editor-container .cm-scroller {
   font-family: 'Courier New', 'Consolas', 'Monaco', monospace;
-  font-size: 13px;
+  font-size: calc(13px * var(--pane-font-scale, 1));
   line-height: 1.5;
 }
 
@@ -147,7 +147,7 @@
 
 .ide-error-title {
   padding: 6px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   font-weight: 600;
   color: var(--df-err);
   background: #1c1118;
@@ -162,7 +162,7 @@
   display: flex;
   gap: 12px;
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: calc(12px * var(--pane-font-scale, 1));
   color: var(--df-text);
   cursor: pointer;
   border-bottom: 1px solid var(--df-btn-secondary);
@@ -187,7 +187,7 @@
   display: flex;
   justify-content: space-between;
   padding: 3px 12px;
-  font-size: 11px;
+  font-size: calc(11px * var(--pane-font-scale, 1));
   color: var(--df-muted);
   background: var(--df-panel);
   border-top: 1px solid var(--df-border);
@@ -226,7 +226,7 @@
 
 .ide-loading-text {
   color: var(--df-muted);
-  font-size: 14px;
+  font-size: calc(14px * var(--pane-font-scale, 1));
 }
 
 @keyframes ide-spin {

@@ -190,6 +190,15 @@ export function createWorkspace(
         {
           close: definition?.canClose ? () => void requestClosePanel(id) : undefined,
           collapse: definition?.collapsible ? () => toggleCollapse(id) : undefined,
+          configure: definition?.configure
+            ? (target) =>
+                definition.configure!({
+                  ...target,
+                  floating: Boolean(
+                    api.getPanel(id)?.group.element.closest<HTMLElement>(".dv-resize-container"),
+                  ),
+                })
+            : undefined,
           floatDock: definition?.floatable ? () => toggleFloatDock(id) : undefined,
         },
         floating,
@@ -355,15 +364,35 @@ export function createWorkspace(
   };
 
   const syncFloatingOverlayLayers = () => {
-    for (const panel of api.panels) {
-      const frame = panel.group.element.closest<HTMLElement>(".dv-resize-container");
-      const overlay = renderers.get(panel.id)?.element.closest<HTMLElement>(".dv-render-overlay");
+    const tierStride = api.panels.length * 2 + 2;
+    for (const frame of host.querySelectorAll<HTMLElement>(
+      ".dv-floating-overlay-host > .dv-resize-container",
+    )) {
+      const groups = api.groups.filter((group) => frame.contains(group.element));
+      const activeGroup =
+        groups.find((group) => group.activePanel?.id === api.activePanel?.id) ??
+        groups.find((group) => group.element.classList.contains("dv-active-group")) ??
+        groups[0];
+      const activePanelId = activeGroup?.activePanel?.id;
       const level = Number(frame?.getAttribute("aria-level"));
-      if (!frame || !overlay || !Number.isFinite(level)) continue;
+      if (!activePanelId || !Number.isFinite(level)) continue;
+
+      const activeRecord = records.get(activePanelId);
+      const layer = activeRecord
+        ? registry[activeRecord.kind]?.panelPreference?.(activePanelId)?.layer
+        : undefined;
+      const tier = layer === "always-on-top" ? 2 : layer === "above" ? 1 : 0;
+      const zIndex = `calc(var(--dv-overlay-z-index, 999) + ${tier * tierStride + level * 2})`;
 
       // Dockview v7 only layers preserved content from a floating window's
-      // anchor group. Apply the same formula to other groups in that window.
-      overlay.style.zIndex = `calc(var(--dv-overlay-z-index, 999) + ${level * 2 + 1})`;
+      // anchor group. Keep its active-front level within a semantic tier.
+      frame.style.zIndex = zIndex;
+      for (const panel of api.panels.filter((candidate) =>
+        frame.contains(candidate.group.element),
+      )) {
+        const overlay = renderers.get(panel.id)?.element.closest<HTMLElement>(".dv-render-overlay");
+        if (overlay) overlay.style.zIndex = `calc(${zIndex} + 1)`;
+      }
     }
   };
 
@@ -427,6 +456,9 @@ export function createWorkspace(
   const layoutListener = api.onDidLayoutChange(emitLayout);
   const releaseActivePanelListener = diagnostics.trackResource("listener");
   const activePanelListener = api.onDidActivePanelChange(markTerminalGroup);
+  const releaseLayerObserver = diagnostics.trackResource("observer");
+  const layerObserver = new MutationObserver(syncFloatingOverlayLayers);
+  layerObserver.observe(host, { attributeFilter: ["aria-level"], attributes: true, subtree: true });
   const publishPanelDrag = (panelId: string, nativeEvent: PointerEvent) => {
     const cancel = () => {
       const event = new PointerEvent("pointercancel", {
@@ -963,6 +995,11 @@ export function createWorkspace(
       return current === collapsed ? current : toggleCollapse(id);
     },
 
+    refreshPanelPresentation() {
+      for (const renderer of renderers.values()) renderer.refreshPresentation();
+      syncFloatingOverlayLayers();
+    },
+
     setFloatingPanelBounds(boundsById) {
       const layout = api.toJSON();
       let changed = false;
@@ -1069,6 +1106,8 @@ export function createWorkspace(
       releaseActivePanelListener();
       resizeObserver.disconnect();
       releaseResizeObserver();
+      layerObserver.disconnect();
+      releaseLayerObserver();
       for (const renderer of renderers.values()) {
         trackUnmount(renderer);
       }

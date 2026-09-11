@@ -1,6 +1,6 @@
 {
   "name": "darkflow-client",
-  "version": "2.0.0spoob.3",
+  "version": "2.0.0-spoob.4",
   "description": "Darkwind game client powered by Darkflow",
   "main": "desktop/main.cjs",
   "author": {

@@ -44,6 +44,13 @@ export const TERMINAL_FONT_SIZES = [
   8, 9, 10, 11, 12, 13, 14, 15, 16, 18, 20, 22, 24, 26, 28, 32, 36, 40, 48, 56, 64,
 ] as const;
 
+export type PanelLayer = "normal" | "above" | "always-on-top";
+
+export interface PanelPreference {
+  fontSize?: (typeof TERMINAL_FONT_SIZES)[number];
+  layer?: PanelLayer;
+}
+
 export interface CustomTheme {
   key: string;
   label: string;
@@ -72,6 +79,7 @@ export interface Phase2ClientSettings {
   terminalBackgroundOpacity: number;
   terminalFontFamily: string | null;
   terminalFontSize: number | null;
+  panelPreferences: Record<string, PanelPreference>;
   customThemes: Record<string, CustomTheme>;
   autoReconnect: boolean;
   settingsBackupPromptEnabled: boolean;
@@ -96,6 +104,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   terminalBackgroundOpacity: 55,
   terminalFontFamily: null,
   terminalFontSize: null,
+  panelPreferences: {},
   customThemes: {},
   autoReconnect: true,
   settingsBackupPromptEnabled: true,
@@ -181,6 +190,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
       )
         ? settings.terminalFontSize
         : null,
+    panelPreferences: normalizePanelPreferences(settings.panelPreferences),
     customThemes: normalizeCustomThemes(settings.customThemes),
     autoReconnect: settings.autoReconnect !== false,
     settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
@@ -252,6 +262,44 @@ export function normalizeTerminalWidth(value: unknown): number | null {
   return Number.isInteger(value) && (value as number) >= 40 && (value as number) <= 240
     ? (value as number)
     : null;
+}
+
+export function normalizePanelPreferences(value: unknown): Record<string, PanelPreference> {
+  if (!isObject(value)) return {};
+  const preferences: Record<string, PanelPreference> = {};
+  for (const [id, rawPreference] of Object.entries(value)) {
+    if (!isObject(rawPreference)) continue;
+    const fontSize = TERMINAL_FONT_SIZES.includes(
+      rawPreference.fontSize as (typeof TERMINAL_FONT_SIZES)[number],
+    )
+      ? (rawPreference.fontSize as (typeof TERMINAL_FONT_SIZES)[number])
+      : undefined;
+    const layer =
+      rawPreference.layer === "above" || rawPreference.layer === "always-on-top"
+        ? rawPreference.layer
+        : undefined;
+    if (fontSize !== undefined || layer !== undefined) {
+      preferences[id] = {
+        ...(fontSize !== undefined ? { fontSize } : {}),
+        ...(layer ? { layer } : {}),
+      };
+    }
+  }
+  return preferences;
+}
+
+export function setPanelPreference(
+  settings: Phase2ClientSettings,
+  panelId: string,
+  preference: PanelPreference,
+): Phase2ClientSettings {
+  return {
+    ...settings,
+    panelPreferences: normalizePanelPreferences({
+      ...settings.panelPreferences,
+      [panelId]: preference,
+    }),
+  };
 }
 
 function normalizeCustomTheme(value: unknown): CustomTheme | null {
@@ -371,6 +419,27 @@ export function validateClientSettingsDocument(
     !TERMINAL_FONT_SIZES.includes(value.terminalFontSize as (typeof TERMINAL_FONT_SIZES)[number])
   )
     return { success: false, message: "Client setting terminalFontSize is invalid." };
+  if ("panelPreferences" in value) {
+    if (!isObject(value.panelPreferences))
+      return { success: false, message: "Client setting panelPreferences is invalid." };
+    for (const preference of Object.values(value.panelPreferences)) {
+      if (
+        !isObject(preference) ||
+        Object.keys(preference).some((key) => key !== "fontSize" && key !== "layer")
+      )
+        return { success: false, message: "A panel preference is invalid." };
+      if (
+        "fontSize" in preference &&
+        !TERMINAL_FONT_SIZES.includes(preference.fontSize as (typeof TERMINAL_FONT_SIZES)[number])
+      )
+        return { success: false, message: "A panel preference font size is invalid." };
+      if (
+        "layer" in preference &&
+        !["normal", "above", "always-on-top"].includes(String(preference.layer))
+      )
+        return { success: false, message: "A panel preference layer is invalid." };
+    }
+  }
   if (
     "terminalWidthColumns" in value &&
     value.terminalWidthColumns !== null &&

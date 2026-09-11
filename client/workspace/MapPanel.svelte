@@ -183,7 +183,7 @@
     margin-left: auto;
     overflow: hidden;
     color: var(--df-muted);
-    font-size: 0.625rem;
+    font-size: calc(0.625rem * var(--pane-font-scale, 1));
     text-overflow: ellipsis;
     white-space: nowrap;
   }

@@ -1,8 +1,16 @@
 import type { Component } from "svelte";
 import type { Readable } from "svelte/store";
 import type { Session } from "../runtime/session";
+import type { PanelPreference } from "../app/client-settings";
 
 export type PanelState = Record<string, unknown>;
+
+export interface PanelSettingsTarget {
+  button: HTMLButtonElement;
+  floating: boolean;
+  panelId: string;
+  title: string;
+}
 
 export type PanelPlacement =
   | {
@@ -60,6 +68,7 @@ export interface WorkspaceRendererProps {
 
 export interface WorkspaceRendererDefinition {
   canClose?: (panelId: string) => boolean;
+  configure?: (target: PanelSettingsTarget) => void;
   /** Show an accessible collapse control that hides the body but keeps the header. */
   collapsible?: boolean;
   component: Component<WorkspaceRendererProps>;
@@ -67,6 +76,7 @@ export interface WorkspaceRendererDefinition {
   /** Show an accessible float/dock control. */
   floatable?: boolean;
   preserveDomWhenHidden?: boolean;
+  panelPreference?: (panelId: string) => PanelPreference | undefined;
   session?: Session;
   showCloseButton?: (panelId: string) => boolean;
 }
@@ -81,6 +91,7 @@ export interface Workspace {
   removePanel(id: string): Promise<void>;
   requestClosePanel(id: string): Promise<boolean>;
   setPanelCollapsed(id: string, collapsed: boolean): boolean;
+  refreshPanelPresentation(): void;
   setFloatingPanelBounds(
     boundsById: Readonly<
       Record<string, { left: number; top: number; width: number; height: number }>

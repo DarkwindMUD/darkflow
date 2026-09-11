@@ -265,6 +265,7 @@ export function createSessionWorld(
   let room: RoomInfo | null = null;
   let players: readonly RoomPlayer[] = [];
   let roomImage: SessionRoomImageSnapshot | null = null;
+  let lastSentPanels = "";
   let playlist = deepFreeze(initialPlaylist());
   let playlistFresh = false;
   let browseCatalog = "";
@@ -488,6 +489,7 @@ export function createSessionWorld(
       const payload = event.payload as TransportReconnectStatusPayload;
       connected = payload.status === "connected";
       if (!connected) {
+        lastSentPanels = "";
         playlistFresh = false;
         speedwalk.cancel();
         void selector.resetLiveMapModeForConnection();
@@ -567,15 +569,17 @@ export function createSessionWorld(
       if (disposed) return;
       const visible = new Set(ids);
       const mapVisible = visible.has("map") || visible.has("areaMap");
-      gmcp.sendSubscriptions({
-        panels: {
-          map: mapVisible,
-          areaMap: visible.has("areaMap"),
-          room: mapVisible || visible.has("room") || visible.has("roomImage"),
-          roomImage: visible.has("roomImage"),
-          roomPlaylist: visible.has("roomPlaylist"),
-        },
-      });
+      const panels = {
+        map: mapVisible,
+        areaMap: visible.has("areaMap"),
+        room: mapVisible || visible.has("room") || visible.has("roomImage"),
+        roomImage: visible.has("roomImage"),
+        roomPlaylist: visible.has("roomPlaylist"),
+      };
+      // Same set as last time on this connection: nothing to tell the server.
+      const key = JSON.stringify(panels);
+      if (key === lastSentPanels) return;
+      if (gmcp.sendSubscriptions({ panels })) lastSentPanels = key;
     },
     browseArea(catalog) {
       if (disposed || !connected) return false;

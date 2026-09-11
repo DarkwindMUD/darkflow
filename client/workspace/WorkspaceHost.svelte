@@ -1581,22 +1581,22 @@
         next.fishing.open || (next.fishing.end && next.fishing.end !== dismissedFishingEnd),
       );
       if (shouldShowFishing) {
-        const exists = currentWorkspace.hasPanel("fishing");
         fishingPanelOpen = true;
-        currentWorkspace.addOrUpdatePanel({
-          id: "fishing",
-          kind: "fishing",
-          title: "Fishing",
-          state: {},
-          ...(!exists
-            ? {
-                placement: {
-                  kind: "floating" as const,
-                  bounds: { left: 40, top: 40, width: 420, height: 500 },
-                },
-              }
-            : {}),
-        });
+        // Only a missing panel is added. Re-adding an existing one on every
+        // fishing snapshot fired a workspace layout change per bite, hook, and
+        // catch, and each of those resubscribed every panel with the server.
+        if (!currentWorkspace.hasPanel("fishing")) {
+          currentWorkspace.addOrUpdatePanel({
+            id: "fishing",
+            kind: "fishing",
+            title: "Fishing",
+            state: {},
+            placement: {
+              kind: "floating" as const,
+              bounds: { left: 40, top: 40, width: 420, height: 500 },
+            },
+          });
+        }
       } else if (fishingPanelOpen) {
         fishingPanelOpen = false;
         void currentWorkspace.removePanel("fishing");

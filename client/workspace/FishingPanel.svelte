@@ -70,7 +70,8 @@
   let phase = $state<Phase>("idle");
   let castPower = $state(0);
   let bitePercent = $state(100);
-  let fightState = $state<FightState | null>(null);
+  // Replaced wholesale every frame of a fight; raw state skips the deep proxy.
+  let fightState = $state.raw<FightState | null>(null);
   let held = $state(false);
   let castControl = $state<HTMLButtonElement>();
   let gameControl = $state<HTMLButtonElement>();
@@ -474,11 +475,11 @@
         class="fishing-bitebar"
         role="progressbar"
         aria-label="Time to hook"
-        aria-valuenow={bitePercent}
+        aria-valuenow={Math.round(bitePercent)}
         aria-valuemin="0"
         aria-valuemax="100"
       >
-        <div class="fishing-bitebar-fill" style:width={`${bitePercent}%`}></div>
+        <div class="fishing-bitebar-fill" style:transform={`scaleX(${bitePercent / 100})`}></div>
       </div>
       <div class="fishing-bitehelp">
         <div class="fishing-bitehelp-kicker">Bite</div>
@@ -508,16 +509,14 @@
         <div class="fishing-track">
           <div
             class="fishing-fish"
-            style:bottom={`${fightState.fishPos}%`}
-            style:transform="translateY(50%)"
+            style:transform={`translateY(calc(${-fightState.fishPos}cqh + 50%))`}
           >
             <img src={fightArt} alt="" draggable="false" />
           </div>
           <div
             class="fishing-bar"
-            style:bottom={`${fightState.barPos}%`}
             style:height={`${fishing.fight.params.barSize}%`}
-            style:transform="translateY(50%)"
+            style:transform={`translateY(calc(${-fightState.barPos}cqh + 50%))`}
           ></div>
         </div>
         <div class="fishing-meters">
@@ -525,18 +524,21 @@
             class="fishing-meter fishing-progress"
             role="progressbar"
             aria-label="Catch progress"
-            aria-valuenow={fightState.progress}
+            aria-valuenow={Math.round(fightState.progress)}
             aria-valuemin="0"
             aria-valuemax="100"
           >
-            <div class="fishing-meter-fill" style:width={`${fightState.progress}%`}></div>
+            <div
+              class="fishing-meter-fill"
+              style:transform={`scaleX(${fightState.progress / 100})`}
+            ></div>
             <span>Catch</span>
           </div>
           <div
             class="fishing-meter fishing-tension"
             role="progressbar"
             aria-label="Line tension"
-            aria-valuenow={fightState.tension}
+            aria-valuenow={Math.round(fightState.tension)}
             aria-valuemin="0"
             aria-valuemax="100"
           >
@@ -544,7 +546,7 @@
               class:warn={fightState.tension > 60}
               class:hot={fightState.tension > 85}
               class="fishing-meter-fill"
-              style:width={`${fightState.tension}%`}
+              style:transform={`scaleX(${fightState.tension / 100})`}
             ></div>
             <span>Tension</span>
           </div>
@@ -604,14 +606,14 @@
           class="fishing-power"
           role="meter"
           aria-label="Cast power"
-          aria-valuenow={castPower}
+          aria-valuenow={Math.round(castPower)}
           aria-valuemin="0"
           aria-valuemax="100"
         >
           <div
             class:hot={castPower > 70}
             class="fishing-power-fill"
-            style:height={`${castPower}%`}
+            style:transform={`scaleY(${castPower / 100})`}
           ></div>
         </div>
         <button

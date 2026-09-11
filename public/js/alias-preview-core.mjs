@@ -1,4 +1,4 @@
-import { matchAliasDefinitions, resolveDefinitionTemplate } from './definition-runtime-core.mjs';
+import { evaluateTriggerDefinitions, matchAliasDefinitions, resolveDefinitionTemplate } from './definition-runtime-core.mjs';
 import { evaluateAutomationCondition, parseAutomationScript } from './automation-script-core.mjs';
 
 const LOOP_LIMIT = 10;
@@ -15,9 +15,11 @@ function findTarget(step, targets, field) {
 function previewStep(step, context, catalogs, rows) {
   if (step.type === 'wait') { rows.push({ label: 'Wait', text: String(step.seconds) + 's', warnings: Number.isFinite(step.seconds) && step.seconds >= 0 ? [] : ['Wait must be a non-negative number.'] }); return; }
   if (step.type === 'script') { previewScript(step.script, context, catalogs, rows); return; }
-  if (step.type === 'play_sound') { rows.push({ label: 'Play sound', text: [step.category, step.sound].filter(Boolean).join(' / '), warnings: [] }); return; }
+  if (step.type === 'play_sound') { rows.push({ label: 'Play sound', text: [step.category, step.sound].filter(Boolean).join(' / '), warnings: catalogs.sounds.some((sound) => sound.category === step.category && sound.sound === step.sound) ? [] : ['Sound not found.'] }); return; }
   if (step.type === 'run_alias') {
-    rows.push({ label: 'Run alias', ...resolve(step.template, context) });
+    const value = resolve(step.template, context);
+    const match = matchAliasDefinitions(value.text, catalogs.aliases);
+    rows.push({ label: 'Run alias', text: match ? `${value.text} -> ${match.alias.trigger}` : value.text, warnings: [...value.warnings, ...(match ? [] : ['No enabled alias matches this command.'])] });
     return;
   }
   const targetKind = step.type === 'set_alias_enabled' ? ['aliases', 'trigger'] : step.type === 'set_trigger_enabled' ? ['triggers', 'pattern'] : step.type === 'set_timer_enabled' || step.type === 'control_timer' ? ['timers', 'name'] : step.type === 'call_function' ? ['functions', 'name'] : null;
@@ -26,6 +28,7 @@ function previewStep(step, context, catalogs, rows) {
     const target = findTarget(step, catalogs[kind], field);
     const argument = step.template ? resolve(step.template, context) : null;
     rows.push({ label: step.type.replaceAll('_', ' '), text: `${step.mode ? step.mode + ' ' : ''}${target ? target[field] : step.target || '(unresolved target)'}${argument?.text ? ' ' + argument.text : ''}`, warnings: [...(target ? [] : ['Target not found.']), ...(argument?.warnings ?? [])] });
+    if (target && 'enabled' in target && (step.mode === 'enable' || step.mode === 'disable' || step.mode === 'toggle')) target.enabled = step.mode === 'toggle' ? !target.enabled : step.mode === 'enable';
     return;
   }
   const value = resolve(step.template, context);
@@ -69,11 +72,29 @@ function previewScript(script, context, catalogs, rows) {
 }
 
 /** Pure display-only preview. It deliberately receives data, never session or executor methods. */
-export function previewAliasInput({ aliases = [], functions = [], triggers = [], timers = [], variables = {}, sample = '' }) {
-  const match = matchAliasDefinitions(sample, structuredClone(aliases));
+export function previewAliasInput({ aliases = [], functions = [], triggers = [], timers = [], sounds = [], variables = {}, sample = '' }) {
+  const catalogs = structuredClone({ aliases, functions, triggers, timers, sounds });
+  const match = matchAliasDefinitions(sample, catalogs.aliases);
   if (!match) return { match: null, rows: [], warnings: sample.trim() ? ['No enabled alias matches this input.'] : [] };
   const context = { args: match.args, remainder: match.remainder, variables: { ...variables } };
   const rows = [];
-  for (const step of match.alias.steps || []) previewStep(step, context, { aliases, functions, triggers, timers }, rows);
+  for (const step of match.alias.steps || []) previewStep(step, context, catalogs, rows);
   return { match: match.alias, rows, warnings: [] };
+}
+
+/** Pure display-only trigger preview. It clones all mutable preview state before evaluation. */
+export function previewTriggerOutput({ triggers = [], aliases = [], functions = [], timers = [], sounds = [], variables = {}, sample = '' }) {
+  const catalogs = structuredClone({ aliases, triggers, functions, timers, sounds });
+  const result = evaluateTriggerDefinitions(sample, catalogs.triggers);
+  if (!result.matches.length) return { matches: [], gag: false, rows: [], warnings: sample.trim() ? ['No enabled trigger matches this output.'] : [] };
+  const context = { args: [], remainder: '', variables: { ...variables } };
+  const rows = [];
+  for (const match of result.matches) {
+    context.args = match.captures;
+    context.remainder = match.fullMatch;
+    rows.push({ label: 'Matches', text: match.trigger.pattern, warnings: [] });
+    rows.push({ label: 'Captures', text: match.captures.length ? match.captures.map((value, index) => `%${index + 1}=${value}`).join(', ') : 'No captures', warnings: [] });
+    for (const step of match.trigger.steps || []) previewStep(step, context, catalogs, rows);
+  }
+  return { matches: result.matches.map(({ trigger }) => trigger), gag: result.gag, rows, warnings: [] };
 }

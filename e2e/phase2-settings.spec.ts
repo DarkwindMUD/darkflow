@@ -1647,8 +1647,11 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByRole("button", { name: "Save triggers" }).click();
   await triggers.getByRole("button", { name: "New trigger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
   await editor.getByLabel("Pattern").fill("temporary trigger");
-  await editor.getByRole("button", { name: "Add automation step" }).click();
   await editor.getByLabel("Template").fill("temporary");
   await editor.getByRole("button", { name: "Save triggers" }).click();
   await triggers.getByRole("button", { name: "Edit temporary trigger" }).click();
@@ -1735,7 +1738,7 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   await expect(filters.getByLabel("Combat (1)")).toBeChecked();
   await expect(filters.getByLabel("Utility (1)")).toBeChecked();
   await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all" }).click();
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
   await expect(aliases.getByText("No aliases match.")).toBeVisible();
   await filters.getByLabel("Travel (2)").check();
 
@@ -1830,6 +1833,185 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   editor = aliases.getByRole("region", { name: "Edit aliases" });
   await expect(editor.getByRole("button", { name: "Test input", exact: true })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+});
+
+test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-first",
+        enabled: true,
+        pattern: "danger *",
+        description: "First warning",
+        group: "Travel",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "mark %1" }],
+      },
+      {
+        id: "trigger-second",
+        enabled: true,
+        pattern: "danger %1",
+        description: "Second warning",
+        group: "Combat",
+        isRegex: false,
+        ignoreCase: false,
+        gag: true,
+        steps: [{ type: "send_command", template: "flee %1" }],
+      },
+      {
+        id: "trigger-run",
+        enabled: true,
+        pattern: "legacy",
+        description: "Legacy run",
+        group: "combat",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "run_alias", template: "missing legacy arguments" }],
+      },
+      {
+        id: "trigger-ungrouped",
+        enabled: true,
+        pattern: "plain",
+        description: "Plain warning",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "plain" }],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.evaluate(() => {
+    const target = window as unknown as {
+      __darkflowPhase1Runtime: { session: { audio: { playLocal(...args: unknown[]): boolean } } };
+      __triggerSoundCalls: unknown[][];
+    };
+    target.__triggerSoundCalls = [];
+    target.__darkflowPhase1Runtime.session.audio.playLocal = (...args) => {
+      target.__triggerSoundCalls.push(args);
+      return true;
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  const filters = triggers.getByLabel("Trigger groups");
+  await expect(filters.getByLabel("Combat (2)")).toBeChecked();
+  await expect(filters.getByLabel("Travel (1)")).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await expect(triggers.getByText("No triggers match.")).toBeVisible();
+  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await triggers.getByLabel("Search Triggers").fill("First warning");
+  const first = triggers.getByRole("button", { name: "Edit danger *" });
+  await expect(first.locator("strong")).toHaveText("First warning");
+  await expect(first).toContainText("danger *");
+  await triggers.getByLabel("Search Triggers").fill("");
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  let editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Regular expression")).not.toBeChecked();
+  await expect(editor.getByLabel("Ignore case")).not.toBeChecked();
+  await expect(editor.getByLabel("Gag matching output")).not.toBeChecked();
+  await expect(
+    editor.getByText("Name is recommended so this trigger is easy to find."),
+  ).toBeVisible();
+  await expect(editor.getByText("Pattern needs content.")).toBeVisible();
+  await editor.getByLabel("Regular expression").check();
+  await editor.getByLabel("Pattern").fill("[");
+  await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
+  await editor.getByLabel("Pattern").fill("draft");
+  await first.click();
+  await expect(
+    triggers.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+
+  await triggers.getByRole("button", { name: "Edit legacy" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  const legacyStep = editor.getByRole("region", { name: "Automation step 1" });
+  await expect(legacyStep.getByRole("combobox").nth(1)).toContainText(
+    "Unresolved: missing legacy arguments",
+  );
+  await triggers.getByRole("button", { name: "Edit danger *" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Add step type").selectOption("run_alias");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const runStep = editor.getByRole("region", { name: "Automation step 2" });
+  await runStep.getByRole("combobox").nth(1).selectOption("alias-local");
+  await runStep.getByLabel("Arguments").fill("north");
+  await expect(runStep.getByLabel("Arguments")).toHaveValue("north");
+  await editor.getByLabel("Add step type").selectOption("play_sound");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const soundStep = editor.getByRole("region", { name: "Automation step 3" });
+  await expect(soundStep.getByLabel("Category")).toBeVisible();
+  await expect(soundStep.getByLabel("Volume (100%)")).toHaveAttribute("type", "range");
+  await soundStep.getByLabel("Category").selectOption("alert");
+  await expect(soundStep.getByRole("combobox").nth(2)).not.toHaveValue("");
+  await soundStep.getByLabel("Volume (100%)").fill("0.5");
+  await soundStep.getByRole("button", { name: "Test Sound" }).click();
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __triggerSoundCalls: unknown[][] }).__triggerSoundCalls,
+    ),
+  ).toHaveLength(1);
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  await triggers.getByRole("button", { name: "Edit danger *" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 2" }).getByLabel("Arguments"),
+  ).toHaveValue("north");
+  const savedSound = editor.getByRole("region", { name: "Automation step 3" });
+  await expect(savedSound.getByLabel("Category")).toHaveValue("alert");
+  await expect(savedSound.getByRole("combobox").nth(2)).not.toHaveValue("");
+  await expect(savedSound.getByLabel("Volume (50%)")).toHaveValue("0.5");
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Template")
+    .fill("unsaved %1");
+  const commandsBefore = endpoint.commands.length;
+  await editor.getByLabel("Test output", { exact: true }).fill("danger orc");
+  await expect(editor.getByText("Matches: danger *, danger %1")).toBeVisible();
+  await expect(editor.getByText("Captures: %1=orc")).toHaveCount(2);
+  await expect(editor.getByText("Gag: yes")).toBeVisible();
+  await expect(editor.getByText("Send: unsaved orc")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBefore);
+  expect(
+    await page.evaluate(
+      () => (window as unknown as { __triggerSoundCalls: unknown[][] }).__triggerSoundCalls,
+    ),
+  ).toHaveLength(1);
+  await editor.getByRole("button", { name: "Test output", exact: true }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", triggerPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByRole("button", { name: "Test output", exact: true })).toHaveAttribute(
     "aria-expanded",
     "false",
   );

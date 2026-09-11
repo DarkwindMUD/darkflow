@@ -17,9 +17,11 @@
   import type { Session } from "../runtime/session.ts";
   import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
   // @ts-expect-error The preview adapter is intentionally shared plain JavaScript.
-  import { previewAliasInput } from "../../public/js/alias-preview-core.mjs";
+  import { previewAliasInput, previewTriggerOutput } from "../../public/js/alias-preview-core.mjs";
   // @ts-expect-error Shared legacy parser provides the persisted script diagnostics.
   import { getAutomationScriptDiagnostics } from "../../public/js/automation-script-core.mjs";
+  // @ts-expect-error Shared catalog validation remains in the legacy module.
+  import { getSoundCatalog, isKnownSound } from "../../public/js/sound-manager.js";
 
   type Definition =
     | AliasDefinition
@@ -76,12 +78,14 @@
   let previousGroupKeys: string[] = [];
   let original = $state<string | null>(null);
   let previewInput = $state("");
+  const soundCatalog = getSoundCatalog();
   let previewCollapsed = $state(
     (() => {
       try {
         return (
-          JSON.parse(localStorage.getItem("darkwind-settings-automation-ui") ?? "{}")
-            .aliasPreviewCollapsed === true
+          JSON.parse(localStorage.getItem("darkwind-settings-automation-ui") ?? "{}")[
+            kind === "triggers" ? "triggerPreviewCollapsed" : "aliasPreviewCollapsed"
+          ] === true
         );
       } catch {
         return false;
@@ -108,7 +112,7 @@
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
   const groups = $derived.by(() => {
     const seen: Array<{ key: string; label: string; count: number }> = [];
-    if (kind !== "aliases") return [];
+    if (kind !== "aliases" && kind !== "triggers") return [];
     for (const { definition } of entries) {
       const label = "group" in definition ? definition.group.trim() : "";
       const key = label.toLowerCase();
@@ -129,7 +133,9 @@
           .includes(needle);
       return (
         matchesSearch &&
-        (kind !== "aliases" || selectedGroups === null || selectedGroups.includes(group))
+        ((kind !== "aliases" && kind !== "triggers") ||
+          selectedGroups === null ||
+          selectedGroups.includes(group))
       );
     }),
   );
@@ -143,8 +149,12 @@
     timers: entriesFor("timers", "name"),
     functions: entriesFor("functions", "name"),
   });
-  const aliasWarnings = $derived(kind !== "aliases" || !draft ? [] : warningsForAlias(draft));
-  const preview = $derived(kind !== "aliases" || !draft ? null : previewFor(draft));
+  const automationWarnings = $derived(
+    (kind !== "aliases" && kind !== "triggers") || !draft ? [] : warningsForAutomation(draft),
+  );
+  const preview = $derived(
+    (kind !== "aliases" && kind !== "triggers") || !draft ? null : previewFor(draft),
+  );
 
   $effect(() =>
     session.configuration.subscribe((next) => {
@@ -156,7 +166,7 @@
     }),
   );
   $effect(() => {
-    if (kind === "aliases") {
+    if (kind === "aliases" || kind === "triggers") {
       const keys = groups.map((group) => group.key);
       const currentGroups = untrack(() => selectedGroups);
       if (currentGroups === null) selectedGroups = keys;
@@ -198,7 +208,8 @@
       durationMs: 1000,
       recurring: false,
       autoStart: false,
-      steps: kind === "aliases" ? [{ type: "send_command", template: "" }] : [],
+      steps:
+        kind === "aliases" || kind === "triggers" ? [{ type: "send_command", template: "" }] : [],
     };
   }
 
@@ -602,33 +613,50 @@
 
   function previewFor(value: Draft) {
     const aliases = snapshot.effectiveConfiguration.aliases.map(({ definition }) =>
-      definition.id === value.id ? toDefinition(value) : structuredClone(definition),
+      kind === "aliases" && definition.id === value.id
+        ? toDefinition(value)
+        : structuredClone(definition),
     );
-    return previewAliasInput({
-      aliases: aliases.some((definition) => definition.id === value.id)
-        ? aliases
-        : [...aliases, toDefinition(value)],
-      triggers: snapshot.effectiveConfiguration.triggers.map(({ definition }) =>
-        structuredClone(definition),
-      ),
+    const triggers = snapshot.effectiveConfiguration.triggers.map(({ definition }) =>
+      kind === "triggers" && definition.id === value.id
+        ? toDefinition(value)
+        : structuredClone(definition),
+    );
+    const catalogs = {
+      aliases:
+        kind === "aliases" && aliases.some((definition) => definition.id === value.id)
+          ? aliases
+          : kind === "aliases"
+            ? [...aliases, toDefinition(value)]
+            : aliases,
+      triggers:
+        kind === "triggers" && triggers.some((definition) => definition.id === value.id)
+          ? triggers
+          : kind === "triggers"
+            ? [...triggers, toDefinition(value)]
+            : triggers,
       timers: snapshot.effectiveConfiguration.timers.map(({ definition }) =>
         structuredClone(definition),
       ),
       functions: snapshot.effectiveConfiguration.functions.map(({ definition }) =>
         structuredClone(definition),
       ),
+      sounds: soundCatalog,
       variables: session.terminal.automation.getAutomationVariables(),
       sample: previewInput,
-    });
+    };
+    return kind === "aliases" ? previewAliasInput(catalogs) : previewTriggerOutput(catalogs);
   }
 
-  function warningsForAlias(value: Draft): string[] {
+  function warningsForAutomation(value: Draft): string[] {
     const warnings: string[] = [];
     if (!value.description.trim())
-      warnings.push("Name is recommended so this alias is easy to find.");
+      warnings.push(`Name is recommended so this ${noun} is easy to find.`);
+    const pattern = kind === "triggers" ? value.pattern : value.trigger;
+    if (!pattern.trim()) warnings.push("Pattern needs content.");
     if (value.isRegex)
       try {
-        new RegExp(value.trigger, value.ignoreCase ? "i" : "");
+        new RegExp(pattern, value.ignoreCase ? "i" : "");
       } catch (error) {
         warnings.push(error instanceof Error ? error.message : "Invalid regular expression.");
       }
@@ -648,6 +676,7 @@
         step.type === "play_sound" &&
         (!step.category.trim() ||
           !step.sound.trim() ||
+          !isKnownSound(step.category, step.sound) ||
           !Number.isFinite(step.volume) ||
           step.volume < 0 ||
           step.volume > 1)
@@ -706,7 +735,11 @@
     })();
     localStorage.setItem(
       "darkwind-settings-automation-ui",
-      JSON.stringify({ ...current, aliasPreviewCollapsed: previewCollapsed }),
+      JSON.stringify({
+        ...current,
+        [kind === "triggers" ? "triggerPreviewCollapsed" : "aliasPreviewCollapsed"]:
+          previewCollapsed,
+      }),
     );
   }
 </script>
@@ -791,8 +824,11 @@
       />
       <button type="button" onclick={add}>New {noun}</button>
     </div>
-    {#if kind === "aliases" && groups.length}
-      <div class="group-filters" aria-label="Alias groups">
+    {#if (kind === "aliases" || kind === "triggers") && groups.length}
+      <div
+        class="group-filters"
+        aria-label={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} groups`}
+      >
         {#if groups.length >= 3}
           <div class="group-filter-actions">
             <button
@@ -835,19 +871,29 @@
                 onkeydown={(event) => moveListFocus(event, index)}
               >
                 <strong
-                  >{kind === "aliases" && "description" in entry.definition
+                  >{(kind === "aliases" || kind === "triggers") && "description" in entry.definition
                     ? entry.definition.description.trim() || labelFor(entry.definition)
                     : labelFor(entry.definition)}</strong
                 >
-                {#if kind === "aliases"}
+                {#if kind === "aliases" || kind === "triggers"}
                   <small
-                    >{"trigger" in entry.definition ? entry.definition.trigger : ""}
+                    >{"trigger" in entry.definition
+                      ? entry.definition.trigger
+                      : "pattern" in entry.definition
+                        ? entry.definition.pattern
+                        : ""}
                     {"isRegex" in entry.definition && entry.definition.isRegex
                       ? "(regex)"
+                      : ""}{"gag" in entry.definition && entry.definition.gag
+                      ? " (gag)"
                       : ""}</small
                   >
                   {#if "group" in entry.definition && entry.definition.group}<small
                       >{entry.definition.group}</small
+                    >{/if}
+                  {#if kind === "triggers" && "steps" in entry.definition}<small
+                      >{entry.definition.steps[0]?.type?.replaceAll("_", " ") ??
+                        "No actions"}</small
                     >{/if}
                 {/if}
                 <span>{sourceLabel(entry.source)}</span>
@@ -931,7 +977,7 @@
                 >
               {/if}
               <label
-                >{kind === "aliases" ? "Name" : "Description"}
+                >{kind === "aliases" || kind === "triggers" ? "Name" : "Description"}
                 <input bind:value={draft.description} /></label
               >
               <label>Group <input bind:value={draft.group} /></label>
@@ -943,26 +989,46 @@
                     ><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label
                   >{/if}
               {/if}
-              {#if kind === "aliases" && aliasWarnings.length}
+              {#if automationWarnings.length}
                 <ul class="warnings" aria-live="polite">
-                  {#each aliasWarnings as warning (warning)}<li>{warning}</li>{/each}
+                  {#each automationWarnings as warning (warning)}<li>{warning}</li>{/each}
                 </ul>
               {/if}
-              <AutomationStepsEditor bind:steps={draft.steps} {...targetCatalogs} />
-              {#if kind === "aliases"}
+              <AutomationStepsEditor
+                bind:steps={draft.steps}
+                {...targetCatalogs}
+                sounds={soundCatalog}
+                triggerMode={kind === "triggers"}
+                testSound={(category, sound, volume) =>
+                  session.audio.playLocal(category, sound, volume)}
+              />
+              {#if kind === "aliases" || kind === "triggers"}
                 <section class="alias-preview">
                   <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
-                    >Test input</button
+                    >Test {kind === "aliases" ? "input" : "output"}</button
                   >
                   {#if !previewCollapsed}
                     <label
-                      >Test input <input
-                        bind:value={previewInput}
-                        placeholder="Example: gi sword"
-                      /></label
+                      >Test {kind === "aliases" ? "input" : "output"}
+                      {#if kind === "triggers"}<textarea
+                          bind:value={previewInput}
+                          placeholder="Example: danger"></textarea>{:else}<input
+                          bind:value={previewInput}
+                          placeholder="Example: gi sword"
+                        />{/if}</label
                     >
                     {#if previewInput.trim()}
-                      {#if preview?.match}<p>Matches: {preview.match.trigger}</p>{/if}
+                      {#if kind === "aliases" && preview?.match}<p>
+                          Matches: {preview.match.trigger}
+                        </p>{/if}
+                      {#if kind === "triggers" && preview?.matches?.length}<p>
+                          Matches: {preview.matches
+                            .map((match: { pattern: string }) => match.pattern)
+                            .join(", ")}
+                        </p>{/if}
+                      {#if kind === "triggers" && preview?.matches?.length}<p>
+                          Gag: {preview.gag ? "yes" : "no"}
+                        </p>{/if}
                       {#each preview?.rows ?? [] as row, index (`${row.label}-${index}`)}<p>
                           {row.label}: {row.text}{#if row.warnings.length}
                             - {row.warnings.join(" ")}{/if}

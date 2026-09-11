@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { previewAliasInput } from '../public/js/alias-preview-core.mjs';
+import { previewAliasInput, previewTriggerOutput } from '../public/js/alias-preview-core.mjs';
 
 test('preview resolves the winning unsent alias without mutating inputs', () => {
   const aliases = [{ id: 'a', enabled: true, trigger: 'go', isRegex: false, steps: [{ type: 'set_variable', name: 'place', template: '%1' }, { type: 'send_command', template: 'walk $place' }] }];
@@ -28,8 +28,36 @@ test('preview evaluates script conditions with a bounded loop and no input mutat
 });
 
 test('preview resolves run aliases and honors script break diagnostics', () => {
-  const result = previewAliasInput({ aliases: [{ enabled: true, trigger: 'x', isRegex: false, steps: [{ type: 'run_alias', template: 'heal %1' }, { type: 'script', script: 'while $again == yes\n  send once\n  break\nend\nif unsupported\n  send never\nend' }] }], variables: { again: 'yes' }, sample: 'x me' });
-  assert.equal(result.rows[0].text, 'heal me');
+  const result = previewAliasInput({ aliases: [{ enabled: true, trigger: 'x', isRegex: false, steps: [{ type: 'run_alias', template: 'heal %1' }, { type: 'script', script: 'while $again == yes\n  send once\n  break\nend\nif unsupported\n  send never\nend' }] }, { enabled: true, trigger: 'heal', isRegex: false, steps: [] }], variables: { again: 'yes' }, sample: 'x me' });
+  assert.equal(result.rows[0].text, 'heal me -> heal');
+  assert.deepEqual(result.rows[0].warnings, []);
   assert.equal(result.rows.filter((row) => row.text === 'once').length, 1);
   assert.match(result.rows.flatMap((row) => row.warnings).join(' '), /Unsupported condition/);
+});
+
+test('trigger preview overlays all matches without mutating definitions or variables', () => {
+  const triggers = [
+    { id: 'first', enabled: true, pattern: 'danger *', isRegex: false, gag: false, steps: [{ type: 'set_variable', name: 'target', template: '%1' }] },
+    { id: 'second', enabled: true, pattern: 'danger *', isRegex: false, gag: true, steps: [{ type: 'send_command', template: 'flee $target' }, { type: 'play_sound', category: 'alert', sound: 'warning', volume: 0.5 }] },
+  ];
+  const variables = { hp: '10' };
+  const result = previewTriggerOutput({ triggers, variables, sounds: [{ category: 'alert', sound: 'warning' }], sample: 'danger orc' });
+  assert.equal(result.matches.length, 2);
+  assert.equal(result.gag, true);
+  assert.deepEqual(result.rows.map((row) => row.text), ['danger *', '%1=orc', 'orc', 'danger *', '%1=orc', 'flee orc', 'alert / warning']);
+  assert.deepEqual(variables, { hp: '10' });
+  assert.equal(triggers[0].enabled, true);
+});
+
+test('alias preview target simulations do not mutate input catalogs', () => {
+  const aliases = [{ id: 'a', enabled: true, trigger: 'go', isRegex: false, steps: [{ type: 'set_trigger_enabled', mode: 'disable', target: 'danger', targetId: 't' }] }];
+  const triggers = [{ id: 't', enabled: true, pattern: 'danger', isRegex: false }];
+  previewAliasInput({ aliases, triggers, sample: 'go' });
+  assert.equal(triggers[0].enabled, true);
+});
+
+test('trigger preview reports no match and unknown sound without effects', () => {
+  assert.deepEqual(previewTriggerOutput({ sample: 'none' }).warnings, ['No enabled trigger matches this output.']);
+  const result = previewTriggerOutput({ triggers: [{ enabled: true, pattern: 'x', isRegex: false, steps: [{ type: 'play_sound', category: 'missing', sound: 'sound', volume: 1 }] }], sample: 'x' });
+  assert.match(result.rows[2].warnings.join(' '), /Sound not found/);
 });

@@ -2,18 +2,25 @@
   import type { AutomationStep } from "../model/configuration.ts";
 
   type Target = { id: string; label: string };
+  type Sound = { category: string; sound: string; label: string };
   let {
     steps = $bindable(),
     aliases = [],
     triggers = [],
     timers = [],
     functions = [],
+    sounds = [],
+    triggerMode = false,
+    testSound = () => false,
   }: {
     steps: AutomationStep[];
     aliases?: Target[];
     triggers?: Target[];
     timers?: Target[];
     functions?: Target[];
+    sounds?: Sound[];
+    triggerMode?: boolean;
+    testSound?: (category: string, sound: string, volume: number) => boolean;
   } = $props();
   let addType = $state<AutomationStep["type"]>("send_command");
 
@@ -47,7 +54,12 @@
       case "control_timer":
         return { type, mode: "start", target: "", targetId: "" };
       case "play_sound":
-        return { type, category: "", sound: "", volume: 1 };
+        return {
+          type,
+          category: sounds[0]?.category ?? "",
+          sound: sounds[0]?.sound ?? "",
+          volume: 1,
+        };
       case "call_function":
         return { type, target: "", targetId: "", template: "" };
       default:
@@ -87,6 +99,42 @@
     step.targetId = id;
     step.target = target?.label ?? "";
   }
+
+  function soundsFor(category: string) {
+    return sounds.filter((item) => item.category === category);
+  }
+
+  function categoryLabel(category: string): string {
+    return soundsFor(category)[0]?.label.split(" / ")[0] ?? category;
+  }
+
+  function updateSoundCategory(
+    step: Extract<AutomationStep, { type: "play_sound" }>,
+    category: string,
+  ): void {
+    step.category = category;
+    step.sound = soundsFor(category).some((item) => item.sound === step.sound)
+      ? step.sound
+      : (soundsFor(category)[0]?.sound ?? "");
+  }
+
+  function splitAliasTemplate(template: string): { id: string; arguments: string } {
+    const match = aliases
+      .filter((alias) => template === alias.label || template.startsWith(`${alias.label} `))
+      .sort((left, right) => right.label.length - left.label.length)[0];
+    return match
+      ? { id: match.id, arguments: template.slice(match.label.length).trimStart() }
+      : { id: "", arguments: template };
+  }
+
+  function updateAliasTemplate(
+    step: Extract<AutomationStep, { type: "run_alias" }>,
+    id: string,
+    arguments_: string,
+  ): void {
+    const alias = aliases.find((item) => item.id === id);
+    step.template = alias ? [alias.label, arguments_].filter(Boolean).join(" ") : arguments_;
+  }
 </script>
 
 <fieldset>
@@ -106,7 +154,31 @@
         </select>
       </label>
 
-      {#if step.type === "send_command" || step.type === "show_message" || step.type === "run_alias"}
+      {#if step.type === "send_command" || step.type === "show_message"}
+        <label>Template <textarea bind:value={step.template} required></textarea></label>
+      {:else if step.type === "run_alias" && triggerMode}
+        {@const parsedAlias = splitAliasTemplate(step.template)}
+        <label
+          >Alias <select
+            value={parsedAlias.id}
+            onchange={(event) =>
+              updateAliasTemplate(step, event.currentTarget.value, parsedAlias.arguments)}
+          >
+            {#if !parsedAlias.id && step.template}<option value=""
+                >Unresolved: {step.template}</option
+              >{:else}<option value="">Select alias</option>{/if}
+            {#each aliases as alias (alias.id)}<option value={alias.id}>{alias.label}</option
+              >{/each}
+          </select></label
+        >
+        <label
+          >Arguments <input
+            value={parsedAlias.arguments}
+            oninput={(event) =>
+              updateAliasTemplate(step, parsedAlias.id, event.currentTarget.value)}
+          /></label
+        >
+      {:else if step.type === "run_alias"}
         <label>Template <textarea bind:value={step.template} required></textarea></label>
       {:else if step.type === "set_variable"}
         <label>Variable name <input bind:value={step.name} required /></label>
@@ -170,18 +242,45 @@
           </select></label
         >
       {:else if step.type === "play_sound"}
-        <label>Category <input bind:value={step.category} required /></label>
-        <label>Sound <input bind:value={step.sound} required /></label>
         <label
-          >Volume <input
-            type="number"
+          >Category <select
+            value={step.category}
+            onchange={(event) => updateSoundCategory(step, event.currentTarget.value)}
+            required
+          >
+            {#if step.category && !soundsFor(step.category).length}<option value={step.category}
+                >Unresolved: {step.category}</option
+              >{/if}
+            {#each Array.from(new Set(sounds.map((item) => item.category))) as category (category)}<option
+                value={category}>{categoryLabel(category)}</option
+              >{/each}
+          </select></label
+        >
+        <label
+          >Sound <select bind:value={step.sound} required>
+            {#if step.sound && !soundsFor(step.category).some((item) => item.sound === step.sound)}<option
+                value={step.sound}>Unresolved: {step.sound}</option
+              >{/if}
+            {#each soundsFor(step.category) as sound (sound.sound)}<option value={sound.sound}
+                >{sound.label}</option
+              >{/each}
+          </select></label
+        >
+        <label
+          >Volume ({Math.round(step.volume * 100)}%)
+          <input
+            type="range"
             min="0"
             max="1"
-            step="any"
+            step="0.01"
             bind:value={step.volume}
             required
           /></label
         >
+        {#if triggerMode}<button
+            type="button"
+            onclick={() => testSound(step.category, step.sound, step.volume)}>Test Sound</button
+          >{/if}
       {:else if step.type === "call_function"}
         <label
           >Target <select
@@ -225,6 +324,10 @@
       Use %0 for the remaining input, %1-%9 for captures, $name for variables, and
       &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
     </p>
+    {#if triggerMode}<p>
+        Simple patterns use * or %1-%9 captures. Regular expressions use their captures; %0 is the
+        full matching output. Variables and script actions use the same template syntax.
+      </p>{/if}
   </details>
 </fieldset>
 

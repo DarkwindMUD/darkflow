@@ -1170,6 +1170,11 @@
               >
             </div>
           </div>
+          <SettingsCheckbox
+            bind:checked={settings.terminalAvatarMeter}
+            label="Show the Wrathful Avatar meter under the terminal"
+            help="Show the Wrathful Avatar charge meter between the terminal output and the command line."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Scrollback memory</span>

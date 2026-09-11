@@ -63,9 +63,12 @@ helpers and `BuffBarPanel.svelte` the panel; WorkspaceHost lists it with the
 other vital bars.
 ## Wrathful Avatar bar
 
-The legacy client showed the Wrathful Avatar charge as a meter under the
-terminal. This client shows it as a floating bar in the same family as the
-others, opened from the Panels menu as "Wrathful Avatar". It reads the
+The Wrathful Avatar charge also shows as a meter between the terminal output
+and the command line, as it did in the legacy client; the Terminal section of
+Settings has "Show the Wrathful Avatar meter under the terminal" to turn that
+off (client setting `terminalAvatarMeter`, on by default). The floating bar is
+the same reading in the family of the other bars, opened from the Panels menu
+as "Wrathful Avatar". It reads the
 avatar fields of `Char.Vitals`: while charging, the fill is the charge
 predicted from the last sync (`avatar_charge` plus
 `avatar_charge_rate_pct` per two seconds since `receivedAt`) over

@@ -95,6 +95,8 @@ export interface Phase2ClientSettings {
   focusCommandInputShortcutEnabled: boolean;
   keyMapperEnabled: boolean;
   tabObservabilityEnabled: boolean;
+  /** Show the Wrathful Avatar charge meter between the terminal output and the command line. */
+  terminalAvatarMeter: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -130,6 +132,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   focusCommandInputShortcutEnabled: true,
   keyMapperEnabled: false,
   tabObservabilityEnabled: false,
+  terminalAvatarMeter: true,
 };
 
 export type ClientSettingsResult =
@@ -226,6 +229,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     focusCommandInputShortcutEnabled: settings.focusCommandInputShortcutEnabled !== false,
     keyMapperEnabled: settings.keyMapperEnabled === true,
     tabObservabilityEnabled: settings.tabObservabilityEnabled === true,
+    terminalAvatarMeter: settings.terminalAvatarMeter !== false,
   };
 }
 
@@ -413,6 +417,7 @@ export function validateClientSettingsDocument(
     "focusCommandInputShortcutEnabled",
     "keyMapperEnabled",
     "tabObservabilityEnabled",
+    "terminalAvatarMeter",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")

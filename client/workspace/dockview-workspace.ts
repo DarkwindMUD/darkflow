@@ -331,9 +331,22 @@ export function createWorkspace(
     const offsetX = frameBounds.right - event.clientX;
     const offsetY = frameBounds.bottom - event.clientY;
     const siblingBounds = snapshotFloatingBounds(frame).concat(snapshotDockedBounds());
+    let primed = false;
     const move = (moveEvent: PointerEvent) => {
       if (moveEvent.pointerId !== event.pointerId || !moveEvent.isTrusted) return;
       moveEvent.stopImmediatePropagation();
+      if (!primed) {
+        primed = true;
+        window.dispatchEvent(
+          new PointerEvent("pointermove", {
+            buttons: moveEvent.buttons,
+            clientX: frameBounds.right,
+            clientY: frameBounds.bottom,
+            pointerId: moveEvent.pointerId,
+            pointerType: moveEvent.pointerType,
+          }),
+        );
+      }
       const snapped = attractFloatingResize(
         frameBounds.left,
         frameBounds.top,

@@ -297,6 +297,56 @@ test("calculates floating bottom-right resize attraction", () => {
   });
 });
 
+test("resize attraction changes size without moving the floating panel", async ({ page }) => {
+  const target = lifecyclePanel("resize-target", "target", {
+    kind: "floating",
+    bounds: { left: 80, top: 0, width: 260, height: 140 },
+  });
+  const resizing = lifecyclePanel("resize-moving", "moving", {
+    kind: "floating",
+    bounds: { left: 346, top: 0, width: 220, height: 100 },
+  });
+  await page.evaluate(
+    (panels) => panels.forEach((panel) => window.__darkflowWorkspace.upsert(panel)),
+    [target, resizing],
+  );
+
+  const targetFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${target.id}"]`),
+  });
+  const resizingFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${resizing.id}"]`),
+  });
+  const [targetBefore, resizingBefore, grip] = await Promise.all([
+    targetFrame.boundingBox(),
+    resizingFrame.boundingBox(),
+    resizingFrame.locator(".dv-resize-handle-bottomright").boundingBox(),
+  ]);
+  expect(targetBefore).not.toBeNull();
+  expect(resizingBefore).not.toBeNull();
+  expect(grip).not.toBeNull();
+
+  await page.mouse.move(grip!.x + grip!.width / 2, grip!.y + grip!.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(
+    resizingBefore!.x + resizingBefore!.width,
+    resizingBefore!.y + resizingBefore!.height + 5,
+  );
+  await page.mouse.move(
+    resizingBefore!.x + resizingBefore!.width,
+    targetBefore!.y + targetBefore!.height,
+  );
+  await page.mouse.up();
+
+  const resized = await resizingFrame.boundingBox();
+  expect(resized).not.toBeNull();
+  expect(Math.abs(resized!.x - resizingBefore!.x)).toBeLessThanOrEqual(2);
+  expect(Math.abs(resized!.y - resizingBefore!.y)).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(resized!.y + resized!.height - (targetBefore!.y + targetBefore!.height)),
+  ).toBeLessThanOrEqual(2);
+});
+
 test("emits user layout changes, relayouts on host resize, and keeps terminal focus on activation", async ({
   page,
 }) => {

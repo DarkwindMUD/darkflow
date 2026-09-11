@@ -467,6 +467,15 @@
     </p>
 
     <div class="app-actions">
+      {#if updateDisplay}
+        <aside class="update-banner" data-testid="update-banner" aria-live="polite">
+          <span>{updateDisplay.message}</span>
+          {#if updateDisplay.action}
+            <button type="button" onclick={runUpdateAction}>{updateDisplay.action}</button>
+          {/if}
+        </aside>
+        <span class="toolbar-separator"></span>
+      {/if}
       <AudioControls {session} />
       <NotificationsMenu {session} onactivate={activateNotification} />
       <button
@@ -576,15 +585,6 @@
       <div class="rfc2549-footnote">RFC 2549 debug visualization only. Transport is unchanged.</div>
     </div>
   </section>
-{/if}
-
-{#if updateDisplay}
-  <aside class="update-banner" data-testid="update-banner" aria-live="polite">
-    <span>{updateDisplay.message}</span>
-    {#if updateDisplay.action}
-      <button type="button" onclick={runUpdateAction}>{updateDisplay.action}</button>
-    {/if}
-  </aside>
 {/if}
 
 <style>
@@ -885,25 +885,23 @@
   }
 
   .update-banner {
-    position: fixed;
-    top: 0.75rem;
-    right: 0.75rem;
-    z-index: 1001;
     display: flex;
-    gap: 0.75rem;
+    min-width: 0;
+    gap: 0.5rem;
     align-items: center;
-    max-width: calc(100vw - 1.5rem);
-    padding: 0.75rem 1rem;
-    border: 1px solid var(--df-warn, #d9931f);
-    border-radius: 0.5rem;
-    background: var(--df-panel, #161b22);
+    color: var(--df-warn, #d9931f);
+    font-size: 12px;
   }
 
-  @media (max-width: 420px) {
-    .update-banner {
-      align-items: stretch;
-      flex-direction: column;
-    }
+  .update-banner span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .update-banner button {
+    min-height: 26px;
+    padding: 3px 8px;
   }
 
   @media (prefers-reduced-motion: reduce) {

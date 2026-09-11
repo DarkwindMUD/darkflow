@@ -139,7 +139,7 @@ test("GMCP debug is Settings-gated, bounded, and uses only public diagnostics ac
   await debugTab.click();
   await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).not.toBeChecked();
   await settings.getByLabel("Enable GMCP Debug", { exact: true }).check();
-  await settings.getByRole("button", { name: "Apply", exact: true }).click();
+  await settings.getByRole("button", { name: "Save", exact: true }).click();
   await settings
     .getByRole("dialog", { name: "Download changed settings?", exact: true })
     .getByRole("button", { name: "Skip", exact: true })
@@ -203,7 +203,7 @@ test("GMCP debug is Settings-gated, bounded, and uses only public diagnostics ac
   await debugTab.click();
   await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).toBeChecked();
   await settings.getByLabel("Enable GMCP Debug", { exact: true }).uncheck();
-  await settings.getByRole("button", { name: "Apply", exact: true }).click();
+  await settings.getByRole("button", { name: "Save", exact: true }).click();
   await settings
     .getByRole("dialog", { name: "Download changed settings?", exact: true })
     .getByRole("button", { name: "Skip", exact: true })

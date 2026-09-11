@@ -307,7 +307,16 @@
     return () => observer.disconnect();
   });
 
-  function save(): void {
+  function save(close = true): void {
+    const invalidVariable = dialog?.querySelector<HTMLInputElement>(
+      "#settings-panel-variables input:invalid",
+    );
+    if (invalidVariable) {
+      selectTab("variables");
+      status = "Variable names cannot be empty.";
+      queueMicrotask(() => invalidVariable.reportValidity());
+      return;
+    }
     const themeResult = session.configuration.setThemeKey(theme);
     if (!themeResult.success) {
       status = themeResult.message;
@@ -326,11 +335,22 @@
     for (const name of runtime.listVariableNames())
       if (!nextNames.has(name)) runtime.removeVariable(name);
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
-    originalConfiguration = null;
-    originalAppearance = null;
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
-    dialog?.close();
+    baseline = settingsFingerprint();
+    if (close) {
+      originalConfiguration = null;
+      originalAppearance = null;
+      dialog?.close();
+    } else {
+      originalConfiguration = structuredClone(session.configuration.getSnapshot());
+      originalAppearance = {
+        sideRailOpacity: settings.sideRailOpacity,
+        terminalBackgroundOpacity: settings.terminalBackgroundOpacity,
+        terminalFontFamily: settings.terminalFontFamily,
+        terminalFontSize: settings.terminalFontSize,
+      };
+    }
   }
   async function importTheme(file: File | undefined): Promise<void> {
     if (!file) return;
@@ -1037,7 +1057,9 @@
         <button bind:this={importAction} type="button" onclick={openImport}>Import settings</button>
       </div>
       <div>
-        <button type="button" onclick={close}>Cancel</button><button type="submit">Apply</button>
+        <button type="button" onclick={close}>Cancel</button>
+        <button type="button" onclick={() => save(false)}>Apply</button>
+        <button type="submit">Save</button>
       </div>
     </footer>
   </form>

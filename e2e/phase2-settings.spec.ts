@@ -388,7 +388,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByRole("button", { name: "Add variable" }).click();
   await dialog.getByLabel("Name").fill("target");
   await dialog.getByLabel("Value").fill("goblin");
-  await dialog.getByRole("button", { name: "Apply" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await skipChangedSettingsBackup(dialog);
 
   await expect(dialog).not.toBeVisible();
@@ -600,7 +600,7 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
   await settingsTab(dialog, "Terminal");
   await dialog.getByLabel("Terminal font family").selectOption({ label: "Verdana" });
   await dialog.getByLabel("Terminal font size").selectOption("20");
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() =>
@@ -626,7 +626,7 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
     });
 });
 
-test("Phase 2 Settings Apply ignores hidden definition draft validation", async ({ page }) => {
+test("Phase 2 Settings Apply stays open and Save closes", async ({ page }) => {
   await page.goto("/phase2/");
   const dialog = settingsDialog(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -640,8 +640,7 @@ test("Phase 2 Settings Apply ignores hidden definition draft validation", async 
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Terminal background opacity").fill("41");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
-  await skipChangedSettingsBackup(dialog);
-  await expect(dialog).not.toBeVisible();
+  await expect(dialog).toBeVisible();
   await expect
     .poll(() =>
       page.evaluate(
@@ -650,6 +649,8 @@ test("Phase 2 Settings Apply ignores hidden definition draft validation", async 
       ),
     )
     .toBe(41);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(dialog).not.toBeVisible();
 });
 
 test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme imports without writes", async ({
@@ -670,7 +671,7 @@ test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme 
   expect(
     await backgroundPreview.evaluate((element) => getComputedStyle(element).borderColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.background))
@@ -960,7 +961,7 @@ test("Phase 2 auto-reconnect follows the saved setting and cancellation is immed
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Connection");
   await dialog.getByLabel("Auto-reconnect").uncheck();
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
   await page.waitForTimeout(1_200);
@@ -1163,7 +1164,7 @@ test("Phase 2 settings recovers from corrupted stored settings", async ({ page }
   await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Repeat last command")).toBeChecked();
 
-  await dialog.getByRole("button", { name: "Apply" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
@@ -1190,7 +1191,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").uncheck();
-  await dialog.getByRole("button", { name: "Apply" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
@@ -1376,7 +1377,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
     { id: "function-greet", name: "greet", script: "send salute", enabled: true },
   ]);
 
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
@@ -1539,7 +1540,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     definitions: [{ id: "function-shared", script: "send shared-function-after" }],
   });
 
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await connect(page);
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
@@ -1681,7 +1682,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   expect(persisted).not.toContain("timerHandles");
   expect(persisted).not.toContain("automationVariables");
 
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("quick");
@@ -1780,7 +1781,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     ]),
   );
 
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedalias");

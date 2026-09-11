@@ -67,7 +67,7 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Terminal width").fill("75");
-  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() => gmcpPayload(endpoint.gmcpMessages.slice(beforeFixed), "Darkwind.Client.NAWS"))
@@ -546,7 +546,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Scrollback behavior").selectOption("split");
-  await dialog.getByRole("button", { name: "Apply" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await skipChangedSettingsBackup(dialog);
 
   const output = page.getByLabel("Terminal output", { exact: true });
@@ -605,7 +605,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
   await dialog.getByLabel("Show emoji picker").uncheck();
-  await dialog.getByRole("button", { name: "Apply" }).click();
+  await dialog.getByRole("button", { name: "Save" }).click();
   await skipChangedSettingsBackup(dialog);
   await input.fill("say :smile:");
   await expect(picker).toBeHidden();
@@ -648,7 +648,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByLabel("Screen reader announcements").check();
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
 
   endpoint.sendText(" announced live\n");
@@ -658,7 +658,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await page.getByRole("button", { name: "Settings" }).click();
   await page.getByRole("tab", { name: "Terminal", exact: true }).click();
   await page.getByLabel("Screen reader announcements").uncheck();
-  await page.getByRole("button", { name: "Apply", exact: true }).click();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
   await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
   endpoint.sendText(" silent live\n");

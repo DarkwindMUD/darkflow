@@ -85,6 +85,20 @@ test("Phase 2 chrome applies the migrated theme and disposes desktop updates", a
   await expect(page.locator('meta[name="theme-color"]')).toHaveAttribute("content", "#282a36");
   await expect(page.locator('meta[name="color-scheme"]')).toHaveAttribute("content", "dark");
   await expect(page.getByTestId("update-banner")).toContainText("Checking for Darkwind updates...");
+  await expect(
+    page.locator(
+      ".app-actions > [data-testid=update-banner] + .toolbar-separator + #audio-widget-root",
+    ),
+  ).toHaveCount(1);
+  const [updateBounds, audioBounds] = await Promise.all([
+    page.getByTestId("update-banner").boundingBox(),
+    page.getByRole("button", { name: /Audio controls:/ }).boundingBox(),
+  ]);
+  expect(updateBounds).not.toBeNull();
+  expect(audioBounds).not.toBeNull();
+  expect(updateBounds!.x).toBeGreaterThanOrEqual(0);
+  expect(updateBounds!.x).toBeLessThan(audioBounds!.x);
+  expect(audioBounds!.x + audioBounds!.width).toBeLessThanOrEqual(390);
   expect((await connectionForm.boundingBox())?.width).toBeLessThanOrEqual(390);
   await page.evaluate(() =>
     (

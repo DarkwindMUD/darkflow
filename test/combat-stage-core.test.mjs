@@ -15,6 +15,8 @@ const {
   sampleSceneAction,
   sceneLayout,
   targetEntrance,
+  bystanderLayout,
+  bystanderPresence,
 } = await import('../public/js/combat-stage-core.mjs');
 
 const view = {
@@ -266,3 +268,22 @@ test('a walk enters from the edge opposite its facing, striding, and settles at 
   assert.equal(buildSceneAction({ kind: 'dance' }, 0), null, 'unknown activities are ignored');
   assert.equal(buildSceneAction(null, 0), null);
 });
+
+test('bystanders stand in a smaller band behind the scene, clear of the player, capped at six', () => {
+  const layout = sceneLayout(computeStageLayout(800, 400), 0);
+  assert.deepEqual(bystanderLayout(layout, 0).spots, []);
+  const three = bystanderLayout(layout, 3);
+  assert.equal(three.spots.length, 3);
+  assert.ok(three.radius < layout.radius && three.groundY < layout.groundY, 'smaller and further back');
+  for (const spot of three.spots) {
+    assert.ok(spot.x > 0 && spot.x < layout.width, 'inside the stage');
+    assert.ok(Math.abs(spot.x - layout.player.x) >= layout.radius * 1.15, 'not in front of the player');
+  }
+  const crowd = bystanderLayout(layout, 9);
+  assert.equal(crowd.spots.length, 6);
+  assert.equal(crowd.overflow, 3);
+  assert.deepEqual(bystanderPresence(0, false), { alpha: 0, y: -0.3 });
+  assert.deepEqual(bystanderPresence(1, false), { alpha: 1, y: 0 });
+  assert.deepEqual(bystanderPresence(0.5, true), { alpha: 1, y: 0 }, 'reduced motion cuts straight in');
+});
+

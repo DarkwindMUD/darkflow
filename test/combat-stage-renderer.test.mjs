@@ -744,3 +744,37 @@ test('a large stage eases its pixel ratio down to the pixel budget and reports d
   const after = canvas.drawLog.filter(([name]) => name === 'fillText').length;
   assert.ok(after > before, 'the readout is written onto the canvas once enabled');
 });
+
+test('other players in the room stand behind the idle scene and step aside for a fight', () => {
+  const body = bodyElement();
+  const renderer = mountRenderer(body);
+  const players = [{ name: 'nacho', fullname: 'Nacho the Bold' }, { name: 'zed' }];
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players });
+  const stage = renderer.stage;
+  const canvas = findCanvas(body);
+  assert.deepEqual(stage._bystanders.map((b) => [b.name, b.label, b.presence, b.want]), [['nacho', 'Nacho the Bold', 0, 1], ['zed', 'zed', 0, 1]], 'newcomers start absent');
+  for (let t = 0; t <= 800; t += 16) runFrame(t);
+  assert.ok(stage._bystanders.every((b) => b.presence === 1), 'they fade in over a few frames');
+  assert.equal(stage.running, false, 'and the scene settles again');
+  canvas.drawLog.length = 0;
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players });
+  // A resting scene draws every other frame; two frames guarantee a paint.
+  runFrame(816);
+  runFrame(832);
+  const names = canvas.drawLog.filter(([name, args]) => name === 'fillText' && (args[0] === 'nacho' || args[0] === 'zed'));
+  assert.equal(names.length, 2, 'each bystander is named on the canvas');
+
+  renderer.render({ model: createCombatVisualState(), vitals: { hp: 60, maxhp: 100 }, avatar: { name: 'Acer' }, players: [players[0]] });
+  for (let t = 848; t <= 1600; t += 16) runFrame(t);
+  assert.deepEqual(stage._bystanders.map((b) => b.name), ['nacho'], 'a player who left fades out and is dropped');
+
+  const enemy = { enemy_name: 'a drake', enemy_curhp: 40, enemy_maxhp: 50, enemy_is_npc: 1 };
+  renderer.render({ model: combatModel(), vitals: { hp: 60, maxhp: 100 }, enemy, avatar: { name: 'Acer' }, players: [players[0]], present: true });
+  for (let t = 1616; t <= 2400; t += 16) runFrame(t);
+  assert.ok(stage._bystanders.every((b) => b.presence === 0), 'a fight clears the band');
+  canvas.drawLog.length = 0;
+  runFrame(2416);
+  runFrame(2432);
+  assert.equal(canvas.drawLog.filter(([name, args]) => name === 'fillText' && args[0] === 'nacho').length, 0, 'nothing drawn for them mid-fight');
+});
+

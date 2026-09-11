@@ -20,6 +20,9 @@ import {
   idleOffset,
   resolveStageBackdrop,
   sampleAction,
+  bystanderLayout,
+  bystanderPresence,
+  BYSTANDER_MS,
 } from './combat-stage-core.mjs';
 import {
   MELEE_WEAPONS,
@@ -202,6 +205,11 @@ export function createCombatStage(doc, options = {}) {
     // Idle-scene animations (look, walk) queued by playScene(); the newest
     // one drives the player's figure.
     _sceneActions: [],
+    // Other players in the room, shown on the idle scene. Each carries its
+    // own presence (0 absent .. 1 on stage) so arrivals fade in and
+    // departures fade out; a fight hides them all.
+    _bystanders: [],
+    _bystanderClockAt: 0,
     _palette: {
       accent: readCssVar(doc, '--df-accent', '#42d6c9'),
       danger: readCssVar(doc, '--df-err', '#f85149'),
@@ -284,6 +292,7 @@ export function createCombatStage(doc, options = {}) {
       this._ensureImage(this._backdrop.image, [this._backdrop.tile]);
       this._playerFallback = fallbackList(sources.playerFallback);
       this._targetFallback = fallbackList(sources.targetFallback);
+      this._setBystanders(sources.players);
       this._ensureImage(view.player.image, this._playerFallback);
       this._ensureImage(view.target.image, this._targetFallback);
       this._pruneImages([
@@ -336,6 +345,9 @@ export function createCombatStage(doc, options = {}) {
     start() {
       if (this.destroyed || this.running) return;
       if (doc.hidden) return;
+      // A restart paints its first frame: an idle scene stops after one
+      // frame, so letting the rest cadence skip it would drop the update.
+      this._restFrameSkip = false;
       this.running = true;
       this._rafId = raf((t) => this._tick(t));
     },
@@ -508,7 +520,9 @@ export function createCombatStage(doc, options = {}) {
       const frameTime = Number.isFinite(timestamp) ? timestamp : now();
       const t = this._reducedMotion ? frameTime : this._applyHitStop(frameTime);
       this._lastFrameAt = t;
-      const settled = this._advancePresence(frameTime);
+      const presenceSettled = this._advancePresence(frameTime);
+      const bystandersSettled = this._advanceBystanders(frameTime);
+      const settled = presenceSettled && bystandersSettled;
       this._actions = this._actions.filter((action) => t - action.startedAt < action.duration);
       this._sceneActions = this._sceneActions.filter((action) => t - action.startedAt < action.duration);
       const resting = settled && !this._actions.length && !this._sceneActions.length;
@@ -604,6 +618,7 @@ export function createCombatStage(doc, options = {}) {
       this._drawBackdrop(c, layout);
       const tokens = this._tokenPositions(layout, samples, t, scene);
       this._drawGround(c, layout, tokens);
+      this._drawBystanders(c, layout, t);
       for (const sample of samples) this._drawBackEffects(c, layout, tokens, sample);
       this._drawToken(c, layout, tokens.player, 'player', view.player, samples, scene);
       this._drawToken(c, layout, tokens.target, 'target', view.target, samples);
@@ -844,6 +859,129 @@ export function createCombatStage(doc, options = {}) {
       vignette.addColorStop(1, 'rgba(0, 0, 0, 0.62)');
       c.fillStyle = vignette;
       c.fillRect(-pad, -pad, w + pad * 2, h + pad * 2);
+      c.restore();
+    },
+
+    // Replaces the bystander list from the room's player list. Names are
+    // the identity: a player who stays keeps their presence, a newcomer
+    // starts absent and fades in, and one who left fades out and is dropped.
+    _setBystanders(players) {
+      const seen = new Set();
+      const next = [];
+      for (const player of Array.isArray(players) ? players : []) {
+        const name = player && typeof player.name === 'string' ? player.name.trim() : '';
+        if (!name || seen.has(name)) continue;
+        seen.add(name);
+        const label = player.fullname && typeof player.fullname === 'string' && player.fullname.trim()
+          ? player.fullname.trim()
+          : name;
+        const existing = this._bystanders.find((entry) => entry.name === name);
+        next.push(existing ? { ...existing, label, want: 1 } : { name, label, presence: 0, want: 1 });
+      }
+      for (const entry of this._bystanders) {
+        if (!seen.has(entry.name) && entry.presence > 0) next.push({ ...entry, want: 0 });
+      }
+      this._bystanders = next;
+    },
+
+    _advanceBystanders(frameTime) {
+      const last = this._bystanderClockAt || frameTime;
+      this._bystanderClockAt = frameTime;
+      if (!this._bystanders.length) return true;
+      const dt = Math.max(0, Math.min(100, frameTime - last));
+      let settled = true;
+      const kept = [];
+      for (const entry of this._bystanders) {
+        const want = this._sceneIdle ? entry.want : 0;
+        let presence = entry.presence;
+        if (this._reducedMotion) presence = want;
+        else {
+          const step = dt / (want ? BYSTANDER_MS.in : BYSTANDER_MS.out);
+          const delta = want - presence;
+          presence = Math.abs(delta) <= step ? want : presence + Math.sign(delta) * step;
+        }
+        if (presence !== want) settled = false;
+        // Gone for good once faded out after leaving the room.
+        if (presence === 0 && entry.want === 0) continue;
+        kept.push(presence === entry.presence ? entry : { ...entry, presence });
+      }
+      this._bystanders = kept;
+      return settled;
+    },
+
+    _drawBystanders(c, layout, t) {
+      const visible = this._bystanders.filter((entry) => entry.presence > 0);
+      if (!visible.length) return;
+      const band = bystanderLayout(layout, visible.length);
+      const unit = band.radius * FIGURE_UNIT_SCALE;
+      visible.slice(0, band.spots.length).forEach((entry, index) => {
+        const spot = band.spots[index];
+        const look = bystanderPresence(entry.presence, this._reducedMotion);
+        if (!(look.alpha > 0.002)) return;
+        this._drawBystander(c, entry, spot, band, unit, look, t, index, layout.player.x);
+      });
+      if (band.overflow > 0) {
+        c.save();
+        c.globalAlpha = 0.75;
+        c.fillStyle = rgba(this._palette.text, 0.7);
+        c.font = '600 ' + Math.round(band.radius * 0.5) + 'px "Segoe UI", system-ui, sans-serif';
+        c.textAlign = 'right';
+        c.textBaseline = 'alphabetic';
+        c.fillText('+' + band.overflow, layout.width - band.radius * 0.6, band.groundY + band.radius * 0.5);
+        c.restore();
+      }
+    },
+
+    // One bystander: the humanoid rig in muted colours, unarmed, facing the
+    // player, with a name under its feet. No portrait is known for other
+    // players, so the head is the initial-lettered silhouette.
+    _drawBystander(c, entry, spot, band, unit, look, t, index, playerX) {
+      const base = resolveFigure({ name: entry.label }, 'player');
+      const figure = {
+        ...base,
+        weapon: 'none',
+        offKind: '',
+        shield: false,
+        helmet: false,
+        armor: false,
+        twoHanded: false,
+        caster: false,
+        facing: spot.x <= playerX ? 1 : -1,
+      };
+      const groundLine = band.groundY + band.radius * 0.95 + look.y * band.radius;
+      const joints = resolvePose(null, t, { reducedMotion: this._reducedMotion, phaseOffset: 0.9 * (index + 1) });
+      const geo = figureGeometry(figure, joints, spot.x, groundLine, unit, { baseX: spot.x, stretch: 1 });
+      const material = {
+        ring: this._palette.text,
+        skin: '#b59b86',
+        skinShade: '#7d6653',
+        cloth: '#46525c',
+        clothShade: '#28313a',
+        leather: '#4b4036',
+        metal: '#8b949e',
+        outline: '#07090c',
+        highlight: 'rgba(255, 255, 255, 0.08)',
+        flash: 0,
+      };
+      c.save();
+      c.globalAlpha = look.alpha * 0.92;
+      // Ground shadow, then the rig back to front, then the name.
+      c.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      c.beginPath();
+      c.ellipse(spot.x, groundLine, band.radius * 0.7, band.radius * 0.16, 0, 0, Math.PI * 2);
+      c.fill();
+      this._drawLeg(c, geo, geo.legs.rear, material, 0.72);
+      this._drawArm(c, geo, geo.arms.left, material, 0.72);
+      this._drawTorso(c, geo, material);
+      this._drawLeg(c, geo, geo.legs.front, material, 1);
+      this._drawNeck(c, geo, material);
+      this._drawSilhouette(c, { x: geo.head.x, y: geo.head.y }, geo.head.r, { name: entry.label }, material.ring);
+      this._drawArm(c, geo, geo.arms.right, material, 1);
+      c.fillStyle = rgba(this._palette.text, 0.78);
+      c.font = '600 ' + Math.max(9, Math.round(band.radius * 0.4)) + 'px "Segoe UI", system-ui, sans-serif';
+      c.textAlign = 'center';
+      c.textBaseline = 'alphabetic';
+      c.fillText(entry.name, spot.x, groundLine + band.radius * 0.55);
       c.restore();
     },
 

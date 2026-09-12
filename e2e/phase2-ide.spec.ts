@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expect, test, type Dialog, type Locator, type Page } from "@playwright/test";
 import { TransportFixtureOwner, type TransportEndpoint } from "./fixtures/transport-fixtures";
 
 let fixtures: TransportFixtureOwner;
@@ -16,7 +16,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -88,6 +88,30 @@ async function confirmAction(
   if (accept) await dialog.accept();
   else await dialog.dismiss();
   await actionPromise;
+}
+
+async function confirmLayoutReset(
+  page: Page,
+  action: () => Promise<void>,
+  acceptUnsaved: boolean,
+): Promise<void> {
+  const messages: string[] = [];
+  const handleDialog = async (dialog: Dialog) => {
+    messages.push(dialog.message());
+    if (dialog.message() === "Reset saved pane and terminal layout for this browser?") {
+      await dialog.accept();
+    } else if (acceptUnsaved) await dialog.accept();
+    else await dialog.dismiss();
+  };
+  page.on("dialog", handleDialog);
+  await action();
+  await expect
+    .poll(() => messages)
+    .toEqual([
+      "Reset saved pane and terminal layout for this browser?",
+      "You have unsaved changes. Close anyway?",
+    ]);
+  page.off("dialog", handleDialog);
 }
 
 async function expectMessage(
@@ -389,16 +413,16 @@ test("IDE close guards, native tab, reset, repeated lifecycle, and remount stay 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
-  await confirmAction(
+  await confirmLayoutReset(
     page,
-    () => settings.getByRole("button", { name: "Reset workspace", exact: true }).click(),
+    () => settings.getByRole("button", { name: "Reset layout", exact: true }).click(),
     false,
   );
   await expect(ide(page)).toBeVisible();
   await expect(editor(page)).toHaveText("dirty reset");
-  await confirmAction(
+  await confirmLayoutReset(
     page,
-    () => settings.getByRole("button", { name: "Reset workspace", exact: true }).click(),
+    () => settings.getByRole("button", { name: "Reset layout", exact: true }).click(),
     true,
   );
   await expectMessage(

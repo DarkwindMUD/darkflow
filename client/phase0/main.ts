@@ -119,6 +119,9 @@ const bridge: WorkspaceTestBridge = {
     }
     return restored;
   },
+  setPaneGridSnapEnabled(enabled, initializing = false) {
+    workspace.setPaneGridSnapEnabled(enabled, { initializing });
+  },
   subscribeLayout() {
     unsubscribeLayout?.();
     layoutEvents = 0;

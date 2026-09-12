@@ -1,39 +1,13 @@
 <script lang="ts">
-  import Dessert from "@lucide/svelte/icons/dessert";
-  import Fish from "@lucide/svelte/icons/fish";
-  import FlaskRound from "@lucide/svelte/icons/flask-round";
-  import HandFist from "@lucide/svelte/icons/hand-fist";
-  import MessagesSquare from "@lucide/svelte/icons/messages-square";
-  import MonitorCheck from "@lucide/svelte/icons/monitor-check";
-  import PartyPopper from "@lucide/svelte/icons/party-popper";
-  import Piano from "@lucide/svelte/icons/piano";
-  import Scroll from "@lucide/svelte/icons/scroll";
-  import Swords from "@lucide/svelte/icons/swords";
-  import TriangleAlert from "@lucide/svelte/icons/triangle-alert";
   import Volume from "@lucide/svelte/icons/volume";
   import Volume1 from "@lucide/svelte/icons/volume-1";
   import Volume2 from "@lucide/svelte/icons/volume-2";
   import VolumeX from "@lucide/svelte/icons/volume-x";
-  import Wand from "@lucide/svelte/icons/wand";
   import { untrack } from "svelte";
   import type { Session } from "../runtime/session.ts";
+  import { AUDIO_CATEGORIES } from "./audio-categories.ts";
 
   let { session }: { session: Session } = $props();
-
-  const categories = [
-    { id: "combat", icon: Swords, label: "Combat" },
-    { id: "spell", icon: Wand, label: "Spell" },
-    { id: "skill", icon: HandFist, label: "Skill" },
-    { id: "potion", icon: FlaskRound, label: "Potion" },
-    { id: "quest", icon: Scroll, label: "Quest" },
-    { id: "celebration", icon: PartyPopper, label: "Celebration" },
-    { id: "discussion", icon: MessagesSquare, label: "Discuss" },
-    { id: "alert", icon: TriangleAlert, label: "Alert" },
-    { id: "ambient", icon: Dessert, label: "Ambient" },
-    { id: "fishing", icon: Fish, label: "Fishing" },
-    { id: "ui", icon: MonitorCheck, label: "Interface" },
-    { id: "music", icon: Piano, label: "Music" },
-  ] as const;
 
   let snapshot = $state(untrack(() => session.audio.getSnapshot()));
   let expanded = $state(false);
@@ -44,7 +18,7 @@
 
   const volumePercent = $derived(Math.round(snapshot.volume * 100));
   const expandedId = $derived(`sound-widget-expanded-${session.sessionId}`);
-  const activity = $derived(categories.find(({ id }) => id === snapshot.currentCategory));
+  const activity = $derived(AUDIO_CATEGORIES.find(({ id }) => id === snapshot.currentCategory));
   const indicatorLabel = $derived(
     !snapshot.enabled
       ? "Muted"
@@ -182,7 +156,7 @@
         />
       </div>
       <div class="sound-widget-categories">
-        {#each categories as category (category.id)}
+        {#each AUDIO_CATEGORIES as category (category.id)}
           {@const CategoryIcon = category.icon}
           <button
             class="sound-widget-category"

@@ -25,7 +25,7 @@ test("25 root session cycles release their socket and Svelte shell", async ({ pa
     await page.goto("/");
     await expect(page.getByTestId("phase2-shell"), `cycle ${cycle} shell`).toBeVisible();
     await page.getByLabel("Host").fill("127.0.0.1");
-    await page.getByLabel("Port").fill(String(endpoint.port));
+    await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
     await page.getByLabel("Connection protocol").selectOption("ws");
     await page.getByRole("button", { name: "Connect", exact: true }).click();
     await expect

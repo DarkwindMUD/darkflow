@@ -16,7 +16,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");

@@ -14,7 +14,7 @@ test.afterAll(async () => {
 async function connect(page: Page): Promise<void> {
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -56,7 +56,7 @@ test("character information panels present, restore, and close from the active c
   await expect(page.locator('.information-panel[data-panel-id="omens"]')).toContainText(
     "Waiting for omens",
   );
-  const terminal = page.getByLabel("Terminal output");
+  const terminal = page.getByLabel("Terminal output", { exact: true });
   const identity = await terminal.getAttribute("data-terminal-identity");
 
   await page.getByRole("button", { name: "Panels", exact: true }).click();

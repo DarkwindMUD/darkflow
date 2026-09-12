@@ -95,7 +95,7 @@ async function connectThroughPublicControls(
   endpoint: TransportEndpoint,
 ): Promise<void> {
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption(endpoint.protocol);
   await page.getByRole("button", { name: "Connect", exact: true }).click();
 }

@@ -79,6 +79,7 @@ export interface Phase2ClientSettings {
   terminalBackgroundOpacity: number;
   terminalFontFamily: string | null;
   terminalFontSize: number | null;
+  paneGridSnapEnabled: boolean;
   panelPreferences: Record<string, PanelPreference>;
   customThemes: Record<string, CustomTheme>;
   autoReconnect: boolean;
@@ -113,6 +114,7 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   terminalBackgroundOpacity: 55,
   terminalFontFamily: null,
   terminalFontSize: null,
+  paneGridSnapEnabled: false,
   panelPreferences: {},
   customThemes: {},
   autoReconnect: true,
@@ -208,6 +210,7 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
       )
         ? settings.terminalFontSize
         : null,
+    paneGridSnapEnabled: settings.paneGridSnapEnabled === true,
     panelPreferences: normalizePanelPreferences(settings.panelPreferences),
     customThemes: normalizeCustomThemes(settings.customThemes),
     autoReconnect: settings.autoReconnect !== false,
@@ -399,6 +402,7 @@ export function validateClientSettingsDocument(
     "visualEffectsEnabled",
     "autoReconnect",
     "screenReaderMode",
+    "paneGridSnapEnabled",
     "settingsBackupPromptEnabled",
     "openSettingsShortcutEnabled",
     "clearTerminalShortcutEnabled",

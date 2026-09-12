@@ -67,6 +67,26 @@ test("panel preferences normalize locally and validate strictly for imports", as
     }).success,
     false,
   );
+  const store = storage({
+    "darkwind-client-settings": JSON.stringify({ theme: "darkflow-default" }),
+  });
+  assert.equal(settings.loadClientSettings(store).settings.paneGridSnapEnabled, false);
+  assert.equal(
+    settings.saveClientSettings(
+      store,
+      { ...settings.DEFAULT_PHASE2_CLIENT_SETTINGS, paneGridSnapEnabled: true },
+      "darkflow-default",
+    ).success,
+    true,
+  );
+  assert.equal(settings.loadClientSettings(store).settings.paneGridSnapEnabled, true);
+  assert.equal(
+    settings.validateClientSettingsDocument({
+      theme: "darkflow-default",
+      paneGridSnapEnabled: "yes",
+    }).success,
+    false,
+  );
 });
 
 test("settings bundle exports the full graph but imports only active-character settings", async (t) => {

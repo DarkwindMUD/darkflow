@@ -876,6 +876,10 @@
     ) as WorkspaceRendererRegistry;
     const diagnostics = new LifecycleDiagnostics();
     const currentWorkspace = createWorkspace(host, registry, diagnostics);
+    currentWorkspace.setPaneGridSnapEnabled(
+      loadClientSettings(localStorage).settings.paneGridSnapEnabled,
+      { initializing: true },
+    );
     workspace = currentWorkspace;
     const transferring = new SvelteSet<string>();
     activeTransfers = transferring;
@@ -996,6 +1000,12 @@
       leftRail?.refreshPanelPresentation();
       rightRail?.refreshPanelPresentation();
     };
+    const refreshClientSettings = () => {
+      currentWorkspace.setPaneGridSnapEnabled(
+        loadClientSettings(localStorage).settings.paneGridSnapEnabled,
+      );
+      refreshPanelPreferences();
+    };
     const savePanelSettings = (preference: PanelPreference): boolean => {
       const target = panelSettingsTarget;
       if (!target) return false;
@@ -1036,7 +1046,7 @@
       return target ? savePanelSettings({ ...popoverPreferenceFor(target.panelId), layer }) : false;
     };
     resetPanelSettings = () => savePanelSettings({});
-    window.addEventListener("darkflow:client-settings-changed", refreshPanelPreferences);
+    window.addEventListener("darkflow:client-settings-changed", refreshClientSettings);
 
     movePanel = (id, destination, index, floatBounds = RAIL_FLOAT_BOUNDS) => {
       if (transferBusy) return;
@@ -1639,7 +1649,7 @@
       window.removeEventListener("darkflow:settings-import-abort", resumePersistenceAfterImport);
       window.removeEventListener("darkflow:settings-import-applied", restoreWorkspaceAfterImport);
       window.removeEventListener("darkflow:reset-workspace", resetWorkspace);
-      window.removeEventListener("darkflow:client-settings-changed", refreshPanelPreferences);
+      window.removeEventListener("darkflow:client-settings-changed", refreshClientSettings);
       shell.removeEventListener("darkflow:map-panel-state", saveMapPanelState);
       unsubscribeWorld();
       unsubscribeCombat();

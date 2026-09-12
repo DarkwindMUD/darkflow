@@ -12,9 +12,17 @@ export function attractFloatingResize<T extends FloatingBounds>(
   proposedRight: number,
   proposedBottom: number,
   others: readonly T[],
-): { bottom: number; right: number; target?: T } {
+): {
+  bottom: number;
+  bottomSnapped: boolean;
+  right: number;
+  rightSnapped: boolean;
+  target?: T;
+} {
   let right = proposedRight;
   let bottom = proposedBottom;
+  let rightSnapped = false;
+  let bottomSnapped = false;
   let target: T | undefined;
   let nearestRight = FLOATING_SNAP_DISTANCE + 1;
   let nearestBottom = FLOATING_SNAP_DISTANCE + 1;
@@ -28,6 +36,7 @@ export function attractFloatingResize<T extends FloatingBounds>(
         if (distance < nearestRight && distance <= FLOATING_SNAP_DISTANCE) {
           nearestRight = distance;
           right = candidate;
+          rightSnapped = true;
           target = other;
         }
       }
@@ -38,11 +47,12 @@ export function attractFloatingResize<T extends FloatingBounds>(
         if (distance < nearestBottom && distance <= FLOATING_SNAP_DISTANCE) {
           nearestBottom = distance;
           bottom = candidate;
+          bottomSnapped = true;
           target = other;
         }
       }
     }
   }
 
-  return { bottom, right, ...(target ? { target } : {}) };
+  return { bottom, bottomSnapped, right, rightSnapped, ...(target ? { target } : {}) };
 }

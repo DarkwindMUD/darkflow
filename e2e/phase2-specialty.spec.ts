@@ -15,7 +15,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -222,7 +222,7 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   const endpoint = fixtures.endpoints.ws;
   const tutorialHandshakeStart = endpoint.gmcpMessages.length;
   await connect(page);
-  const output = page.getByLabel("Terminal output");
+  const output = page.getByLabel("Terminal output", { exact: true });
   const commandInput = page.getByLabel("Command input", { exact: true });
 
   await expect
@@ -612,7 +612,7 @@ test("Visual Effects stay cosmetic across settings, motion, recovery, reconnect,
   await page.emulateMedia({ reducedMotion: "reduce" });
   const endpoint = await connect(page);
   const root = page.locator("#visual-effects-root");
-  const output = page.getByLabel("Terminal output");
+  const output = page.getByLabel("Terminal output", { exact: true });
   await expect(root).toBeHidden();
 
   endpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Visual 1"]);
@@ -620,7 +620,7 @@ test("Visual Effects stay cosmetic across settings, motion, recovery, reconnect,
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
-  await settings.getByLabel("Enable visual effects").check();
+  await settings.getByLabel("Game visual effects").check();
   await settings.getByRole("button", { name: "Save & Close", exact: true }).click();
   await settings
     .getByRole("dialog", { name: "Download changed settings?", exact: true })

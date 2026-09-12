@@ -10,7 +10,8 @@
     help: string;
     onchange?: (checked: boolean) => void;
   } = $props();
-  let helpId = $derived(`settings-help-${label.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}`);
+  const instanceId = $props.id();
+  const helpId = `${instanceId}-help`;
 </script>
 
 <label class="settings-checkbox-row">

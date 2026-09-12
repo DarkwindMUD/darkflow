@@ -15,7 +15,7 @@ async function connect(page: Page): Promise<TransportEndpoint> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -563,7 +563,8 @@ test("fishing routes retained local audio through the public session capability"
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
-  await settings.getByRole("button", { name: "Reset workspace", exact: true }).click();
+  page.once("dialog", (confirmation) => confirmation.accept());
+  await settings.getByRole("button", { name: "Reset layout", exact: true }).click();
   await settings.getByRole("button", { name: "Close", exact: true }).click();
   await expect(panel).toHaveCount(0);
   await expectAudio(["stopLocal", "fishing", "fishing-reel"]);

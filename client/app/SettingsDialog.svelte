@@ -5,6 +5,7 @@
   import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
   import DefinitionEditor from "./DefinitionEditor.svelte";
   import SettingsCheckbox from "./SettingsCheckbox.svelte";
+  import { AUDIO_CATEGORIES } from "./audio-categories.ts";
   import {
     DEFAULT_PHASE2_CLIENT_SETTINGS,
     TERMINAL_FONT_FAMILIES,
@@ -110,7 +111,6 @@
   let originalConfiguration: CharacterConfigurationSnapshot | null = null;
   let baseline = "";
   const GMCP_PAGE_SIZE = 200;
-  const audioCategories = $derived(Object.entries(audio.categoryEnabled));
   const aliasUsage = $derived.by(() =>
     aliasManager.collectAliasUsageDetails({
       aliases: configuration.effectiveConfiguration.aliases.map(({ definition }) => definition),
@@ -611,8 +611,26 @@
     else document.documentElement.style.removeProperty("--df-terminal-font-size");
   }
   function resetWorkspace(): void {
+    if (!window.confirm("Reset saved pane and terminal layout for this browser?")) return;
     window.dispatchEvent(new Event("darkflow:reset-workspace"));
-    status = "Workspace reset.";
+    status = "Layout reset.";
+  }
+  function syncGameScreenReader(): void {
+    const command = "set screenreader on";
+    if (connection.state !== "connected") {
+      status = "Connect before syncing the game screen reader setting.";
+      return;
+    }
+    try {
+      if (!session.terminal.sendCommand(command)) {
+        status = "Unable to sync the game screen reader setting.";
+        return;
+      }
+      session.terminal.appendSystemMessage(`Sent to game: ${command}`);
+      status = "Game screen reader setting synced.";
+    } catch {
+      status = "Unable to sync the game screen reader setting.";
+    }
   }
   function selectTab(tab: TabId, focus = false): void {
     selectedTab = tab;
@@ -748,10 +766,6 @@
         false)
     );
   }
-  function audioCategoryLabel(category: string): string {
-    if (category === "ui") return "Interface";
-    return category.replace(/\b\w/g, (letter) => letter.toUpperCase());
-  }
 </script>
 
 <svelte:window onresize={clampWindow} onkeydown={handleKeydown} />
@@ -793,7 +807,7 @@
           aria-label="Search settings"
           type="search"
           bind:value={search}
-          placeholder="Search settings"
+          placeholder="Search settings..."
         />
         <div class="tablist" role="tablist" aria-orientation={mobile ? "horizontal" : "vertical"}>
           {#each groups as group (group)}
@@ -823,6 +837,7 @@
         >
           <h3>Connection</h3>
           <div class="settings-card">
+            <h4>Current connection</h4>
             <p>
               {connection.endpoint.protocol}://{connection.endpoint.host}:{connection.endpoint.port}
             </p>
@@ -830,7 +845,7 @@
           </div>
           <SettingsCheckbox
             bind:checked={settings.lagMonitorEnabled}
-            label="Measure connection health"
+            label="Monitor connection health"
             help="Measure latency in the background and show it in the status bar; the Connection panel breaks lag down into network, server, and local causes."
           />
           <SettingsCheckbox
@@ -854,7 +869,13 @@
         >
           <h3>Appearance</h3>
           <label class="settings-row"
-            ><span>Theme</span>
+            ><span class="settings-copy"
+              ><span class="settings-label">Theme</span>
+              <span class="settings-help"
+                >Recolor the terminal and interface. Import any VS Code theme (.json) to add your
+                own. Applies immediately.</span
+              ></span
+            >
             <select aria-label="Theme" bind:value={theme}
               >{#each [...builtinThemes, ...Object.values(settings.customThemes)] as item (item.key)}<option
                   value={item.key}>{item.label}</option
@@ -862,7 +883,11 @@
             ></label
           >
           <label class="settings-row"
-            >Import VS Code theme<input
+            ><span class="settings-copy"
+              ><span class="settings-label">Import VS Code theme</span>
+              <span class="settings-help">Add a VS Code theme JSON file to the Theme list.</span
+              ></span
+            ><input
               aria-label="Upload theme JSON"
               type="file"
               accept=".json,application/json"
@@ -871,6 +896,7 @@
           >
           <fieldset>
             <legend>Background</legend>
+            <p class="settings-help">Curated Darkflow artwork.</p>
             <div class="background-gallery" role="radiogroup" aria-label="Background">
               {#each BACKGROUND_PRESETS as preset (preset.key)}
                 <label class="background-choice" title={preset.description}>
@@ -892,7 +918,12 @@
             </div>
           </fieldset>
           <label class="settings-row"
-            ><span>Side panel opacity ({settings.sideRailOpacity}%)</span>
+            ><span class="settings-copy"
+              ><span class="settings-label">Side panel opacity ({settings.sideRailOpacity}%)</span>
+              <span class="settings-help"
+                >Adjust the opacity of the left and right side panels.</span
+              ></span
+            >
             <input
               aria-label="Side panel opacity"
               type="range"
@@ -904,7 +935,14 @@
             /></label
           >
           <label class="settings-row"
-            ><span>Terminal background opacity ({settings.terminalBackgroundOpacity}%)</span>
+            ><span class="settings-copy"
+              ><span class="settings-label"
+                >Terminal background opacity ({settings.terminalBackgroundOpacity}%)</span
+              >
+              <span class="settings-help"
+                >Adjust how much of the selected background shows through the terminal.</span
+              ></span
+            >
             <input
               aria-label="Terminal background opacity"
               type="range"
@@ -915,30 +953,41 @@
               oninput={(event) => previewTerminalOpacity(event.currentTarget.value)}
             /></label
           >
+          <SettingsCheckbox
+            bind:checked={settings.paneGridSnapEnabled}
+            label="Snap floating panes to grid"
+            help="Align floating pane positions and resized pane dimensions to a 16px grid."
+          />
           <fieldset>
             <legend>Visual effects</legend><SettingsCheckbox
               bind:checked={settings.visualEffectsEnabled}
-              label="Enable visual effects"
+              label="Game visual effects"
               help="Enable visual presentation across the game. Individual effects can be selected below without changing game text, controls, or combatbrief settings."
             />
             <details>
-              <summary
-                >Choose effects ({Object.values(settings.visualEffectPreferences).filter(Boolean)
-                  .length} of {visualEffectOptions.length} enabled)</summary
-              >{#each visualEffectOptions as option (option.key)}<label
-                  class="settings-check"
-                  title={option.description}
-                  ><input
-                    type="checkbox"
-                    bind:checked={settings.visualEffectPreferences[option.key]}
-                  />
-                  {option.label}</label
-                >{/each}
+              <summary>Individual effects</summary>
+              <p class="settings-help">
+                {Object.values(settings.visualEffectPreferences).filter(Boolean).length} of
+                {visualEffectOptions.length} enabled
+              </p>
+              {#each visualEffectOptions as option (option.key)}<SettingsCheckbox
+                  bind:checked={settings.visualEffectPreferences[option.key]}
+                  label={option.label}
+                  help={option.description}
+                />{/each}
             </details>
           </fieldset>
-          <button class="settings-action" type="button" onclick={resetWorkspace}
-            >Reset workspace</button
-          >
+          <div class="settings-card">
+            <span class="settings-copy"
+              ><span class="settings-label">Pane layout</span>
+              <span class="settings-help"
+                >Reset saved pane, dock, and terminal window positions for the current browser.</span
+              ></span
+            >
+            <button class="settings-action" type="button" onclick={resetWorkspace}
+              >Reset layout</button
+            >
+          </div>
         </div>
         <div
           class="settings-panel"
@@ -955,9 +1004,15 @@
             onchange={(checked) => session.audio.setEnabled(checked)}
           />
           <label class="settings-row"
-            ><span>Volume</span>
+            ><span class="settings-copy"
+              ><span class="settings-label">Master volume</span>
+              <span class="settings-help" id="master-volume-help"
+                >Controls the overall level for every audio category.</span
+              ></span
+            >
             <input
-              aria-label="Volume"
+              aria-label="Master volume"
+              aria-describedby="master-volume-help"
               type="range"
               min="0"
               max="100"
@@ -965,16 +1020,26 @@
               oninput={(event) => session.audio.setVolume(Number(event.currentTarget.value) / 100)}
             /></label
           >
-          <div class="audio-categories">
-            {#each audioCategories as [category, enabled] (category)}<label class="settings-check"
-                ><input
-                  type="checkbox"
-                  checked={enabled}
-                  onchange={(event) =>
-                    session.audio.setCategoryEnabled(category, event.currentTarget.checked)}
-                />
-                {audioCategoryLabel(category)}</label
-              >{/each}
+          <div class="sound-widget-categories settings-sound-categories">
+            {#each AUDIO_CATEGORIES as category (category.id)}
+              {@const CategoryIcon = category.icon}
+              <button
+                class="sound-widget-category"
+                class:enabled={audio.categoryEnabled[category.id]}
+                class:disabled={!audio.categoryEnabled[category.id]}
+                type="button"
+                title={category.label}
+                aria-pressed={audio.categoryEnabled[category.id]}
+                onclick={() =>
+                  session.audio.setCategoryEnabled(
+                    category.id,
+                    !audio.categoryEnabled[category.id],
+                  )}
+              >
+                <span class="sound-widget-category-icon"><CategoryIcon size={16} /></span>
+                <span class="sound-widget-category-label">{category.label}</span>
+              </button>
+            {/each}
           </div>
         </div>
         <div
@@ -1070,11 +1135,22 @@
           hidden={panelHidden("terminal")}
         >
           <h3>Terminal</h3>
-          <div class="settings-row">
-            <span>Font</span>
+          <div
+            class="settings-row"
+            role="group"
+            aria-labelledby="terminal-font-label"
+            aria-describedby="terminal-font-help"
+          >
+            <span class="settings-copy"
+              ><span class="settings-label" id="terminal-font-label">Font</span>
+              <span class="settings-help" id="terminal-font-help"
+                >Choose the font family and size used for terminal output.</span
+              ></span
+            >
             <div class="terminal-font-controls">
               <select
                 aria-label="Terminal font family"
+                aria-describedby="terminal-font-help"
                 value={settings.terminalFontFamily ?? ""}
                 onchange={(event) => previewTerminalFontFamily(event.currentTarget.value)}
                 ><option value="">Default</option
@@ -1084,6 +1160,7 @@
               ><select
                 class="terminal-font-size"
                 aria-label="Terminal font size"
+                aria-describedby="terminal-font-help"
                 value={settings.terminalFontSize ?? ""}
                 onchange={(event) => previewTerminalFontSize(event.currentTarget.value)}
                 ><option value="">Default</option>{#each TERMINAL_FONT_SIZES as size (size)}<option
@@ -1093,19 +1170,45 @@
             </div>
           </div>
           <label class="settings-row"
-            >Scrollback behavior<select bind:value={settings.scrollbackBehavior}
-              ><option value="pause">Pause</option><option value="split"
-                >Split history and live</option
+            ><span class="settings-copy"
+              ><span class="settings-label">Scrollback memory</span>
+              <span class="settings-help" id="scrollback-memory-help"
+                >Choose how much terminal history to retain before the oldest lines are discarded.</span
+              ></span
+            ><select
+              aria-label="Scrollback memory"
+              aria-describedby="scrollback-memory-help"
+              bind:value={settings.outputScrollbackPreset}
+              ><option value="low">Low (5,000 lines)</option><option value="normal"
+                >Normal (10,000 lines)</option
+              ><option value="high">High (20,000 lines)</option></select
+            ></label
+          >
+          <label class="settings-row"
+            ><span class="settings-copy"
+              ><span class="settings-label">Scrollback mode</span>
+              <span class="settings-help" id="scrollback-mode-help"
+                >Choose whether scrolling back pauses the terminal or opens a split view with live
+                output below.</span
+              ></span
+            ><select
+              aria-label="Scrollback mode"
+              aria-describedby="scrollback-mode-help"
+              bind:value={settings.scrollbackBehavior}
+              ><option value="pause">Pause terminal</option><option value="split"
+                >Split history + live</option
               ></select
             ></label
-          ><label class="settings-row"
-            >Scrollback memory<select bind:value={settings.outputScrollbackPreset}
-              ><option value="low">5,000 lines</option><option value="normal">10,000 lines</option
-              ><option value="high">20,000 lines</option></select
-            ></label
-          ><label class="settings-row"
-            >Split history size<input
+          >
+          <label class="settings-row"
+            ><span class="settings-copy"
+              ><span class="settings-label">Split history size</span>
+              <span class="settings-help" id="split-history-size-help"
+                >Choose how much of the split view is reserved for terminal history.</span
+              ></span
+            ><input
               aria-label="Split history size"
+              aria-describedby="split-history-size-help"
               type="range"
               min="20"
               max="80"
@@ -1115,13 +1218,20 @@
             /></label
           >
           <label class="settings-row"
-            >Terminal width<input
-              aria-label="Terminal width"
+            ><span class="settings-copy"
+              ><span class="settings-label">Screen width</span>
+              <span class="settings-help" id="screen-width-help"
+                >Leave blank for automatic pane width, or enter a fixed column width for server-side
+                wrapping.</span
+              ></span
+            ><input
+              aria-label="Screen width"
+              aria-describedby="screen-width-help"
               type="number"
               min="40"
               max="240"
               step="1"
-              placeholder="Automatic"
+              placeholder="Auto"
               value={settings.terminalWidthColumns ?? ""}
               oninput={(event) =>
                 (settings.terminalWidthColumns = event.currentTarget.value
@@ -1134,6 +1244,20 @@
             label="Screen reader announcements"
             help="Mirror new terminal lines into a hidden polite live region for browser screen readers."
           />
+          <div class="settings-card">
+            <h4>Game screen reader setting</h4>
+            <p id="game-screen-reader-help">
+              This sends set screenreader on to the game. It changes your saved MUD setting only
+              when you press the button.
+            </p>
+            <button
+              class="settings-action"
+              type="button"
+              aria-describedby="game-screen-reader-help"
+              disabled={connection.state !== "connected"}
+              onclick={syncGameScreenReader}>Sync now</button
+            >
+          </div>
         </div>
         <div
           class="settings-panel"
@@ -1328,7 +1452,40 @@
           hidden={panelHidden("about")}
         >
           <h3>About</h3>
-          <p>Darkflow Phase 2 client.</p>
+          <div class="settings-card about-card">
+            <img src="/assets/brand/darkflow-app-icon.png" alt="Darkflow app icon" />
+            <div>
+              <h4>
+                Darkflow
+                <a
+                  href="https://darkflow.darkwind.ai"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Open Darkflow site">&#8599;</a
+                >
+              </h4>
+              <p>
+                Web-based MUD client - built for <a
+                  href="https://play.darkwind.ai"
+                  target="_blank"
+                  rel="noopener noreferrer">Darkwind</a
+                >
+              </p>
+            </div>
+          </div>
+          <div class="settings-card">
+            <h4>Client version</h4>
+            <p>{clientVersion || "unknown"}</p>
+          </div>
+          <div class="settings-card">
+            <h4>GMCP packages</h4>
+            <a
+              href="https://github.com/jasona/darkflow/tree/main/docs"
+              target="_blank"
+              rel="noopener noreferrer"
+              >See custom GMCP extensions <span aria-hidden="true">&#8599;</span></a
+            >
+          </div>
         </div>
       </div>
     </div>
@@ -1341,7 +1498,7 @@
       <div>
         <button type="button" onclick={close}>Close</button>
         <button type="button" onclick={() => save(false)}>Apply</button>
-        <button type="submit">Save & Close</button>
+        <button class="dw-button dw-button-primary" type="submit">Save & Close</button>
       </div>
     </footer>
   </form>
@@ -1600,15 +1757,6 @@
   label {
     align-items: center;
   }
-  .settings-check {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  .settings-check input[type="checkbox"] {
-    flex: none;
-    margin-top: 0.2rem;
-  }
   .settings-action {
     align-self: start;
     width: fit-content;
@@ -1620,6 +1768,24 @@
     border: 1px solid var(--border-color, #30363d);
     border-radius: 0.375rem;
     background: var(--df-bg, #0d1117);
+  }
+  .settings-copy,
+  .settings-label,
+  .settings-help {
+    display: block;
+  }
+  .settings-help {
+    margin-top: 0.2rem;
+    color: var(--df-muted, #8b949e);
+    font-size: 0.9em;
+  }
+  .about-card {
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+  }
+  .about-card img {
+    width: 3rem;
+    height: 3rem;
   }
   .settings-row {
     display: grid;
@@ -1671,11 +1837,6 @@
     flex-wrap: wrap;
     align-items: center;
     gap: 0.5rem;
-  }
-  .audio-categories {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-    gap: 0.4rem;
   }
   .error {
     min-height: 1.2em;

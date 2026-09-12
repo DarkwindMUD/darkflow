@@ -16,7 +16,7 @@ test.afterAll(async () => {
 async function connect(page: Page): Promise<void> {
   await page.goto("/phase2/?rfc2549=1");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -24,7 +24,7 @@ async function connect(page: Page): Promise<void> {
 
 async function connectCurrentPage(page: Page): Promise<void> {
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(fixtures.endpoints.ws.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(fixtures.endpoints.ws.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");

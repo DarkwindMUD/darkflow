@@ -29,8 +29,8 @@
   const stepTypes: Array<{ value: AutomationStep["type"]; label: string }> = [
     { value: "send_command", label: "Send command" },
     { value: "set_variable", label: "Set variable" },
-    { value: "show_message", label: "Show message" },
-    { value: "script", label: "Script" },
+    { value: "show_message", label: "Show local message" },
+    { value: "script", label: "Run script" },
     { value: "wait", label: "Wait" },
     { value: "set_alias_enabled", label: "Set alias enabled" },
     { value: "set_trigger_enabled", label: "Set trigger enabled" },
@@ -140,7 +140,7 @@
 </script>
 
 <fieldset>
-  <legend>Automation steps</legend>
+  <legend>Steps</legend>
   {#each steps as step, index (index)}
     <section aria-label={`Automation step ${index + 1}`}>
       <label>
@@ -322,17 +322,29 @@
   >
   <details>
     <summary>Template syntax</summary>
-    <p>
-      Use %0 for the remaining input, %1-%9 for captures, $name for variables, and
-      &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
-    </p>
-    {#if triggerMode}<p>
-        Simple patterns use * or %1-%9 captures. Regular expressions use their captures; %0 is the
-        full matching output. Variables and script actions use the same template syntax.
-      </p>{/if}
-    {#if timerMode}<p>
-        For timers, %0 is the timer name. Variables and script actions use the same template syntax.
-      </p>{/if}
+    {#if triggerMode}
+      <p>
+        Simple patterns support * or %1-%9 as captures. Regex triggers use JavaScript regular
+        expressions with capture groups as %1-%9. Templates support %0 for the full match, $name
+        variables, and &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
+        Scripts support if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;,
+        set $name = value, run_alias, call, play_sound, and alias/timer controls.
+      </p>
+    {:else if timerMode}
+      <p>
+        Timer templates use %0 for the timer name plus $name variables. Scripts support
+        if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;, set $name =
+        value, run_alias, call, and alias/trigger/timer controls.
+      </p>
+    {:else}
+      <p>
+        Simple aliases match command words; %0 is everything after the alias. Regex aliases use
+        JavaScript regular expressions with capture groups as %1-%9. Templates support $name
+        variables and &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
+        Scripts support if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;,
+        set $name = value, run_alias, call, and trigger/timer controls.
+      </p>
+    {/if}
   </details>
 </fieldset>
 

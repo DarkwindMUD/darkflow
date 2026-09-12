@@ -23,6 +23,7 @@ async function connect(page: Page): Promise<void> {
 
 async function installDirectDefinitions(page: Page): Promise<void> {
   await page.goto("/phase2/");
+  await expect(page.getByTestId("phase2-shell")).toBeVisible();
   await expect
     .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
     .toBe(true);
@@ -305,6 +306,139 @@ async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: stri
   await dialog.getByRole("tab", { name, exact: true }).click();
 }
 
+test("Phase 2 settings use legacy labels and visible help copy", async ({ page }) => {
+  await installAutomationDefinitions(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const checkboxHelpIds = await dialog
+    .locator(".settings-checkbox-help")
+    .evaluateAll((items) => items.map((item) => item.id));
+  expect(new Set(checkboxHelpIds).size).toBe(checkboxHelpIds.length);
+
+  await expect(dialog.getByRole("heading", { name: "Current connection" })).toBeVisible();
+  await expect(dialog.getByLabel("Monitor connection health", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Reconnect automatically after unexpected connection loss.", { exact: true }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Audio");
+  await expect(dialog.getByLabel("Master volume", { exact: true })).toBeVisible();
+  await expect(
+    dialog.getByText("Controls the overall level for every audio category.", { exact: true }),
+  ).toBeVisible();
+  await expect(dialog.locator("#settings-panel-audio .sound-widget-category")).toHaveCount(12);
+  const combatAudio = dialog.getByRole("button", { name: "Combat", exact: true });
+  await expect(combatAudio).toHaveClass(/sound-widget-category/);
+  await expect(combatAudio).toHaveAttribute("aria-pressed", /true|false/);
+  await expect(combatAudio.locator(".lucide-swords")).toBeVisible();
+  await expect(dialog.getByText("Allow game-triggered combat sounds.")).toHaveCount(0);
+
+  await settingsTab(dialog, "Aliases");
+  await dialog.getByRole("button", { name: "Edit quick" }).click();
+  expect(
+    await dialog.locator("#settings-panel-aliases .list-actions button").evaluateAll((buttons) =>
+      buttons.map((button) => {
+        const style = getComputedStyle(button);
+        return [style.minHeight, style.fontSize];
+      }),
+    ),
+  ).toEqual([
+    ["28px", "12px"],
+    ["28px", "12px"],
+    ["28px", "12px"],
+    ["28px", "12px"],
+  ]);
+  let editor = dialog.getByRole("region", { name: "Edit aliases" });
+  await expect(editor.getByLabel("Pattern", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name (required)", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Disabled aliases stay saved but never match or expand."),
+  ).toBeVisible();
+  await expect(
+    editor.getByText(
+      "Treat the pattern as a JavaScript regular expression. Capture groups become %1-%9.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(editor.getByRole("group", { name: "Steps" })).toBeVisible();
+  const stepType = editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Step type");
+  await expect(stepType).toContainText("Show local message");
+  await expect(stepType).toContainText("Run script");
+
+  await settingsTab(dialog, "Triggers");
+  await dialog.getByRole("button", { name: "Edit danger" }).click();
+  editor = dialog.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByLabel("Gag line", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Hide matched lines from the terminal after this trigger runs.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Timers");
+  await dialog.getByRole("button", { name: "Edit pulse" }).click();
+  editor = dialog.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Duration seconds", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Recurring", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Run again after each successful firing.", { exact: true }),
+  ).toBeVisible();
+  await expect(editor.getByLabel("Auto-start", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Start this timer automatically when Darkflow connects.", { exact: true }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Functions");
+  await dialog.getByRole("button", { name: "Edit greet" }).click();
+  editor = dialog.getByRole("region", { name: "Edit functions" });
+  await expect(editor.getByLabel("Function name", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Disabled functions stay saved but cannot be called."),
+  ).toBeVisible();
+  await editor.getByText("Function script syntax", { exact: true }).click();
+  await expect(
+    editor.getByText(/Functions receive arguments from the caller as %1-%9 and %0/),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Highlights");
+  await dialog.getByRole("button", { name: "Edit glow" }).click();
+  editor = dialog.getByRole("region", { name: "Edit highlights" });
+  await expect(editor.getByText("Pattern (regex)", { exact: true })).toBeVisible();
+  await expect(editor.getByLabel("Name", { exact: true })).toBeVisible();
+  await expect(
+    editor.getByText("Match without caring about capitalization.", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    editor.getByText("Force matched text to render bold in addition to the selected colors.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "Debug");
+  await expect(
+    dialog.getByText("Show received GMCP messages in the GMCP Debug panel."),
+  ).toBeVisible();
+
+  await settingsTab(dialog, "About");
+  await expect(dialog.getByRole("heading", { name: /Darkflow/ })).toBeVisible();
+  await expect
+    .poll(() =>
+      dialog
+        .getByRole("img", { name: "Darkflow app icon", exact: true })
+        .evaluate((image: HTMLImageElement) => image.naturalWidth),
+    )
+    .toBeGreaterThan(0);
+  await expect(dialog.getByText("Web-based MUD client - built for")).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "Client version" })).toBeVisible();
+  await expect(dialog.getByRole("heading", { name: "GMCP packages" })).toBeVisible();
+  await expect(
+    dialog.getByRole("link", { name: "See custom GMCP extensions", exact: true }),
+  ).toBeVisible();
+});
+
 test("Phase 2 variables restore legacy persistent and GMCP affordances", async ({ page }) => {
   await page.goto("/phase2/");
   await expect
@@ -400,11 +534,12 @@ test("Phase 2 variables restore legacy persistent and GMCP affordances", async (
     "aria-selected",
     "true",
   );
-  await expect(dialog.getByLabel("Trigger", { exact: true })).toHaveValue("gather");
-  await dialog.getByLabel("Trigger", { exact: true }).fill("dirty gather");
+  const aliasEditor = dialog.getByRole("region", { name: "Edit aliases" });
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("gather");
+  await aliasEditor.getByLabel("Pattern", { exact: true }).fill("dirty gather");
   await settingsTab(dialog, "Variables");
   await variablesPanel.getByRole("button", { name: "Gather supplies (gather)" }).click();
-  await expect(dialog.getByLabel("Trigger", { exact: true })).toHaveValue("dirty gather");
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("dirty gather");
   await expect(
     dialog.getByText("Save or Cancel the current edit before selecting another definition."),
   ).toBeVisible();
@@ -679,9 +814,17 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await settingsButton.click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Save & Close", exact: true })).toHaveClass(
+    /\bdw-button-primary\b/,
+  );
   await settingsTab(dialog, "Appearance");
   await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("82");
   await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("55");
+  await expect(dialog.getByLabel("Snap floating panes to grid")).not.toBeChecked();
+  await expect(
+    dialog.getByText("Align floating pane positions and resized pane dimensions to a 16px grid."),
+  ).toBeVisible();
+  await dialog.getByLabel("Snap floating panes to grid").check();
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await dialog.getByLabel("Side panel opacity").fill("67");
   await dialog.getByLabel("Terminal background opacity").fill("43");
@@ -694,10 +837,10 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await settingsTab(dialog, "Terminal");
   await expect(dialog.getByLabel("Terminal font family")).toHaveValue("");
   await expect(dialog.getByLabel("Terminal font size")).toHaveValue("");
-  await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("pause");
+  await expect(dialog.getByLabel("Scrollback mode")).toHaveValue("pause");
   await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("normal");
   await expect(dialog.getByLabel("Split history size")).toHaveValue("60");
-  await dialog.getByLabel("Scrollback behavior").selectOption("split");
+  await dialog.getByLabel("Scrollback mode").selectOption("split");
   await dialog.getByLabel("Scrollback memory").selectOption("high");
   await dialog.getByLabel("Terminal font family").selectOption({ label: "Courier" });
   await dialog.getByLabel("Terminal font size").selectOption("18");
@@ -747,6 +890,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
     terminalFontFamily: '"Courier New", Courier, monospace',
     terminalFontSize: 18,
     terminalWidthColumns: null,
+    paneGridSnapEnabled: true,
   });
   const terminalOutput = page.getByLabel("Terminal output", { exact: true });
   await expect(terminalOutput).toHaveCSS("font-family", /Courier New/);
@@ -762,6 +906,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await expect(dialog.getByLabel("Theme", { exact: true })).toHaveValue("nord");
   await expect(dialog.getByLabel("Side panel opacity")).toHaveValue("67");
   await expect(dialog.getByLabel("Terminal background opacity")).toHaveValue("43");
+  await expect(dialog.getByLabel("Snap floating panes to grid")).toBeChecked();
   await settingsTab(dialog, "Terminal");
   await expect(dialog.getByLabel("Terminal font family")).toHaveValue(
     '"Courier New", Courier, monospace',
@@ -811,7 +956,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await expect(dialog.getByLabel("Use command history for Tab completion")).toBeChecked();
   await expect(dialog.getByLabel("Show emoji picker")).not.toBeChecked();
   await settingsTab(dialog, "Terminal");
-  await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("split");
+  await expect(dialog.getByLabel("Scrollback mode")).toHaveValue("split");
   await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("high");
   await settingsTab(dialog, "Variables");
   await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
@@ -1035,9 +1180,7 @@ test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme 
   const backgroundPreview = backgroundChoice.locator(".background-preview");
   await backgroundPreview.click();
   await expect(background).toBeChecked();
-  expect(
-    await backgroundPreview.evaluate((element) => getComputedStyle(element).borderColor),
-  ).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(backgroundPreview).not.toHaveCSS("border-color", "rgba(0, 0, 0, 0)");
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
@@ -1300,8 +1443,11 @@ test("Phase 3 imports settings without replacing the active session or profile s
   await settingsButton.click();
   await settingsTab(dialog, "Audio");
   await expect(dialog.getByLabel("Enable audio")).not.toBeChecked();
-  await expect(dialog.getByLabel("Volume")).toHaveValue("25");
-  await expect(dialog.getByLabel("Combat")).not.toBeChecked();
+  await expect(dialog.getByLabel("Master volume", { exact: true })).toHaveValue("25");
+  await expect(dialog.getByRole("button", { name: "Combat", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await settingsTab(dialog, "Controls");
@@ -1434,13 +1580,12 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await expect(dialog.getByLabel("Theme", { exact: true })).toBeVisible();
   await settingsTab(dialog, "Aliases");
   await dialog.getByRole("button", { name: "New alias" }).click();
-  await dialog.getByRole("textbox", { name: "Trigger", exact: true }).fill("draft-alias");
+  const aliasEditor = dialog.getByRole("region", { name: "Edit aliases" });
+  await aliasEditor.getByLabel("Pattern", { exact: true }).fill("draft-alias");
   await dialog.getByLabel("Search settings").fill("Connection");
   await dialog.getByLabel("Search settings").fill("");
   await settingsTab(dialog, "Aliases");
-  await expect(dialog.getByRole("textbox", { name: "Trigger", exact: true })).toHaveValue(
-    "draft-alias",
-  );
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("draft-alias");
   await settingsTab(dialog, "Connection");
   await dialog.getByLabel("Auto-reconnect").uncheck();
   await settingsTab(dialog, "Variables");
@@ -1453,9 +1598,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
     "true",
   );
   await settingsTab(dialog, "Aliases");
-  await expect(dialog.getByRole("textbox", { name: "Trigger", exact: true })).toHaveValue(
-    "draft-alias",
-  );
+  await expect(aliasEditor.getByLabel("Pattern", { exact: true })).toHaveValue("draft-alias");
   await settingsTab(dialog, "Connection");
   await expect(dialog.getByLabel("Auto-reconnect")).not.toBeChecked();
   await settingsTab(dialog, "Variables");
@@ -1573,7 +1716,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
   await expect(input).toHaveValue("");
 });
 
-test("Phase 2 settings reset the workspace immediately", async ({ page }, testInfo) => {
+test("Phase 2 settings reset the workspace after confirmation", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === "mobile-chromium", "desktop controls only");
   await page.goto("/phase2/");
   await expect(page.getByTestId("workspace-host")).toBeVisible();
@@ -1589,9 +1732,21 @@ test("Phase 2 settings reset the workspace immediately", async ({ page }, testIn
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Appearance");
-  await dialog.getByRole("button", { name: "Reset workspace", exact: true }).click();
+  const resetLayout = dialog.getByRole("button", { name: "Reset layout", exact: true });
+  page.once("dialog", async (confirmation) => {
+    expect(confirmation.message()).toBe("Reset saved pane and terminal layout for this browser?");
+    await confirmation.dismiss();
+  });
+  await resetLayout.click();
+  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  page.once("dialog", async (confirmation) => {
+    expect(confirmation.message()).toBe("Reset saved pane and terminal layout for this browser?");
+    await confirmation.accept();
+  });
+  await resetLayout.click();
 
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
+  await expect(dialog.locator('form > p[role="status"]')).toHaveText("Layout reset.");
   await expect(page.locator('.information-panel[data-panel-id="avatar"]')).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Collapse Status", exact: true })).toBeVisible();
   expect(
@@ -1719,7 +1874,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
   await editor.getByRole("button", { name: "Save functions" }).click();
   await functions.getByRole("button", { name: "New function" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
-  await editor.getByLabel("Name").fill("temporary");
+  await editor.getByLabel("Function name", { exact: true }).fill("temporary");
   await editor.getByLabel("Script", { exact: true }).fill("send temporary");
   await editor.getByRole("button", { name: "Save functions" }).click();
   await functions.getByRole("button", { name: "Edit temporary" }).click();
@@ -2004,7 +2159,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "New alias" }).click();
   editor = aliases.getByRole("region", { name: "Edit aliases" });
-  await editor.getByLabel("Trigger", { exact: true }).fill("temporary alias");
+  await editor.getByLabel("Pattern", { exact: true }).fill("temporary alias");
   await editor.getByLabel("Template").fill("temporary");
   await editor.getByRole("button", { name: "Save aliases" }).click();
   await aliases.getByRole("button", { name: "Edit temporary alias" }).click();
@@ -2038,8 +2193,8 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
-  await editor.getByLabel("Duration (seconds)").fill("1");
-  await editor.getByLabel("Start automatically").check();
+  await editor.getByLabel("Duration seconds").fill("1");
+  await editor.getByLabel("Auto-start").check();
   await editor.getByLabel("Template").fill("timer-after");
   await editor.getByRole("button", { name: "Save timers" }).click();
   await timers.getByRole("button", { name: "New timer" }).click();
@@ -2149,7 +2304,7 @@ test("Phase 2 highlights restore legacy discovery, validation, color authoring, 
   await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeFocused();
   await glow.click();
   const editor = highlights.getByRole("region", { name: "Edit highlights" });
-  await expect(editor.getByText("Regular expression")).toBeVisible();
+  await expect(editor.getByText("Pattern (regex)")).toBeVisible();
   await expect(editor.getByLabel("Foreground")).toHaveAttribute("list", "highlight-colors");
   await expect(
     editor.locator('datalist#highlight-colors option[value="bright-yellow"]'),
@@ -2327,16 +2482,16 @@ test("Phase 2 functions restore legacy discovery, authoring, and safe preview", 
   await expect(editor.getByLabel("Script", { exact: true })).toHaveValue("send look");
   await expect(editor.getByText("Function name needs content.")).toBeVisible();
   await expect(editor.getByText("Function script syntax")).toBeVisible();
-  await editor.getByLabel("Name", { exact: true }).fill("9bad");
+  await editor.getByLabel("Function name", { exact: true }).fill("9bad");
   await expect(editor.getByText(/Function names must start/)).toBeVisible();
   await editor.getByRole("button", { name: "Save functions" }).click();
-  await expect(editor.getByLabel("Name", { exact: true })).toHaveValue("9bad");
-  await editor.getByLabel("Name", { exact: true }).fill("GREET");
-  await expect(editor.getByLabel("Name", { exact: true })).toHaveValue("greet");
+  await expect(editor.getByLabel("Function name", { exact: true })).toHaveValue("9bad");
+  await editor.getByLabel("Function name", { exact: true }).fill("GREET");
+  await expect(editor.getByLabel("Function name", { exact: true })).toHaveValue("greet");
   await expect(editor.getByText("Function name duplicates an existing function.")).toBeVisible();
   await editor.getByRole("button", { name: "Save functions" }).click();
   await expect(functions.getByText("Correct function warnings before saving.")).toBeVisible();
-  await editor.getByLabel("Name", { exact: true }).fill("draft_function");
+  await editor.getByLabel("Function name", { exact: true }).fill("draft_function");
   await editor.getByLabel("Script", { exact: true }).fill("if");
   await expect(editor.getByRole("list").getByText(/Unknown script action/)).toBeVisible();
   await editor
@@ -2420,7 +2575,7 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   await quick.press("ArrowUp");
   await expect(sharedAlias).toBeFocused();
   await expect(
-    aliases.getByRole("region", { name: "Edit aliases" }).getByLabel("Trigger", { exact: true }),
+    aliases.getByRole("region", { name: "Edit aliases" }).getByLabel("Pattern", { exact: true }),
   ).toHaveValue("sharedalias");
   await search.fill("");
 
@@ -2435,20 +2590,20 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
     editor.getByText("Name is recommended so this alias is easy to find."),
   ).toBeVisible();
   await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
-  await editor.getByLabel("Regular expression").check();
+  await editor.getByLabel("Regex").check();
   await expect(editor.getByLabel("Ignore case")).toBeChecked();
-  await editor.getByLabel("Trigger", { exact: true }).fill("[");
+  await editor.getByLabel("Pattern", { exact: true }).fill("[");
   await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
-  await editor.getByLabel("Regular expression").uncheck();
-  await editor.getByLabel("Trigger", { exact: true }).fill("travel draft");
-  await editor.getByLabel("Name", { exact: true }).fill("Draft route");
+  await editor.getByLabel("Regex").uncheck();
+  await editor.getByLabel("Pattern", { exact: true }).fill("travel draft");
+  await editor.getByLabel("Name (required)", { exact: true }).fill("Draft route");
   await editor.getByLabel("Template", { exact: true }).fill("score");
 
   await quick.click();
   await expect(
     aliases.getByText("Save or Cancel the current edit before selecting another definition."),
   ).toBeVisible();
-  await expect(editor.getByLabel("Trigger", { exact: true })).toHaveValue("travel draft");
+  await expect(editor.getByLabel("Pattern", { exact: true })).toHaveValue("travel draft");
 
   await editor.getByLabel("Add step type").selectOption("set_alias_enabled");
   await editor.getByRole("button", { name: "Add automation step" }).click();
@@ -2595,14 +2750,14 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
     editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
   ).toHaveValue("send_command");
   await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
-  await expect(editor.getByLabel("Regular expression")).not.toBeChecked();
+  await expect(editor.getByLabel("Regex")).not.toBeChecked();
   await expect(editor.getByLabel("Ignore case")).not.toBeChecked();
-  await expect(editor.getByLabel("Gag matching output")).not.toBeChecked();
+  await expect(editor.getByLabel("Gag line")).not.toBeChecked();
   await expect(
     editor.getByText("Name is recommended so this trigger is easy to find."),
   ).toBeVisible();
   await expect(editor.getByText("Pattern needs content.")).toBeVisible();
-  await editor.getByLabel("Regular expression").check();
+  await editor.getByLabel("Regex").check();
   await editor.getByLabel("Pattern").fill("[");
   await expect(editor.getByRole("list")).toContainText(/regular expression|unterminated/i);
   await editor.getByLabel("Pattern").fill("draft");
@@ -2744,8 +2899,8 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit shared pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
-  await editor.getByLabel("Duration (seconds)").fill("1");
-  await editor.getByLabel("Start automatically").check();
+  await editor.getByLabel("Duration seconds").fill("1");
+  await editor.getByLabel("Auto-start").check();
   await editor.getByLabel("Template").fill("shared-timer-after");
   await editor.getByRole("button", { name: "Save timers" }).click();
 
@@ -2880,7 +3035,7 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
   await expect(pulse).toContainText("1m, once, 1 step");
   await pulse.click();
   let editor = timers.getByRole("region", { name: "Edit timers" });
-  await expect(editor.getByLabel("Duration (seconds)")).toHaveValue("60");
+  await expect(editor.getByLabel("Duration seconds")).toHaveValue("60");
   await expect(editor.getByRole("button", { name: "Start" })).toBeVisible();
   await editor.getByRole("button", { name: "Start" }).click();
   await expect(editor.getByText("Timer started.")).toBeVisible();
@@ -2943,7 +3098,7 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
       ),
     )
     .toBeNull();
-  await editor.getByLabel("Duration (seconds)").fill("125");
+  await editor.getByLabel("Duration seconds").fill("125");
   await editor.getByLabel("Add step type").selectOption("run_alias");
   await editor.getByRole("button", { name: "Add automation step" }).click();
   const runStep = editor.getByRole("region", { name: "Automation step 2" });
@@ -3046,7 +3201,7 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
     "Unresolved: missing legacy arguments",
   );
   await editor.getByText("Template syntax", { exact: true }).click();
-  await expect(editor.getByText(/%0 is the timer name/)).toBeVisible();
+  await expect(editor.getByText(/Timer templates use %0 for the timer name/)).toBeVisible();
   await expect(editor.getByText("Runs after: 1s. Starts manually.")).toBeVisible();
   await editor.getByRole("button", { name: "Timer preview" }).click();
   expect(
@@ -3065,7 +3220,7 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
   await reloadedTimers.getByRole("button", { name: "New timer" }).click();
   editor = reloadedTimers.getByRole("region", { name: "Edit timers" });
   await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
-  await expect(editor.getByLabel("Duration (seconds)")).toHaveValue("60");
+  await expect(editor.getByLabel("Duration seconds")).toHaveValue("60");
   await expect(
     editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
   ).toHaveValue("send_command");
@@ -3074,7 +3229,7 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
   await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
   await editor.getByLabel("Name").fill("invalid duration");
   await editor.getByLabel("Template").fill("look");
-  await editor.getByLabel("Duration (seconds)").fill("0");
+  await editor.getByLabel("Duration seconds").fill("0");
   await expect(
     editor.getByText("Timer duration needs whole seconds from 1 to 86400."),
   ).toBeVisible();

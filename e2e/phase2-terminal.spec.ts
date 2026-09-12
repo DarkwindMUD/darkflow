@@ -48,6 +48,104 @@ async function skipChangedSettingsBackup(dialog: Locator): Promise<void> {
     .click();
 }
 
+test("Phase 2 Terminal settings restore legacy help and game screen reader sync", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings", exact: true });
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+  const panel = dialog.getByRole("tabpanel", { name: "Terminal", exact: true });
+
+  await expect(
+    panel.getByText("Choose the font family and size used for terminal output."),
+  ).toBeVisible();
+  await expect(panel.getByLabel("Scrollback memory", { exact: true })).toHaveText(
+    "Low (5,000 lines)Normal (10,000 lines)High (20,000 lines)",
+  );
+  await expect(
+    panel.getByText(
+      "Choose how much terminal history to retain before the oldest lines are discarded.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(panel.getByLabel("Scrollback mode", { exact: true })).toHaveText(
+    "Pause terminalSplit history + live",
+  );
+  await expect(
+    panel.getByText(
+      "Choose whether scrolling back pauses the terminal or opens a split view with live output below.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(panel.getByText("Split history size", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText("Choose how much of the split view is reserved for terminal history.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(panel.getByLabel("Screen width", { exact: true })).toHaveAttribute(
+    "placeholder",
+    "Auto",
+  );
+  await expect(
+    panel.getByText(
+      "Leave blank for automatic pane width, or enter a fixed column width for server-side wrapping.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(panel.getByLabel("Screen reader announcements", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText(
+      "Mirror new terminal lines into a hidden polite live region for browser screen readers.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  const syncCard = panel
+    .locator(".settings-card")
+    .filter({ hasText: "Game screen reader setting" });
+  await expect(syncCard).toContainText(
+    "This sends set screenreader on to the game. It changes your saved MUD setting only when you press the button.",
+  );
+  const disconnectedSync = syncCard.getByRole("button", { name: "Sync now", exact: true });
+  await expect(disconnectedSync).toBeDisabled();
+  await disconnectedSync.dispatchEvent("click");
+  await expect(dialog.locator('form > p[role="status"]')).toHaveText(
+    "Connect before syncing the game screen reader setting.",
+  );
+
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByLabel("Host").fill("127.0.0.1");
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
+  await page.getByLabel("Connection protocol").selectOption("ws");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+
+  const commandCount = endpoint.commands.filter(
+    (command) => command === "set screenreader on",
+  ).length;
+  const syncNow = dialog.getByRole("button", { name: "Sync now", exact: true });
+  await expect(syncNow).toBeEnabled();
+  await syncNow.click();
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "set screenreader on").length)
+    .toBe(commandCount + 1);
+  await expect(dialog.locator('form > p[role="status"]')).toHaveText(
+    "Game screen reader setting synced.",
+  );
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
+    "Sent to game: set screenreader on",
+  );
+  await dialog.getByRole("tab", { name: "Connection", exact: true }).click();
+  await dialog.getByRole("button", { name: "Disconnect", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await expect(dialog.getByRole("button", { name: "Sync now", exact: true })).toBeDisabled();
+});
+
 async function setVisibility(
   page: Page,
   visibilityState: "hidden" | "visible" | "prerender",
@@ -134,7 +232,7 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await dialog.getByLabel("Terminal width").fill("75");
+  await dialog.getByLabel("Screen width").fill("75");
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
@@ -654,7 +752,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await dialog.getByLabel("Scrollback behavior").selectOption("split");
+  await dialog.getByLabel("Scrollback mode").selectOption("split");
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
 

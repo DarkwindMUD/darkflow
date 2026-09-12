@@ -29,6 +29,7 @@ export interface WorkspaceTestBridge {
   activate(id: string): void;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;
+  setPaneGridSnapEnabled(enabled: boolean, initializing?: boolean): void;
   subscribeLayout(): void;
   unsubscribeLayout(): void;
   resetLayoutEvents(): void;

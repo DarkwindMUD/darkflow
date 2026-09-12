@@ -56,6 +56,11 @@ interface DockviewPanelLike {
 type FloatingBounds = { height: number; left: number; top: number; width: number };
 type FloatingSnapTarget = FloatingBounds & { element: HTMLElement };
 const DISABLED_DOCKVIEW_TAB_KEYS = new Set(["Home", "End", "Enter", " ", "Delete", "Backspace"]);
+const FLOATING_GRID_SIZE = 16;
+const FLOATING_FRAME_BORDER_SIZE = 2;
+
+const snapFloatingGrid = (value: number): number =>
+  Math.round(value / FLOATING_GRID_SIZE) * FLOATING_GRID_SIZE;
 
 // Legacy snapping adjusts only the current drag position; it never links the panes.
 function attractFloatingGroup<T extends FloatingBounds>(
@@ -179,6 +184,7 @@ export function createWorkspace(
   let disposePromise: Promise<void> | undefined;
   let requestClosePanel: (id: string) => Promise<boolean> = async () => false;
   let suppressLayoutEvents = true;
+  let paneGridSnapEnabled = false;
 
   const api = createDockview(host, {
     createTabComponent: ({ id }) => {
@@ -252,7 +258,11 @@ export function createWorkspace(
           ? snapped.target.element
           : undefined,
       );
-      return snapped ? { left: snapped.left, top: snapped.top } : undefined;
+      return snapped
+        ? { left: snapped.left, top: snapped.top }
+        : paneGridSnapEnabled
+          ? { left: snapFloatingGrid(proposed.left), top: snapFloatingGrid(proposed.top) }
+          : undefined;
     },
     keyboardNavigation: {
       keymap: {
@@ -370,14 +380,32 @@ export function createWorkspace(
           }),
         );
       }
-      const snapped = attractFloatingResize(
+      const attracted = attractFloatingResize(
         frameBounds.left,
         frameBounds.top,
         moveEvent.clientX + offsetX,
         moveEvent.clientY + offsetY,
         siblingBounds,
       );
-      setSnapTarget(snapped.target?.element);
+      const snapped = paneGridSnapEnabled
+        ? {
+            right: attracted.rightSnapped
+              ? attracted.right
+              : frameBounds.left +
+                Math.max(
+                  0,
+                  snapFloatingGrid(attracted.right - frameBounds.left) - FLOATING_FRAME_BORDER_SIZE,
+                ),
+            bottom: attracted.bottomSnapped
+              ? attracted.bottom
+              : frameBounds.top +
+                Math.max(
+                  0,
+                  snapFloatingGrid(attracted.bottom - frameBounds.top) - FLOATING_FRAME_BORDER_SIZE,
+                ),
+          }
+        : attracted;
+      setSnapTarget(attracted.target?.element);
       window.dispatchEvent(
         new PointerEvent("pointermove", {
           buttons: moveEvent.buttons,
@@ -800,6 +828,56 @@ export function createWorkspace(
     return changed;
   }
 
+  const snapFloatingGroupsToGrid = (): void => {
+    const layout = api.toJSON();
+    const hostWidth = host.clientWidth || window.innerWidth;
+    const hostHeight = host.clientHeight || window.innerHeight;
+    let changed = false;
+    for (const floating of layout.floatingGroups ?? []) {
+      const position = floating.position;
+      const snappedWidth = Math.min(hostWidth, Math.max(160, snapFloatingGrid(position.width)));
+      const snappedHeight = Math.min(hostHeight, Math.max(80, snapFloatingGrid(position.height)));
+      // Dockview's restored floating box adds its two border pixels to these
+      // serialized dimensions. Feed it the content size so the rendered and
+      // subsequently persisted pane dimensions land on the requested grid.
+      const width = snappedWidth - FLOATING_FRAME_BORDER_SIZE;
+      const height = snappedHeight - FLOATING_FRAME_BORDER_SIZE;
+      const horizontal = "left" in position ? position.left : position.right;
+      const vertical = "top" in position ? position.top : position.bottom;
+      const nextHorizontal = Math.max(
+        0,
+        Math.min(snapFloatingGrid(horizontal), hostWidth - snappedWidth),
+      );
+      const nextVertical = Math.max(
+        0,
+        Math.min(snapFloatingGrid(vertical), hostHeight - snappedHeight),
+      );
+      if (
+        width === position.width &&
+        height === position.height &&
+        horizontal === nextHorizontal &&
+        vertical === nextVertical
+      )
+        continue;
+      floating.position = {
+        width,
+        height,
+        ...("left" in position ? { left: nextHorizontal } : { right: nextHorizontal }),
+        ...("top" in position ? { top: nextVertical } : { bottom: nextVertical }),
+      };
+      changed = true;
+    }
+    if (!changed) return;
+    const requestedLayout = structuredClone(layout);
+    suppressLayoutEventsForFrame();
+    preserveOwnedFocus(() => {
+      api.fromJSON(layout, { reuseExistingPanels: true });
+      layoutHost();
+    });
+    reapplySerializedFloatingBounds(requestedLayout);
+    requestAnimationFrame(emitLayout);
+  };
+
   const addPanel = (spec: WorkspacePanelSpec): void => {
     const options = panelOptions(spec);
     const placement = spec.placement;
@@ -1062,6 +1140,11 @@ export function createWorkspace(
       reapplySerializedFloatingBounds(requestedLayout);
       queueMicrotask(annotateFloatingTitlebars);
       return true;
+    },
+
+    setPaneGridSnapEnabled(enabled, options = {}) {
+      paneGridSnapEnabled = enabled;
+      if (enabled && !options.initializing) snapFloatingGroupsToGrid();
     },
 
     save() {

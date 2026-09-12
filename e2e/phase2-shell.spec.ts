@@ -178,7 +178,7 @@ test("Phase 2 header matches the legacy toolbar controls", async ({ page }) => {
   const header = page.locator(".app-chrome");
   const connection = page.getByRole("form", { name: "Connection" });
   const host = page.getByLabel("Host");
-  const port = page.getByLabel("Port");
+  const port = page.getByLabel("Port", { exact: true });
   const protocol = page.getByLabel("Connection protocol");
   await expect(header).toHaveCSS("height", "42px");
   expect(await header.boundingBox()).toMatchObject({ x: 0, y: 0, width: 1440, height: 42 });
@@ -299,7 +299,7 @@ test("Phase 2 controls drive connection, retry countdown, disconnect, and dispos
 
   const host = page.getByLabel("Host");
   await host.fill("fixture.example");
-  await page.getByLabel("Port").fill("4321");
+  await page.getByLabel("Port", { exact: true }).fill("4321");
   const connectionButton = page.locator("#connect-btn");
   const connectionButtonWidth = await connectionButton.evaluate(
     (button) => button.getBoundingClientRect().width,
@@ -356,10 +356,10 @@ test("Phase 2 controls drive connection, retry countdown, disconnect, and dispos
   await expect(page.getByLabel("Host")).toHaveValue("retry.example");
 
   await page.getByLabel("Host").fill("");
-  await page.getByLabel("Port").fill("");
+  await page.getByLabel("Port", { exact: true }).fill("");
   await expect(connectionButton).toBeDisabled();
   await expect(page.getByLabel("Host")).toHaveValue("");
-  await expect(page.getByLabel("Port")).toHaveValue("");
+  await expect(page.getByLabel("Port", { exact: true })).toHaveValue("");
   expect((await readFakeSockets(page)).urls).toHaveLength(socketsBeforeDisconnect);
 
   await page.getByLabel("Host").fill("retry.example");
@@ -479,7 +479,7 @@ test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", 
 
   await page.goto("/phase2/");
   await expect(page.getByLabel("Host")).toHaveValue("config.example");
-  await expect(page.getByLabel("Port")).toHaveValue("7777");
+  await expect(page.getByLabel("Port", { exact: true })).toHaveValue("7777");
   await expect
     .poll(async () => (await readFakeSockets(page)).urls)
     .toEqual(["wss://config.example:7777/"]);
@@ -489,7 +489,7 @@ test("Phase 2 endpoint precedence auto-connects config, URL, and Zork targets", 
 
   await page.goto("/phase2/?host=url.example&port=3131&type=ws");
   await expect(page.getByLabel("Host")).toHaveValue("url.example");
-  await expect(page.getByLabel("Port")).toHaveValue("3131");
+  await expect(page.getByLabel("Port", { exact: true })).toHaveValue("3131");
   await expect(page.getByLabel("Connection protocol")).toHaveValue("ws");
   await expect
     .poll(async () => (await readFakeSockets(page)).urls)

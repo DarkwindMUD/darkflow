@@ -97,6 +97,7 @@ export interface Workspace {
       Record<string, { left: number; top: number; width: number; height: number }>
     >,
   ): boolean;
+  setPaneGridSnapEnabled(enabled: boolean, options?: { initializing?: boolean }): void;
   save(): WorkspaceSnapshot;
   restore(snapshot: WorkspaceSnapshot, panels: readonly WorkspacePanelSpec[]): boolean;
   subscribePanelDrag(listener: (event: { cancel(): void; panelId: string }) => void): () => void;

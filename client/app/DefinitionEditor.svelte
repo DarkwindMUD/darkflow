@@ -17,6 +17,7 @@
   import type { ConfigSetId } from "../model/ids.ts";
   import type { Session } from "../runtime/session.ts";
   import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
+  import SettingsCheckbox from "./SettingsCheckbox.svelte";
   // @ts-expect-error The preview adapter is intentionally shared plain JavaScript.
   import * as previewCore from "../../public/js/alias-preview-core.mjs";
   // @ts-ignore Shared legacy parser provides the persisted script diagnostics.
@@ -1006,6 +1007,14 @@
     );
   }
 
+  function enabledHelp(): string {
+    if (kind === "aliases") return "Disabled aliases stay saved but never match or expand.";
+    if (kind === "triggers") return "Disabled triggers stay saved but never match incoming output.";
+    if (kind === "timers") return "Disabled timers stay saved but cannot be started.";
+    if (kind === "functions") return "Disabled functions stay saved but cannot be called.";
+    return "Disabled highlight rules stay saved but never recolor output.";
+  }
+
   function togglePreview(): void {
     previewCollapsed = !previewCollapsed;
     const current = (() => {
@@ -1037,8 +1046,8 @@
   <legend>{title}</legend>
   {#if kind === "keyMappings"}
     <p class="helper-text">
-      Press a key in the Key field to capture it. Top-row numbers and numpad numbers are different
-      keys.
+      Press a key in the Key field to capture it. Top-row numbers and numpad numbers are treated as
+      different keys.
     </p>
     <div class="mapping-list">
       {#each entries as entry (entry.definition.id)}
@@ -1063,6 +1072,7 @@
           />
           <input
             aria-label={`Enable ${labelFor(mapping)}`}
+            title="Enable or disable this key mapping."
             type="checkbox"
             checked={mapping.enabled}
             disabled={entry.source.kind === "builtin"}
@@ -1096,7 +1106,12 @@
             placeholder="Command to send"
             onchange={() => draft?.code && save()}
           />
-          <input aria-label="Enable new mapping" type="checkbox" bind:checked={draft.enabled} />
+          <input
+            aria-label="Enable new mapping"
+            title="Enable or disable this key mapping."
+            type="checkbox"
+            bind:checked={draft.enabled}
+          />
           <button type="button" onclick={cancel}>Remove</button>
         </div>
       {/if}
@@ -1217,6 +1232,7 @@
               </button>
               <input
                 aria-label={`Enable ${labelFor(entry.definition)}`}
+                title={`Enable or disable this ${noun}.`}
                 type="checkbox"
                 checked={entry.definition.enabled}
                 disabled={entry.source.kind === "builtin"}
@@ -1257,18 +1273,22 @@
       <div class="automation-detail">
         {#if draft}
           <section bind:this={editor} class="editor" aria-label={`Edit ${title.toLowerCase()}`}>
-            <label><input type="checkbox" bind:checked={draft.enabled} /> Enabled</label>
+            <SettingsCheckbox bind:checked={draft.enabled} label="Enabled" help={enabledHelp()} />
             {#if kind === "highlights"}
               <label
-                >Pattern (regular expression) <input
+                >Pattern (regex) <input
                   aria-label="Pattern"
                   bind:value={draft.patternSource}
                   required
                 /></label
               >
-              <label>Description <input bind:value={draft.description} /></label>
+              <label>Name <input bind:value={draft.description} /></label>
               <label>Group <input bind:value={draft.group} /></label>
-              <label><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label>
+              <SettingsCheckbox
+                bind:checked={draft.ignoreCase}
+                label="Ignore case"
+                help="Match without caring about capitalization."
+              />
               <label
                 >Foreground
                 <span class="color-input-row"
@@ -1316,7 +1336,11 @@
               <datalist id="highlight-colors">
                 {#each getColorSuggestions() as color (color)}<option value={color}></option>{/each}
               </datalist>
-              <label><input type="checkbox" bind:checked={draft.bold} /> Bold</label>
+              <SettingsCheckbox
+                bind:checked={draft.bold}
+                label="Bold"
+                help="Force matched text to render bold in addition to the selected colors."
+              />
               {#if highlightWarnings.length}
                 <ul class="warnings" aria-live="polite">
                   {#each highlightWarnings as warning (warning)}<li>{warning}</li>{/each}
@@ -1343,7 +1367,7 @@
               </section>
             {:else if kind === "functions"}
               <label
-                >Name <input
+                >Function name <input
                   bind:value={draft.name}
                   pattern="[a-z_][a-z0-9_-]*"
                   oninput={(event) => {
@@ -1352,7 +1376,7 @@
                   required
                 /></label
               >
-              <label>Description <input bind:value={draft.description} /></label>
+              <label>Name <input bind:value={draft.description} /></label>
               <label>Group <input bind:value={draft.group} /></label>
               <label>Script <textarea bind:value={draft.script} required></textarea></label>
               {#if functionWarnings.length}
@@ -1363,9 +1387,9 @@
               <details>
                 <summary>Function script syntax</summary>
                 <p>
-                  Functions receive positional arguments as %1-%9 and all arguments as %0. Use
-                  variables like $name; if/elseif/else/while/end; break and continue; send, show,
-                  set, wait, run_alias, call, play_sound, and alias, trigger, and timer controls.
+                  Functions receive arguments from the caller as %1-%9 and %0. Scripts support
+                  if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;, set
+                  $name = value, run_alias, call, play_sound, and alias/trigger/timer controls.
                 </p>
               </details>
               <section class="alias-preview">
@@ -1388,15 +1412,18 @@
               </section>
             {:else}
               {#if kind === "aliases"}
-                <label>Trigger <input bind:value={draft.trigger} required /></label>
+                <label>Pattern <input bind:value={draft.trigger} required /></label>
               {:else if kind === "triggers"}
                 <label>Pattern <input bind:value={draft.pattern} required /></label>
-                <label><input type="checkbox" bind:checked={draft.gag} /> Gag matching output</label
-                >
+                <SettingsCheckbox
+                  bind:checked={draft.gag}
+                  label="Gag line"
+                  help="Hide matched lines from the terminal after this trigger runs."
+                />
               {:else}
                 <label>Name <input bind:value={draft.name} required /></label>
                 <label
-                  >Duration (seconds) <input
+                  >Duration seconds <input
                     type="number"
                     min="1"
                     max="86400"
@@ -1408,23 +1435,33 @@
                     required
                   /></label
                 >
-                <label><input type="checkbox" bind:checked={draft.recurring} /> Recurring</label>
-                <label
-                  ><input type="checkbox" bind:checked={draft.autoStart} /> Start automatically</label
-                >
+                <SettingsCheckbox
+                  bind:checked={draft.recurring}
+                  label="Recurring"
+                  help="Run again after each successful firing."
+                />
+                <SettingsCheckbox
+                  bind:checked={draft.autoStart}
+                  label="Auto-start"
+                  help="Start this timer automatically when Darkflow connects."
+                />
               {/if}
               <label
-                >{kind === "aliases" || kind === "triggers" ? "Name" : "Description"}
+                >{kind === "aliases" || kind === "triggers" ? "Name (required)" : "Description"}
                 <input bind:value={draft.description} /></label
               >
               <label>Group <input bind:value={draft.group} /></label>
               {#if kind !== "timers"}
-                <label
-                  ><input type="checkbox" bind:checked={draft.isRegex} /> Regular expression</label
-                >
-                {#if kind !== "aliases" || draft.isRegex}<label
-                    ><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label
-                  >{/if}
+                <SettingsCheckbox
+                  bind:checked={draft.isRegex}
+                  label="Regex"
+                  help="Treat the pattern as a JavaScript regular expression. Capture groups become %1-%9."
+                />
+                {#if kind !== "aliases" || draft.isRegex}<SettingsCheckbox
+                    bind:checked={draft.ignoreCase}
+                    label="Ignore case"
+                    help="Match without caring about capitalization."
+                  />{/if}
               {/if}
               {#if automationWarnings.length}
                 <ul class="warnings" aria-live="polite">
@@ -1589,6 +1626,12 @@
     flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
+  }
+
+  .list-actions button {
+    min-height: 28px;
+    padding: 5px 14px;
+    font-size: 12px;
   }
 
   .warnings,

@@ -1,4 +1,4 @@
-import { expect, test as base, type Page } from "@playwright/test";
+import { expect, test as base, type Locator, type Page } from "@playwright/test";
 import type { SerializedDockview } from "dockview";
 import { attractFloatingResize } from "../client/workspace/floating-snap";
 import type {
@@ -283,17 +283,87 @@ test("floating groups attract by position without linking their movement", async
   expectRestoredLayout(layoutShape(await observePanel(page, moving.id)), layoutShape(snapped));
 });
 
+test("floating pane grid snapping applies at runtime without sweeping during startup", async ({
+  page,
+}) => {
+  const floating = lifecyclePanel("grid-snap", "grid snap", {
+    kind: "floating",
+    bounds: { left: 83, top: 85, width: 223, height: 167 },
+  });
+  await page.evaluate((panel) => window.__darkflowWorkspace.upsert(panel), floating);
+  const position = () =>
+    page.evaluate(() => {
+      const layout = window.__darkflowWorkspace.save().layout as SerializedDockview;
+      return layout.floatingGroups![0]!.position;
+    });
+  const before = await position();
+
+  await page.evaluate(() => window.__darkflowWorkspace.setPaneGridSnapEnabled(true, true));
+  expect(await position()).toEqual(before);
+
+  await page.evaluate(() => window.__darkflowWorkspace.setPaneGridSnapEnabled(true));
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+  const snapped = await position();
+  expect(snapped.width % 16).toBe(0);
+  expect(snapped.height % 16).toBe(0);
+  expect(("left" in snapped ? snapped.left : snapped.right) % 16).toBe(0);
+  expect(("top" in snapped ? snapped.top : snapped.bottom) % 16).toBe(0);
+
+  const frame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${floating.id}"]`),
+  });
+  const dragBy = async (x: number, y: number) => {
+    const titlebar = await frame.locator(".dv-floating-titlebar").boundingBox();
+    expect(titlebar).not.toBeNull();
+    const grabX = titlebar!.x + titlebar!.width / 2;
+    const grabY = titlebar!.y + titlebar!.height / 2;
+    await page.mouse.move(grabX, grabY);
+    await page.mouse.down();
+    await page.mouse.move(grabX + 2, grabY + 2);
+    await page.mouse.move(grabX + x, grabY + y, { steps: 8 });
+    await page.mouse.up();
+  };
+
+  await dragBy(19, 21);
+  const enabledDrag = await position();
+  expect(("left" in enabledDrag ? enabledDrag.left : enabledDrag.right) % 16).toBe(0);
+  expect(("top" in enabledDrag ? enabledDrag.top : enabledDrag.bottom) % 16).toBe(0);
+
+  await page.evaluate(() => window.__darkflowWorkspace.setPaneGridSnapEnabled(false));
+  await dragBy(5, 7);
+  const disabledDrag = await position();
+  expect([
+    ("left" in disabledDrag ? disabledDrag.left : disabledDrag.right) % 16,
+    ("top" in disabledDrag ? disabledDrag.top : disabledDrag.bottom) % 16,
+  ]).not.toEqual([0, 0]);
+});
+
 test("calculates floating bottom-right resize attraction", () => {
   const target = { height: 240, left: 400, top: 80, width: 260 };
 
   expect(attractFloatingResize(80, 80, 382, 308, [target])).toEqual({
     bottom: 320,
+    bottomSnapped: true,
     right: 394,
+    rightSnapped: true,
     target,
   });
   expect(attractFloatingResize(80, 80, 365, 291, [target])).toEqual({
     bottom: 291,
+    bottomSnapped: false,
     right: 365,
+    rightSnapped: false,
+  });
+  expect(
+    attractFloatingResize(346, 80, 601, 320, [{ height: 240, left: 80, top: 80, width: 260 }]),
+  ).toMatchObject({ bottomSnapped: true, rightSnapped: false });
+  expect(
+    attractFloatingResize(80, 80, 340, 355, [{ height: 240, left: 346, top: 80, width: 220 }]),
+  ).toMatchObject({
+    bottomSnapped: false,
+    rightSnapped: true,
   });
 });
 
@@ -345,6 +415,65 @@ test("resize attraction changes size without moving the floating panel", async (
   expect(
     Math.abs(resized!.y + resized!.height - (targetBefore!.y + targetBefore!.height)),
   ).toBeLessThanOrEqual(2);
+});
+
+test("grid snapping stays independent on each resize axis", async ({ page }, testInfo) => {
+  test.skip(
+    testInfo.project.name === "firefox",
+    "Playwright Firefox does not drive Dockview's native resize handle in this fixture.",
+  );
+  const left = lifecyclePanel("grid-resize-left", "left", {
+    kind: "floating",
+    bounds: { left: 80, top: 0, width: 260, height: 140 },
+  });
+  const right = lifecyclePanel("grid-resize-right", "right", {
+    kind: "floating",
+    bounds: { left: 346, top: 0, width: 220, height: 140 },
+  });
+  await page.evaluate(
+    (panels) => panels.forEach((panel) => window.__darkflowWorkspace.upsert(panel)),
+    [left, right],
+  );
+  await page.evaluate(() => window.__darkflowWorkspace.setPaneGridSnapEnabled(true, true));
+
+  const leftFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${left.id}"]`),
+  });
+  const rightFrame = page.locator(".dv-resize-container").filter({
+    has: page.locator(`[data-panel-drag-handle][data-panel-id="${right.id}"]`),
+  });
+
+  const resizeBy = async (frame: Locator, x: number, y: number) => {
+    const [before, handle] = await Promise.all([
+      frame.boundingBox(),
+      frame.locator(".dv-resize-handle-bottomright").boundingBox(),
+    ]);
+    expect(before).not.toBeNull();
+    expect(handle).not.toBeNull();
+    await page.mouse.move(handle!.x + handle!.width / 2, handle!.y + handle!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(before!.x + before!.width, before!.y + before!.height + 5);
+    await page.mouse.move(before!.x + before!.width + x, before!.y + before!.height + y, {
+      steps: 8,
+    });
+    await page.mouse.up();
+  };
+
+  await resizeBy(rightFrame, 35, 0);
+  const widenedRight = await rightFrame.boundingBox();
+  const leftBefore = await leftFrame.boundingBox();
+  expect(widenedRight).not.toBeNull();
+  expect(leftBefore).not.toBeNull();
+  expect(widenedRight!.width % 16).toBeLessThanOrEqual(0.5);
+  expect(
+    Math.abs(widenedRight!.y + widenedRight!.height - (leftBefore!.y + leftBefore!.height)),
+  ).toBeLessThanOrEqual(2);
+
+  await resizeBy(leftFrame, 0, 35);
+  const tallerLeft = await leftFrame.boundingBox();
+  expect(tallerLeft).not.toBeNull();
+  expect(tallerLeft!.height % 16).toBeLessThanOrEqual(0.5);
+  expect(Math.abs(tallerLeft!.x + tallerLeft!.width + 6 - widenedRight!.x)).toBeLessThanOrEqual(2);
 });
 
 test("emits user layout changes, relayouts on host resize, and keeps terminal focus on activation", async ({

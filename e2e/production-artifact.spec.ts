@@ -80,7 +80,7 @@ test("built artifact renders the Svelte client and preserves production contract
   await expect(page.getByLabel("Terminal output", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Command input", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Host")).toBeVisible();
-  await expect(page.getByLabel("Port")).toBeVisible();
+  await expect(page.getByLabel("Port", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Connection protocol")).toBeVisible();
   await expect(page.getByRole("button", { name: "Connect" })).toBeVisible();
 

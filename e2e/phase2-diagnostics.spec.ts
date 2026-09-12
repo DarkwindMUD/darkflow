@@ -33,6 +33,12 @@ async function connectCurrentPage(page: Page): Promise<void> {
 test("connection health and RFC 2549 use the public session snapshot", async ({ page }) => {
   await connect(page);
   const endpoint = fixtures.endpoints.ws;
+  endpoint.sendGmcp("Game", {
+    game_name: "Darkwind",
+    game_version: "4.2.2",
+    game_uptime: 86_400,
+    game_reboot: 0,
+  });
   endpoint.sendGmcp("Darkwind.Lag.Status", {
     uptime_s: 100,
     window_s: 60,
@@ -45,22 +51,22 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
     hb_processed_pct: 100,
     obj_processed_pct: 100,
   });
+  await expect(page.locator("#status-uptime")).toHaveText("Uptime: 1d 0s");
+  await expect(page.locator("#status-uptime")).toHaveCSS("width", "152px");
+  await expect(page.locator("#status-server-version")).toHaveText("Server v4.2.2");
+  endpoint.sendGmcp("Game", { game_uptime: 86_430, game_reboot: 1_153_471 });
+  await expect(page.locator("#status-uptime")).toHaveText("Uptime: 1d 30s");
+  await expect(page.locator("#status-server-version")).toHaveText("Server v4.2.2");
+  await expect.poll(() => endpoint.gmcpMessages, { timeout: 8_000 }).toContain("Core.Ping");
+  const latency = page.locator("#status-latency");
+  await expect(latency).toBeVisible();
+  await expect(latency).toHaveCSS("width", "64px");
   const mobile = (page.viewportSize()?.width ?? Infinity) <= 700;
-  await page.getByRole("button", { name: "Panels", exact: true }).click();
-  if (mobile) {
-    await page
-      .getByRole("dialog", { name: "Panels", exact: true })
-      .getByRole("button", { name: "Open Connection health", exact: true })
-      .click();
-  } else {
-    await page.getByRole("checkbox", { name: "Connection health", exact: true }).check();
-    await page.getByRole("button", { name: "Panels", exact: true }).click();
-  }
-
+  if (mobile) await page.getByTitle("Disable RFC 2549 debug").click();
+  await latency.click();
   const health = page.locator('.connection-health-panel[data-panel-id="connection-health"]');
   await expect(health).toContainText("Collecting samples");
   await expect(health).toContainText("drift 4ms avg, 35ms max");
-  await expect.poll(() => endpoint.gmcpMessages, { timeout: 8_000 }).toContain("Core.Ping");
 
   endpoint.sendGmcp("Darkwind.Lag.Status", { hb_drift_avg_ms: "invalid" });
   await expect(health).toContainText("drift 4ms avg, 35ms max");
@@ -68,6 +74,10 @@ test("connection health and RFC 2549 use the public session snapshot", async ({ 
   await health.getByRole("button", { name: "Run full check" }).click();
   await expect(health.getByRole("button", { name: "Checking..." })).toBeDisabled();
 
+  if (mobile)
+    await page.evaluate(() =>
+      (window as typeof window & { rfc2549Debug: { enable(): void } }).rfc2549Debug.enable(),
+    );
   const rfc = page.getByLabel("RFC 2549 debug panel");
   await expect(rfc).toContainText("Avian QoS");
   await expect(rfc).toContainText("ws direct to 127.0.0.1");
@@ -139,7 +149,7 @@ test("GMCP debug is Settings-gated, bounded, and uses only public diagnostics ac
   await debugTab.click();
   await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).not.toBeChecked();
   await settings.getByLabel("Enable GMCP Debug", { exact: true }).check();
-  await settings.getByRole("button", { name: "Save", exact: true }).click();
+  await settings.getByRole("button", { name: "Save & Close", exact: true }).click();
   await settings
     .getByRole("dialog", { name: "Download changed settings?", exact: true })
     .getByRole("button", { name: "Skip", exact: true })
@@ -203,7 +213,7 @@ test("GMCP debug is Settings-gated, bounded, and uses only public diagnostics ac
   await debugTab.click();
   await expect(settings.getByLabel("Enable GMCP Debug", { exact: true })).toBeChecked();
   await settings.getByLabel("Enable GMCP Debug", { exact: true }).uncheck();
-  await settings.getByRole("button", { name: "Save", exact: true }).click();
+  await settings.getByRole("button", { name: "Save & Close", exact: true }).click();
   await settings
     .getByRole("dialog", { name: "Download changed settings?", exact: true })
     .getByRole("button", { name: "Skip", exact: true })

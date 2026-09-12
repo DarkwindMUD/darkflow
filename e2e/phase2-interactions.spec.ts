@@ -127,7 +127,7 @@ test("server panels and NPC dialogue render and send actions", async ({ page }) 
   });
   await expect(panel).toContainText("Finished");
 
-  const settingsButton = page.getByRole("button", { name: "Settings" });
+  const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
   await settingsButton.focus();
   endpoint.sendGmcp("Darkwind.Window.Open", {
     id: "guard",
@@ -291,7 +291,7 @@ test("server panels and NPC dialogue render and send actions", async ({ page }) 
   const settings = page.getByRole("dialog", { name: "Settings" });
   await settings.getByRole("tab", { name: "Appearance", exact: true }).click();
   await settings.getByRole("button", { name: "Reset workspace", exact: true }).click();
-  await settings.getByRole("button", { name: "Cancel", exact: true }).click();
+  await settings.getByRole("button", { name: "Close", exact: true }).click();
   await expect(panel).toHaveCount(0);
   await expect(fishingPanel).toHaveCount(0);
   await expect.poll(() => endpoint.gmcpMessages).toContain('Darkwind.Window.Closed {"id":"tools"}');

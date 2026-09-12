@@ -40,6 +40,7 @@ import type {
   DarkwindQuestsActive,
   DarkwindQuestsUpdate,
   DarkwindQuest,
+  Game,
   Group,
 } from "./information";
 import type {
@@ -184,6 +185,7 @@ export const validateCompletionRequest = typia.createValidate<CompletionRequest>
 export const validateCompletionResult = typia.createValidate<CompletionResultWire>();
 export const validateCorePing = typia.createValidate<CorePing>();
 export const validateDarkwindLagStatus = typia.createValidate<DarkwindLagStatus>();
+export const validateGame = typia.createValidate<Game>();
 export const validateGroup = typia.createValidate<Group>();
 export const validateDarkwindAvatar = typia.createValidate<DarkwindAvatar>();
 export const validateDarkwindDivine = typia.createValidate<DarkwindDivine>();
@@ -373,6 +375,7 @@ const PACKAGE_VALIDATORS: Record<string, GmcpPayloadValidator> = {
   [canonicalPackageName("Darkwind.Room.Playlist.Open")]: validateDarkwindRoomPlaylistOpen,
   [canonicalPackageName("Darkwind.Session.Recovered")]: validateDarkwindSessionRecovered,
   [canonicalPackageName("Darkwind.Completion.Result")]: validateCompletionResult,
+  [canonicalPackageName("Game")]: validateGame,
   [canonicalPackageName("Group")]: validateGroup,
   [canonicalPackageName("Darkwind.Char.Avatar")]: validateDarkwindAvatar,
   [canonicalPackageName("Darkwind.Divine")]: validateDarkwindDivine,
@@ -430,8 +433,4 @@ export function lookupGmcpValidator(packageName: string): GmcpPayloadValidator |
 export const modeledGmcpPackageNames = Object.keys(PACKAGE_VALIDATORS);
 
 /** Canonical package names with no inbound validator; legacy passthrough until Phase 2 ports. */
-export const unmodeledGmcpPackageNames: readonly string[] = [
-  "Core.Hello",
-  "Game",
-  "Darkwind.Lag.Get",
-];
+export const unmodeledGmcpPackageNames: readonly string[] = ["Core.Hello", "Darkwind.Lag.Get"];

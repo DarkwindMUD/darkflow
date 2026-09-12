@@ -26,6 +26,7 @@ import type {
   DarkwindQuest,
   DarkwindQuestsActive,
   DarkwindQuestsUpdate,
+  Game,
   Group,
   SessionInformationSnapshot,
 } from "../gmcp/contracts/information";
@@ -55,6 +56,7 @@ import {
   validateDarkwindQuestsComplete,
   validateDarkwindQuestsList,
   validateDarkwindQuestsUpdate,
+  validateGame,
   validateGroup,
 } from "../gmcp/contracts/validators";
 import type { SessionGmcpBus } from "../gmcp/bus";
@@ -97,6 +99,7 @@ type PayloadValidator<T> = (input: unknown) => typia.IValidation<T>;
 
 function emptySnapshot(): SessionInformationSnapshot {
   return {
+    game: null,
     avatar: null,
     status: null,
     statusVars: null,
@@ -233,6 +236,7 @@ export function createSessionInformation(
     },
   );
   listen<Group>("Group", validateGroup, (group) => update({ group }));
+  listen<Game>("Game", validateGame, (game) => update({ game: { ...snapshot.game, ...game } }));
   listen<DarkwindAvatar>("Darkwind.Char.Avatar", validateDarkwindAvatar, (avatar) => {
     if (avatar.url) {
       update({ avatar });

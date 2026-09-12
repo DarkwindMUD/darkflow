@@ -67,7 +67,7 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Terminal width").fill("75");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() => gmcpPayload(endpoint.gmcpMessages.slice(beforeFixed), "Darkwind.Client.NAWS"))
@@ -521,16 +521,14 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
     .toEqual(expect.arrayContaining(["look", "wave", "say true", "tick"]));
   expect(endpoint.commands.filter((command) => command === "score")).toHaveLength(3);
 
-  await page.getByRole("button", { name: "Float Avatar", exact: true }).click();
-  const floatingAvatarTab = page.locator('.dv-tab:has([data-panel-id="avatar"])');
-  await floatingAvatarTab.click();
-  await expect(floatingAvatarTab).toBeFocused();
+  const globalKeyTarget = page.getByRole("button", { name: "Panels", exact: true });
+  await globalKeyTarget.focus();
   await page.keyboard.press("ArrowRight");
   await page.keyboard.press("ArrowRight");
   await expect
     .poll(() => endpoint.commands.filter((command) => command === "east"))
     .toHaveLength(2);
-  await expect(floatingAvatarTab).toBeFocused();
+  await expect(globalKeyTarget).toBeFocused();
 
   await input.fill("look sw");
   await input.press("Tab");
@@ -573,7 +571,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
   await dialog.getByLabel("Scrollback behavior").selectOption("split");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
 
   const output = page.getByLabel("Terminal output", { exact: true });
@@ -632,7 +630,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
   await dialog.getByLabel("Show emoji picker").uncheck();
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await input.fill("say :smile:");
   await expect(picker).toBeHidden();
@@ -672,21 +670,22 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   await expect(output.locator(".ansi-fg-red")).toContainText("zero view trigger");
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
 
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await page.getByLabel("Screen reader announcements").check();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await settings.getByLabel("Screen reader announcements").check();
+  await settings.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(settings);
 
   endpoint.sendText(" announced live\n");
   await expect(output).toContainText("pending prompt announced live");
   await expect(page.getByTestId("terminal-announcer")).toContainText("announced live");
 
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("tab", { name: "Terminal", exact: true }).click();
-  await page.getByLabel("Screen reader announcements").uncheck();
-  await page.getByRole("button", { name: "Save", exact: true }).click();
-  await skipChangedSettingsBackup(page.getByRole("dialog", { name: "Settings" }));
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settings.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await settings.getByLabel("Screen reader announcements").uncheck();
+  await settings.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(settings);
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
   endpoint.sendText(" silent live\n");
   await expect(output).toContainText("silent live");

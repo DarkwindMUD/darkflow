@@ -117,3 +117,24 @@ export function previewTimer({ timer, aliases = [], triggers = [], functions = [
     warnings: [],
   };
 }
+
+/** Pure display-only function preview. It never receives runtime capabilities. */
+export function previewFunction({ definition, aliases = [], triggers = [], functions = [], timers = [], sounds = [], variables = {}, sample = '' }) {
+  const catalogs = structuredClone({ aliases, triggers, functions, timers, sounds });
+  const current = structuredClone(definition);
+  const remainder = String(sample).trim();
+  const context = { args: remainder ? remainder.split(/\s+/) : [], remainder, variables: { ...variables } };
+  const rows = [];
+  previewScript(current.script, context, catalogs, rows);
+  const parsed = parseAutomationScript(current.script);
+  const countActions = (nodes) => nodes.reduce((total, node) => total + ((node.type === 'action' || node.type === 'break' || node.type === 'continue') ? 1 : node.type === 'if' ? node.branches.reduce((sum, branch) => sum + countActions(branch.steps), 0) + countActions(node.elseSteps || []) : node.type === 'while' ? countActions(node.steps) : 0), 0);
+  const actionCount = countActions(parsed.ast);
+  return {
+    definition: current,
+    rows,
+    warnings: [],
+    summary: parsed.diagnostics.length
+      ? `${parsed.diagnostics.length} script issue${parsed.diagnostics.length === 1 ? '' : 's'}`
+      : `${actionCount} action${actionCount === 1 ? '' : 's'}`,
+  };
+}

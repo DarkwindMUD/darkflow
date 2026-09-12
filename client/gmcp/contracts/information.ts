@@ -132,6 +132,14 @@ export interface GroupSnapshot {
 /** A blank Group payload represents the legacy not-in-a-group state. */
 export type Group = GroupSnapshot | "";
 
+export interface Game {
+  game_name?: string;
+  game_version?: string;
+  game_uptime?: number;
+  game_reboot?: number;
+  [key: string]: unknown;
+}
+
 export interface DarkwindAvatar {
   url: string;
   name?: string;
@@ -213,6 +221,7 @@ export interface DarkwindXpMon {
 
 /** First Step 6 character-status read model, kept separate from deferred panel data. */
 export interface SessionInformationSnapshot {
+  game: Game | null;
   avatar: DarkwindAvatar | null;
   status: CharStatus | null;
   statusVars: CharStatusVars | null;

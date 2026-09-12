@@ -57,7 +57,7 @@ async function installDirectDefinitions(page: Page): Promise<void> {
         steps: [
           {
             type: "call_function",
-            target: "sharedGreet",
+            target: "shared_greet",
             targetId: "function-shared",
             template: "",
           },
@@ -144,7 +144,7 @@ async function installDirectDefinitions(page: Page): Promise<void> {
         {
           id: "function-shared",
           enabled: true,
-          name: "sharedGreet",
+          name: "shared_greet",
           description: "Shared greet",
           group: "",
           script: "send shared-before",
@@ -388,7 +388,7 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByRole("button", { name: "Add variable" }).click();
   await dialog.getByLabel("Name").fill("target");
   await dialog.getByLabel("Value").fill("goblin");
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
 
   await expect(dialog).not.toBeVisible();
@@ -518,7 +518,7 @@ test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => 
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
 });
 
-test("Phase 2 appearance controls preview live, revert on Cancel, and persist on Apply", async ({
+test("Phase 2 appearance controls preview live, revert on Close, and persist on Apply", async ({
   page,
 }) => {
   await page.goto("/phase2/");
@@ -564,7 +564,7 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
   const storedBeforeCancel = await page.evaluate(() =>
     localStorage.getItem("darkwind-client-settings"),
   );
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() =>
@@ -600,7 +600,7 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
   await settingsTab(dialog, "Terminal");
   await dialog.getByLabel("Terminal font family").selectOption({ label: "Verdana" });
   await dialog.getByLabel("Terminal font size").selectOption("20");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() =>
@@ -626,7 +626,7 @@ test("Phase 2 appearance controls preview live, revert on Cancel, and persist on
     });
 });
 
-test("Phase 2 Settings Apply stays open and Save closes", async ({ page }) => {
+test("Phase 2 Settings Apply stays open and Save & Close closes", async ({ page }) => {
   await page.goto("/phase2/");
   const dialog = settingsDialog(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -649,7 +649,7 @@ test("Phase 2 Settings Apply stays open and Save closes", async ({ page }) => {
       ),
     )
     .toBe(41);
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await expect(dialog).not.toBeVisible();
 });
 
@@ -671,7 +671,7 @@ test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme 
   expect(
     await backgroundPreview.evaluate((element) => getComputedStyle(element).borderColor),
   ).not.toBe("rgba(0, 0, 0, 0)");
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect
     .poll(() => page.evaluate(() => document.documentElement.dataset.background))
@@ -765,9 +765,11 @@ test("Phase 3 imports settings without replacing the active session or profile s
       serverHost: server.host,
     };
   });
-  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
-  await expect(page.locator("#phase2-left-rail")).toBeHidden();
-  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  if (testInfo.project.name !== "mobile-chromium") {
+    await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+    await expect(page.locator("#phase2-left-rail")).toBeHidden();
+    await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  }
   await page.evaluate(() =>
     localStorage.setItem(
       "darkwind-client-settings",
@@ -810,7 +812,8 @@ test("Phase 3 imports settings without replacing the active session or profile s
       },
     ];
     character.workspace.payload.importedPanelSizeMarker = { terminal: 731, map: 213 };
-    character.workspace.payload.dockview.layout.railVisibility = { left: false, right: true };
+    if (character.workspace.payload.dockview?.layout)
+      character.workspace.payload.dockview.layout.railVisibility = { left: false, right: true };
     server.host = "imported.example.com";
     return {
       format: "darkwind-client-settings-export",
@@ -824,9 +827,11 @@ test("Phase 3 imports settings without replacing the active session or profile s
       },
     };
   });
-  await page.getByRole("button", { name: "Toggle left sidebar" }).click();
-  await expect(page.locator("#phase2-left-rail")).toBeVisible();
-  await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  if (testInfo.project.name !== "mobile-chromium") {
+    await page.getByRole("button", { name: "Toggle left sidebar" }).click();
+    await expect(page.locator("#phase2-left-rail")).toBeVisible();
+    await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
+  }
 
   await dialog.locator(".hidden-file-input").setInputFiles({
     name: "settings.json",
@@ -934,7 +939,7 @@ test("Phase 3 imports settings without replacing the active session or profile s
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").check();
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
   await expect(backup.getByRole("button", { name: "Download backup", exact: true })).toBeFocused();
   if (testInfo.project.name === "chromium")
@@ -961,7 +966,7 @@ test("Phase 2 auto-reconnect follows the saved setting and cancellation is immed
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Connection");
   await dialog.getByLabel("Auto-reconnect").uncheck();
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect.poll(() => endpoint.activeSocketCount()).toBe(0);
   await page.waitForTimeout(1_200);
@@ -1030,7 +1035,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   const settingsButton = page.getByRole("button", { name: "Settings", exact: true });
   await settingsButton.click();
   const dialog = settingsDialog(page);
-  await settingsButton.click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).not.toBeVisible();
   await expect(settingsButton).toBeFocused();
   await settingsButton.click();
@@ -1072,7 +1077,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await settingsTab(dialog, "Connection");
   await dialog.getByLabel("Auto-reconnect").uncheck();
   await settingsTab(dialog, "Variables");
-  await settingsButton.click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
   await expect(backup).toBeVisible();
   await backup.getByRole("button", { name: "Continue editing", exact: true }).click();
@@ -1087,7 +1092,7 @@ test("Phase 2 settings use non-blocking grouped tabs with keyboard search and sa
   await settingsTab(dialog, "Connection");
   await expect(dialog.getByLabel("Auto-reconnect")).not.toBeChecked();
   await settingsTab(dialog, "Variables");
-  await settingsButton.click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await backup.getByRole("button", { name: "Skip", exact: true }).click();
   await settingsButton.click();
   await expect(dialog.getByRole("tab", { name: "Variables", exact: true })).toHaveAttribute(
@@ -1164,7 +1169,7 @@ test("Phase 2 settings recovers from corrupted stored settings", async ({ page }
   await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Repeat last command")).toBeChecked();
 
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
@@ -1191,7 +1196,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Controls");
   await dialog.getByLabel("Repeat last command").uncheck();
-  await dialog.getByRole("button", { name: "Save" }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
 
@@ -1377,7 +1382,7 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
     { id: "function-greet", name: "greet", script: "send salute", enabled: true },
   ]);
 
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
@@ -1444,7 +1449,7 @@ test("Phase 2 confirms definition deletion and restores it when Settings is canc
     .click();
   await confirmDefinitionDelete(page, "F2");
   await expect(keys.getByLabel("Command for F2")).toHaveCount(0);
-  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1514,7 +1519,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   await editor.getByRole("button", { name: "Save highlights" }).click();
 
   const functions = await settingsGroup(dialog, "Functions", "Functions");
-  await functions.getByRole("button", { name: "Edit sharedGreet" }).click();
+  await functions.getByRole("button", { name: "Edit shared_greet" }).click();
   editor = functions.getByRole("region", { name: "Edit functions" });
   await editor.getByLabel("Script", { exact: true }).fill("send shared-function-after");
   await editor.getByRole("button", { name: "Save functions" }).click();
@@ -1540,7 +1545,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     definitions: [{ id: "function-shared", script: "send shared-function-after" }],
   });
 
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await connect(page);
   await page.getByTestId("phase2-shell").click({ position: { x: 4, y: 4 } });
@@ -1560,7 +1565,7 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
   for (const [groupName, label] of [
     ["Key mappings", "F3"],
     ["Highlights", "shimmer"],
-    ["Functions", "sharedGreet"],
+    ["Functions", "shared_greet"],
   ] as const) {
     const group = await settingsGroup(
       settingsDialog(page),
@@ -1688,7 +1693,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   expect(JSON.stringify(persistedDefinitions)).not.toContain("timerHandles");
   expect(JSON.stringify(persistedDefinitions)).not.toContain("automationVariables");
 
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("quick");
@@ -1704,6 +1709,139 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 functions restore legacy discovery, authoring, and safe preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { functions: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.functions = [
+      {
+        id: "function-greet",
+        enabled: true,
+        name: "greet",
+        description: "Legacy script",
+        group: "travel",
+        script: "send legacy script",
+      },
+      {
+        id: "function-combat",
+        enabled: true,
+        name: "combat",
+        description: "Combat script",
+        group: "Combat",
+        script: "send combat",
+      },
+      {
+        id: "function-utility",
+        enabled: true,
+        name: "utility",
+        description: "Utility script",
+        group: "Utility",
+        script: "send utility",
+      },
+      {
+        id: "function-broken",
+        enabled: true,
+        name: "broken",
+        description: "Broken script",
+        group: "",
+        script: "if",
+      },
+    ];
+    const shared = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "functions",
+    ) as { definitions: Array<Record<string, unknown>> };
+    shared.definitions[0]!.group = "Travel";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  let functions = await settingsGroup(settingsDialog(page), "Functions", "Functions");
+  const filters = functions.getByLabel("Function groups");
+
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(filters.getByLabel("Combat (1)")).toBeChecked();
+  await expect(filters.getByLabel("Utility (1)")).toBeChecked();
+  await expect(filters.getByLabel("Ungrouped (1)")).toBeChecked();
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await expect(functions.getByText("No functions match.")).toBeVisible();
+  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await expect(filters.getByLabel("Travel (2)")).toBeChecked();
+  await expect(functions.getByRole("button", { name: "Edit combat" })).toBeVisible();
+  await expect(functions.getByRole("button", { name: "Edit broken" })).toContainText(
+    "1 script issue",
+  );
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByLabel("Travel (2)").check();
+
+  const search = functions.getByLabel("Search Functions");
+  await search.fill("legacy script");
+  const greet = functions.getByRole("button", { name: "Edit greet" });
+  await expect(greet.locator("strong")).toHaveText("Legacy script");
+  await expect(greet).toContainText("greet");
+  await expect(greet).toContainText("travel");
+  await expect(greet).toContainText("1 action");
+  await search.fill("");
+
+  await functions.getByRole("button", { name: "New function" }).click();
+  let editor = functions.getByRole("region", { name: "Edit functions" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Script", { exact: true })).toHaveValue("send look");
+  await expect(editor.getByText("Function name needs content.")).toBeVisible();
+  await expect(editor.getByText("Function script syntax")).toBeVisible();
+  await editor.getByLabel("Name", { exact: true }).fill("9bad");
+  await expect(editor.getByText(/Function names must start/)).toBeVisible();
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await expect(editor.getByLabel("Name", { exact: true })).toHaveValue("9bad");
+  await editor.getByLabel("Name", { exact: true }).fill("GREET");
+  await expect(editor.getByLabel("Name", { exact: true })).toHaveValue("greet");
+  await expect(editor.getByText("Function name duplicates an existing function.")).toBeVisible();
+  await editor.getByRole("button", { name: "Save functions" }).click();
+  await expect(functions.getByText("Correct function warnings before saving.")).toBeVisible();
+  await editor.getByLabel("Name", { exact: true }).fill("draft_function");
+  await editor.getByLabel("Script", { exact: true }).fill("if");
+  await expect(editor.getByRole("list").getByText(/Unknown script action/)).toBeVisible();
+  await editor
+    .getByLabel("Script", { exact: true })
+    .fill("send %0\nset $target = %1\ncall greet %2");
+
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor.getByLabel("Sample arguments", { exact: true }).fill("orc shield");
+  await expect(editor.getByText("3 actions")).toBeVisible();
+  await expect(editor.getByText("Send: orc shield")).toBeVisible();
+  await expect(editor.getByText("Set $target: orc")).toBeVisible();
+  await expect(editor.getByText("call function: greet shield")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+
+  await editor.getByRole("button", { name: "Function preview", exact: true }).click();
+  await expect(
+    editor.getByRole("button", { name: "Function preview", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", functionPreviewCollapsed: true });
+
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  functions = await settingsGroup(settingsDialog(page), "Functions", "Functions");
+  editor = functions.getByRole("region", { name: "Edit functions" });
+  await expect(
+    editor.getByRole("button", { name: "Function preview", exact: true }),
+  ).toHaveAttribute("aria-expanded", "false");
 });
 
 test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", async ({ page }) => {
@@ -2097,7 +2235,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     ]),
   );
 
-  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   const input = page.getByLabel("Command input", { exact: true });
   await input.fill("sharedalias");

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { previewAliasInput, previewTimer, previewTriggerOutput } from '../public/js/alias-preview-core.mjs';
+import { previewAliasInput, previewFunction, previewTimer, previewTriggerOutput } from '../public/js/alias-preview-core.mjs';
 
 test('preview resolves the winning unsent alias without mutating inputs', () => {
   const aliases = [{ id: 'a', enabled: true, trigger: 'go', isRegex: false, steps: [{ type: 'set_variable', name: 'place', template: '%1' }, { type: 'send_command', template: 'walk $place' }] }];
@@ -94,4 +94,36 @@ test('timer preview uses the timer name without mutating its catalogs or variabl
   assert.equal(timer.steps[2].target, 'missing');
   assert.deepEqual(variables, { target: 'ready' });
   assert.equal(aliases[0].enabled, true);
+});
+
+test('function preview resolves arguments and every action category without effects', () => {
+  const definition = {
+    id: 'function-preview', enabled: true, name: 'preview', description: '', group: '',
+    script: 'send %0\nshow %1\nset $target = %2\nwait 1\nrun_alias heal %1\ncall nested %2\nplay_sound alert/warning\nenable_alias go\ndisable_trigger danger\ntoggle_timer pulse\nstart_timer pulse',
+  };
+  const aliases = [{ id: 'alias-go', enabled: false, trigger: 'go', isRegex: false, steps: [] }, { id: 'alias-heal', enabled: true, trigger: 'heal', isRegex: false, steps: [] }];
+  const triggers = [{ id: 'trigger-danger', enabled: true, pattern: 'danger', isRegex: false }];
+  const timers = [{ id: 'timer-pulse', enabled: true, name: 'pulse' }];
+  const functions = [{ id: 'function-nested', enabled: true, name: 'nested' }];
+  const variables = { hp: '10' };
+  const result = previewFunction({ definition, aliases, triggers, timers, functions, sounds: [{ category: 'alert', sound: 'warning' }], variables, sample: 'orc shield' });
+  assert.deepEqual(result.rows.map((row) => row.text), ['orc shield', 'orc', 'shield', '1s', 'heal orc -> heal', 'nested shield', 'alert / warning', 'enable go', 'disable danger', 'toggle pulse', 'start pulse']);
+  assert.equal(result.summary, '11 actions');
+  assert.deepEqual(variables, { hp: '10' });
+  assert.equal(aliases[0].enabled, false);
+  assert.equal(triggers[0].enabled, true);
+  assert.equal(timers[0].enabled, true);
+});
+
+test('function preview reports parser issues and caps loops', () => {
+  const result = previewFunction({ definition: { script: 'while 1 == 1\n  send ping\nend' } });
+  assert.equal(result.rows.filter((row) => row.text === 'ping').length, 10);
+  assert.match(result.rows.at(-1).warnings.join(' '), /10 iterations/);
+  assert.equal(result.summary, '1 action');
+  assert.equal(previewFunction({ definition: { script: 'if' } }).summary, '1 script issue');
+});
+
+test('function preview counts nested loop controls as possible actions', () => {
+  const result = previewFunction({ definition: { script: 'while 1 == 1\n  if 1 == 1\n    continue\n  else\n    break\n  end\nend' } });
+  assert.equal(result.summary, '2 actions');
 });

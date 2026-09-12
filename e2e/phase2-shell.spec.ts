@@ -249,6 +249,38 @@ test("Phase 2 header matches the legacy toolbar controls", async ({ page }) => {
   await expect(page.locator("#phase2-right-rail")).toBeVisible();
 });
 
+test("Phase 2 footer matches the legacy status bar", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installFakeWebSocket(page);
+  await page.goto("/phase2/");
+
+  const footer = page.getByTestId("status-footer");
+  await expect(footer).toBeVisible();
+  await expect(footer).toHaveCSS("display", "flex");
+  await expect(footer).toHaveCSS("font-size", "11px");
+  await expect(footer).toHaveCSS("color", "rgb(139, 148, 158)");
+  expect(await footer.boundingBox()).toMatchObject({ x: 0, width: 1440 });
+  const connection = page.locator("#status-connection");
+  const latency = page.locator("#status-latency");
+  const uptime = page.locator("#status-uptime");
+  await expect(connection).toHaveText("Not connected");
+  await expect(connection).toHaveCSS("width", "190px");
+  await expect(latency).toBeHidden();
+  await expect(latency).toHaveCSS("width", "64px");
+  await expect(uptime).toHaveText("Uptime: --");
+  await expect(uptime).toHaveCSS("width", "152px");
+  await expect(page.locator("#status-versions")).toContainText("Client v");
+  await expect(page.locator("#status-server-version")).toHaveText("Server v--");
+
+  await page.getByLabel("Host").fill("fixture.example");
+  await page.locator("#connect-btn").click();
+  await expect(connection).toHaveText("Connecting");
+  await controlFakeSocket(page, "open");
+  await expect(connection).toHaveText(/Connected \[wss\]: \d+s/);
+  await expect(connection).toHaveCSS("width", "190px");
+  await expect(connection).toHaveAttribute("title", /Sent: \d+(\.\d+)? (B|KB) \/ Recv: 0 B/);
+});
+
 test("Phase 2 controls drive connection, retry countdown, disconnect, and disposal", async ({
   page,
 }) => {

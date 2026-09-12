@@ -64,6 +64,8 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   bus.dispatch("Char.Defences.Add", { name: "shield", kind: "buff" });
   bus.dispatch("Char.Defences.Remove", { name: "stoneskin" });
   bus.dispatch("Group", { groupname: "Expedition", members: [{ name: "Nacho", info: { hp: 90 } }] });
+  bus.dispatch("Game", { game_name: "Darkwind", game_version: "4.2.2", game_uptime: 86400 });
+  bus.dispatch("Game", { game_uptime: 86430, game_reboot: 1153471 });
   bus.dispatch("Darkwind.Char.Avatar", { url: "/assets/avatar.png", name: "Nacho" });
   bus.dispatch("Darkwind.Divine", {
     patron: "mitra", summary: "Bright.", holy_hour: { god: 0 }, eclipse: { active: 0 },
@@ -82,6 +84,12 @@ test("information snapshots accept valid frames, merge deltas, and stay frozen",
   assert.deepEqual(snapshot.stats, { current: { str: 15 }, base: { realstr: 12 } });
   assert.deepEqual(snapshot.defences, [{ name: "shield", kind: "buff" }]);
   assert.equal(snapshot.group?.groupname, "Expedition");
+  assert.deepEqual(snapshot.game, {
+    game_name: "Darkwind",
+    game_version: "4.2.2",
+    game_uptime: 86430,
+    game_reboot: 1153471,
+  });
   assert.equal(snapshot.avatar?.url, "/assets/avatar.png");
   assert.equal(snapshot.sky?.receivedAt !== undefined, true);
   assert.equal(snapshot.guildVitals?.items?.[0]?.on, 1);
@@ -189,6 +197,10 @@ test("information ignores malformed frames while compatibility handlers still re
   assert.equal(legacy.length, 1);
   assert.equal(information.getSnapshot().vitals, null);
   assert.equal(errorSpy.mock.callCount(), 1);
+
+  bus.dispatch("Game", { game_uptime: "wrong" });
+  assert.equal(information.getSnapshot().game, null);
+  assert.equal(errorSpy.mock.callCount(), 2);
 
   bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
   assert.equal(legacy.length, 2);

@@ -645,6 +645,20 @@
     return true;
   }
 
+  export function openConnectionHealthPanel(): void {
+    const panel = informationPanels.find(({ id }) => id === "connection-health");
+    if (!panel) return;
+    const rail = railFor(panel.id);
+    if (rail) {
+      rail.scrollCardIntoView(panel.id);
+      rail.focusPanel(panel.id);
+    } else if (workspace?.hasPanel(panel.id)) {
+      workspace.activatePanel(panel.id);
+    } else {
+      void toggleInformationPanel(panel);
+    }
+  }
+
   function openSheet(): void {
     sheetOpen = true;
     void tick().then(() => sheetCloseButton?.focus());

@@ -671,9 +671,8 @@
     >
       <div>
         <h2 id="settings-title">Settings</h2>
-        <span>Drag to move · resize from the corner</span>
       </div>
-      <button type="button" aria-label="Close settings" onclick={close}>Close</button>
+      <button type="button" aria-label="Close settings" onclick={close}>X</button>
     </header>
     <div class="settings-layout">
       <nav aria-label="Settings sections">
@@ -1057,9 +1056,9 @@
         <button bind:this={importAction} type="button" onclick={openImport}>Import settings</button>
       </div>
       <div>
-        <button type="button" onclick={close}>Cancel</button>
+        <button type="button" onclick={close}>Close</button>
         <button type="button" onclick={() => save(false)}>Apply</button>
-        <button type="submit">Save</button>
+        <button type="submit">Save & Close</button>
       </div>
     </footer>
   </form>

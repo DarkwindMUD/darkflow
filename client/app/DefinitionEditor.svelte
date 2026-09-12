@@ -19,8 +19,8 @@
   import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
   // @ts-expect-error The preview adapter is intentionally shared plain JavaScript.
   import * as previewCore from "../../public/js/alias-preview-core.mjs";
-  // @ts-expect-error Shared legacy parser provides the persisted script diagnostics.
-  import { getAutomationScriptDiagnostics } from "../../public/js/automation-script-core.mjs";
+  // @ts-ignore Shared legacy parser provides the persisted script diagnostics.
+  import * as scriptCore from "../../public/js/automation-script-core.mjs";
   // @ts-expect-error Shared catalog validation remains in the legacy module.
   import { getSoundCatalog, isKnownSound } from "../../public/js/sound-manager.js";
 
@@ -58,7 +58,7 @@
   };
   type EditSource =
     { kind: "local" } | { kind: "shared-set"; configSetId: ConfigSetId; revision: number };
-  const { previewAliasInput, previewTimer, previewTriggerOutput } = previewCore;
+  const { previewAliasInput, previewFunction, previewTimer, previewTriggerOutput } = previewCore;
 
   let { session, kind }: { session: Session; kind: ConfigKind } = $props();
   let snapshot = $state<CharacterConfigurationSnapshot>(
@@ -91,7 +91,9 @@
               ? "triggerPreviewCollapsed"
               : kind === "timers"
                 ? "timerPreviewCollapsed"
-                : "aliasPreviewCollapsed"
+                : kind === "functions"
+                  ? "functionPreviewCollapsed"
+                  : "aliasPreviewCollapsed"
           ] === true
         );
       } catch {
@@ -119,7 +121,8 @@
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
   const groups = $derived.by(() => {
     const seen: Array<{ key: string; label: string; count: number }> = [];
-    if (kind !== "aliases" && kind !== "triggers" && kind !== "timers") return [];
+    if (kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions")
+      return [];
     for (const { definition } of entries) {
       const label = "group" in definition ? definition.group.trim() : "";
       const key = label.toLowerCase();
@@ -135,12 +138,12 @@
       const group = "group" in definition ? definition.group.trim().toLowerCase() : "";
       const matchesSearch =
         !needle ||
-        `${labelFor(definition)} ${"description" in definition ? definition.description : ""} ${group}`
+        `${labelFor(definition)} ${"description" in definition ? definition.description : ""} ${group} ${"script" in definition ? definition.script : ""}`
           .toLowerCase()
           .includes(needle);
       return (
         matchesSearch &&
-        ((kind !== "aliases" && kind !== "triggers" && kind !== "timers") ||
+        ((kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions") ||
           selectedGroups === null ||
           selectedGroups.includes(group))
       );
@@ -161,8 +164,12 @@
       ? []
       : warningsForAutomation(draft),
   );
+  const functionWarnings = $derived(
+    kind !== "functions" || !draft ? [] : warningsForFunction(draft),
+  );
   const preview = $derived(
-    (kind !== "aliases" && kind !== "triggers" && kind !== "timers") || !draft
+    (kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions") ||
+      !draft
       ? null
       : previewFor(draft),
   );
@@ -177,7 +184,7 @@
     }),
   );
   $effect(() => {
-    if (kind === "aliases" || kind === "triggers" || kind === "timers") {
+    if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions") {
       const keys = groups.map((group) => group.key);
       const currentGroups = untrack(() => selectedGroups);
       if (currentGroups === null) selectedGroups = keys;
@@ -211,7 +218,7 @@
       bg: "black",
       bold: false,
       name: "",
-      script: "",
+      script: kind === "functions" ? "send look" : "",
       trigger: "",
       pattern: "",
       isRegex: false,
@@ -542,6 +549,10 @@
       invalid.reportValidity();
       return;
     }
+    if (kind === "functions" && functionWarnings.length) {
+      status = "Correct function warnings before saving.";
+      return;
+    }
 
     const definition = toDefinition(draft);
     const definitions = targetDefinitions(source);
@@ -644,6 +655,11 @@
         ? toDefinition(value)
         : structuredClone(definition),
     );
+    const functions = snapshot.effectiveConfiguration.functions.map(({ definition }) =>
+      kind === "functions" && definition.id === value.id
+        ? toDefinition(value)
+        : structuredClone(definition),
+    );
     const catalogs = {
       aliases:
         kind === "aliases" && aliases.some((definition) => definition.id === value.id)
@@ -660,15 +676,23 @@
       timers: snapshot.effectiveConfiguration.timers.map(({ definition }) =>
         structuredClone(definition),
       ),
-      functions: snapshot.effectiveConfiguration.functions.map(({ definition }) =>
-        structuredClone(definition),
-      ),
+      functions:
+        kind === "functions" && functions.some((definition) => definition.id === value.id)
+          ? functions
+          : kind === "functions"
+            ? [...functions, toDefinition(value)]
+            : functions,
       sounds: soundCatalog,
       variables: session.terminal.automation.getAutomationVariables(),
       sample: previewInput,
     };
     if (kind === "aliases") return previewAliasInput(catalogs);
     if (kind === "triggers") return previewTriggerOutput(catalogs);
+    if (kind === "functions")
+      return previewFunction({
+        ...catalogs,
+        definition: toDefinition(value) as FunctionDefinition,
+      });
     const timerDefinition = toDefinition(value) as TimerDefinition;
     const timers = catalogs.timers.map((definition) =>
       definition.id === value.id ? timerDefinition : definition,
@@ -768,12 +792,67 @@
       }
       if (step.type === "script")
         warnings.push(
-          ...getAutomationScriptDiagnostics(step.script).map(
-            (message: string) => `Step ${index + 1}: ${message}`,
-          ),
+          ...scriptCore
+            .getAutomationScriptDiagnostics(step.script)
+            .map((message: string) => `Step ${index + 1}: ${message}`),
         );
     }
     return warnings;
+  }
+
+  function warningsForFunction(value: Draft): string[] {
+    const warnings: string[] = [];
+    const name = value.name.trim();
+    if (!name) warnings.push("Function name needs content.");
+    else if (!/^[a-z_][a-z0-9_-]*$/.test(name))
+      warnings.push(
+        "Function names must start with a letter or underscore and use only lowercase letters, numbers, underscores, and dashes.",
+      );
+    else if (
+      source &&
+      targetDefinitions(source).some(
+        (definition) =>
+          definition.id !== value.id &&
+          "name" in definition &&
+          identityKeyForDefinition("functions", definition as FunctionDefinition) ===
+            identityKeyForDefinition("functions", toDefinition(value) as FunctionDefinition),
+      )
+    )
+      warnings.push("Function name duplicates an existing function.");
+    warnings.push(...scriptCore.getAutomationScriptDiagnostics(value.script));
+    return warnings;
+  }
+
+  type ScriptNode = {
+    type: string;
+    steps?: ScriptNode[];
+    branches?: Array<{ steps: ScriptNode[] }>;
+    elseSteps?: ScriptNode[];
+  };
+
+  function functionScriptSummary(definition: FunctionDefinition): string {
+    const parsed = scriptCore.parseAutomationScript(definition.script) as {
+      ast: ScriptNode[];
+      diagnostics: string[];
+    };
+    if (parsed.diagnostics.length)
+      return `${parsed.diagnostics.length} script issue${parsed.diagnostics.length === 1 ? "" : "s"}`;
+    const count = (nodes: ScriptNode[]): number =>
+      nodes.reduce(
+        (total, node) =>
+          total +
+          (node.type === "action" || node.type === "break" || node.type === "continue"
+            ? 1
+            : node.type === "if"
+              ? (node.branches?.reduce((sum, branch) => sum + count(branch.steps), 0) ?? 0) +
+                count(node.elseSteps ?? [])
+              : node.type === "while"
+                ? count(node.steps ?? [])
+                : 0),
+        0,
+      );
+    const actions = count(parsed.ast);
+    return `${actions} action${actions === 1 ? "" : "s"}`;
   }
 
   function timerControlsAvailable(): boolean {
@@ -829,7 +908,9 @@
           ? "triggerPreviewCollapsed"
           : kind === "timers"
             ? "timerPreviewCollapsed"
-            : "aliasPreviewCollapsed"]: previewCollapsed,
+            : kind === "functions"
+              ? "functionPreviewCollapsed"
+              : "aliasPreviewCollapsed"]: previewCollapsed,
       }),
     );
   }
@@ -915,7 +996,7 @@
       />
       <button type="button" onclick={add}>New {noun}</button>
     </div>
-    {#if (kind === "aliases" || kind === "triggers" || kind === "timers") && groups.length}
+    {#if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions") && groups.length}
       <div
         class="group-filters"
         aria-label={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} groups`}
@@ -962,7 +1043,8 @@
                 onkeydown={(event) => moveListFocus(event, index)}
               >
                 <strong
-                  >{(kind === "aliases" || kind === "triggers") && "description" in entry.definition
+                  >{(kind === "aliases" || kind === "triggers" || kind === "functions") &&
+                  "description" in entry.definition
                     ? entry.definition.description.trim() || labelFor(entry.definition)
                     : labelFor(entry.definition)}</strong
                 >
@@ -999,6 +1081,11 @@
                       ? ""
                       : "s"}</small
                   >
+                {/if}
+                {#if kind === "functions" && "script" in entry.definition}
+                  <small>{entry.definition.name}</small>
+                  <small>{entry.definition.group || "Ungrouped"}</small>
+                  <small>{functionScriptSummary(entry.definition)}</small>
                 {/if}
                 <span>{sourceLabel(entry.source)}</span>
               </button>
@@ -1054,10 +1141,50 @@
               <label>Background <input bind:value={draft.bg} required /></label>
               <label><input type="checkbox" bind:checked={draft.bold} /> Bold</label>
             {:else if kind === "functions"}
-              <label>Name <input bind:value={draft.name} required /></label>
+              <label
+                >Name <input
+                  bind:value={draft.name}
+                  pattern="[a-z_][a-z0-9_-]*"
+                  oninput={(event) => {
+                    if (draft) draft.name = event.currentTarget.value.trim().toLowerCase();
+                  }}
+                  required
+                /></label
+              >
               <label>Description <input bind:value={draft.description} /></label>
               <label>Group <input bind:value={draft.group} /></label>
               <label>Script <textarea bind:value={draft.script} required></textarea></label>
+              {#if functionWarnings.length}
+                <ul class="warnings" aria-live="polite">
+                  {#each functionWarnings as warning (warning)}<li>{warning}</li>{/each}
+                </ul>
+              {/if}
+              <details>
+                <summary>Function script syntax</summary>
+                <p>
+                  Functions receive positional arguments as %1-%9 and all arguments as %0. Use
+                  variables like $name; if/elseif/else/while/end; break and continue; send, show,
+                  set, wait, run_alias, call, play_sound, and alias, trigger, and timer controls.
+                </p>
+              </details>
+              <section class="alias-preview">
+                <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
+                  >Function preview</button
+                >
+                {#if !previewCollapsed}
+                  <label
+                    >Sample arguments <input
+                      bind:value={previewInput}
+                      placeholder="Example: orc shield"
+                    /></label
+                  >
+                  <p>{preview?.summary}</p>
+                  {#each preview?.rows ?? [] as row, index (`${row.label}-${index}`)}<p>
+                      {row.label}: {row.text}{#if row.warnings.length}
+                        - {row.warnings.join(" ")}{/if}
+                    </p>{/each}
+                {/if}
+              </section>
             {:else}
               {#if kind === "aliases"}
                 <label>Trigger <input bind:value={draft.trigger} required /></label>

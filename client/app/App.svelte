@@ -15,6 +15,7 @@
   import NotificationsMenu from "./NotificationsMenu.svelte";
   import ServerWindowHost from "./ServerWindowHost.svelte";
   import SettingsDialog from "./SettingsDialog.svelte";
+  import StatusFooter from "./StatusFooter.svelte";
   import SnoopOverlay from "./SnoopOverlay.svelte";
   import TutorialOverlay from "./TutorialOverlay.svelte";
   import VisualEffectsLayer from "./VisualEffectsLayer.svelte";
@@ -59,6 +60,7 @@
     draftTerminalCommand(command: string): boolean;
     removeTerminalViewForTest(): Promise<void>;
     restoreTerminalViewForTest(): Promise<void>;
+    openConnectionHealthPanel(): void;
   }>();
   let updateStatus = $state<UpdateStatus | null>(null);
   let clientVersion = $state<string | null>(untrack(() => shell.clientVersion));
@@ -69,6 +71,7 @@
   let announcementsOpen = $state(false);
   let announcementsButton = $state<HTMLButtonElement>();
   let interactionSnapshot = $state(untrack(() => session.interactions.getSnapshot()));
+  let informationSnapshot = $state(untrack(() => session.information.getSnapshot()));
   let visualSnapshot = $state(untrack(() => session.visualEffects.getSnapshot()));
   let themeKey = $state(untrack(() => session.configuration.getSnapshot().themeKey));
   let health = $state<ConnectionHealthSnapshot>(
@@ -159,7 +162,7 @@
 
   $effect(() => {
     applyClientSettings();
-    document.title = gameTitle(shell.gameName);
+    document.title = gameTitle(informationSnapshot.game?.game_name ?? shell.gameName);
   });
 
   $effect(() => {
@@ -171,6 +174,7 @@
   $effect(() => session.configuration.subscribe((next) => (themeKey = next.themeKey)));
   $effect(() => session.connectionHealth.subscribe((next) => (health = next)));
   $effect(() => session.interactions.subscribe((next) => (interactionSnapshot = next)));
+  $effect(() => session.information.subscribe((next) => (informationSnapshot = next)));
   $effect(() => session.visualEffects.subscribe((next) => (visualSnapshot = next)));
   $effect(() => session.visualEffects.configure(loadClientSettings(localStorage).settings));
 
@@ -242,7 +246,7 @@
   });
 
   $effect(() => {
-    if (snapshot.reconnect?.status !== "scheduled") return;
+    if (snapshot.state !== "connected" && snapshot.reconnect?.status !== "scheduled") return;
     now = Date.now();
     const timer = setInterval(() => (now = Date.now()), 250);
     return () => clearInterval(timer);
@@ -517,6 +521,14 @@
     {debugGmcp}
     {session}
     {workspaceToolbar}
+  />
+  <StatusFooter
+    {clientVersion}
+    game={informationSnapshot.game}
+    {health}
+    {now}
+    onopenhealth={() => workspaceHost?.openConnectionHealthPanel()}
+    {snapshot}
   />
 </main>
 

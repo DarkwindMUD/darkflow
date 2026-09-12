@@ -22,11 +22,13 @@
     state: panelState,
     session,
     registerLineNavigator,
+    openSettings,
   }: {
     panelId: string;
     state: Readable<PanelState>;
     session?: Session;
     registerLineNavigator?: (navigate: (lineId: number) => boolean) => (() => void) | void;
+    openSettings?: () => void;
   } = $props();
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
@@ -178,6 +180,8 @@
       executeCommand: session.terminal.executeCommand,
       getMappedCommand: session.terminal.getMappedCommand,
       returnOutputToLive: terminal.returnToLive,
+      scrollOutputByPage: terminal.scrollByPage,
+      ...(openSettings ? { openSettings } : {}),
     });
     outputShell.addEventListener("click", focusCommandInput);
 

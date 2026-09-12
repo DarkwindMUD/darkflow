@@ -185,7 +185,7 @@ class FakeNotifications {
 function installDom(t) {
   const document = new FakeDocument();
   const window = new FakeWindow();
-  const storage = new Map();
+  const storage = new Map([["darkwind-client-settings", JSON.stringify({ keyMapperEnabled: true })]]);
   const saved = {
     document: globalThis.document,
     window: globalThis.window,
@@ -203,7 +203,7 @@ function installDom(t) {
     },
   });
   t.after(() => Object.assign(globalThis, saved));
-  return { document, window };
+  return { document, window, storage };
 }
 
 async function loadModules(t) {
@@ -283,7 +283,7 @@ test("mention picker owns loading, keyboard, pointer, focus, and disposal", asyn
 });
 
 test("input ownership gives mentions and return-to-live precedence", async (t) => {
-  const { document } = installDom(t);
+  const { document, storage } = installDom(t);
   const { createTerminalInputController } = await loadModules(t);
   const notifications = new FakeNotifications([player(0)]);
   const input = document.createElement("input");
@@ -297,12 +297,19 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   let completions = 0;
   let returnToLive = false;
   let returnCalls = 0;
+  let clears = 0;
+  let resyncs = 0;
+  let pages = 0;
+  let settingsOpens = 0;
   const session = {
     characterProfileId: "character-1",
     disposed: false,
     notifications,
     terminal: {
       sendCommand: () => true,
+      clearOutput: () => {
+        clears += 1;
+      },
       requestCompletion: () => {
         completions += 1;
         return true;
@@ -316,6 +323,10 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
     subscribeConnection: (listener) => {
       listener({ state: "connected" });
       return () => {};
+    },
+    resyncGamePanels: () => {
+      resyncs += 1;
+      return true;
     },
   };
   const controller = createTerminalInputController({
@@ -333,10 +344,17 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
       executed.push(command);
       return true;
     },
-    getMappedCommand: (event) => (event.key === "F1" ? "score" : null),
+    getMappedCommand: (event) =>
+      event.key === "F1" ? "score" : event.key === "PageUp" ? "page-command" : null,
     returnOutputToLive: () => {
       returnCalls += 1;
       return returnToLive;
+    },
+    scrollOutputByPage: () => {
+      pages += 1;
+    },
+    openSettings: () => {
+      settingsOpens += 1;
     },
   });
 
@@ -419,6 +437,11 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   document.dispatchKeydown(toolbarButton, new FakeKeyboardEvent("F1"));
   assert.equal(executed.at(-1), "score");
   assert.equal(document.activeElement, toolbarButton);
+  const macSettings = new FakeKeyboardEvent(",");
+  macSettings.metaKey = true;
+  document.dispatchKeydown(toolbarButton, macSettings);
+  assert.equal(settingsOpens, 1);
+  assert.equal(macSettings.defaultPrevented, true);
 
   document.body.focus();
   document.dispatchKeydown(document.body, new FakeKeyboardEvent("x"));
@@ -429,6 +452,56 @@ test("input ownership gives mentions and return-to-live precedence", async (t) =
   assert.equal(document.activeElement, document.body);
   document.dispatchKeydown(document.body, new FakeKeyboardEvent("F1"));
   assert.deepEqual(executed.slice(-2), ["score", "score"]);
+
+  const pageUp = new FakeKeyboardEvent("PageUp");
+  document.dispatchKeydown(input, pageUp);
+  assert.equal(pages, 1);
+  assert.equal(pageUp.defaultPrevented, true);
+  assert.notEqual(executed.at(-1), "page-command");
+
+  const clear = new FakeKeyboardEvent("l");
+  clear.ctrlKey = true;
+  document.dispatchKeydown(input, clear);
+  assert.equal(clears, 1);
+  assert.equal(clear.defaultPrevented, true);
+
+  const resync = new FakeKeyboardEvent("k");
+  resync.ctrlKey = true;
+  document.dispatchKeydown(input, resync);
+  assert.equal(resyncs, 1);
+
+  const settings = new FakeKeyboardEvent(",");
+  settings.ctrlKey = true;
+  document.dispatchKeydown(input, settings);
+  assert.equal(settingsOpens, 2);
+
+  document.body.focus();
+  document.dispatchKeydown(document.body, new FakeKeyboardEvent(","));
+  assert.equal(settingsOpens, 2);
+  assert.equal(document.activeElement, input);
+
+  const codeSettings = new FakeKeyboardEvent("Unidentified");
+  codeSettings.ctrlKey = true;
+  codeSettings.code = "Comma";
+  document.dispatchKeydown(input, codeSettings);
+  assert.equal(settingsOpens, 3);
+  const shiftedSettings = new FakeKeyboardEvent(",");
+  shiftedSettings.ctrlKey = true;
+  shiftedSettings.shiftKey = true;
+  document.dispatchKeydown(input, shiftedSettings);
+  assert.equal(settingsOpens, 3);
+
+  storage.set("darkwind-client-settings", JSON.stringify({ keyMapperEnabled: false }));
+  const mappingsBeforeDisable = executed.length;
+  input.dispatchEvent(new FakeKeyboardEvent("F1"));
+  assert.equal(executed.length, mappingsBeforeDisable);
+
+  storage.set(
+    "darkwind-client-settings",
+    JSON.stringify({ keyMapperEnabled: true, pageUpShortcutEnabled: false }),
+  );
+  input.dispatchEvent(new FakeKeyboardEvent("PageUp"));
+  assert.equal(executed.at(-1), "page-command");
 
   controller.dispose();
   assert.equal(notifications.listeners.size, 0);

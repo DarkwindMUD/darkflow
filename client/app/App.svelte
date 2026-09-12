@@ -81,6 +81,7 @@
   let debugGmcp = $state(untrack(() => loadClientSettings(localStorage).settings.gmcpDebugEnabled));
   let rfc2549QosOverride = $state<string | null>(null);
   let manualRedMarks = $state<Array<{ ts: string; type: string; detail: unknown }>>([]);
+  let lastVisibilitySent: boolean | null = null;
 
   export const removeTerminalViewForTest = (): Promise<void> =>
     workspaceHost?.removeTerminalViewForTest() ?? Promise.resolve();
@@ -235,9 +236,39 @@
         saveLastLoginHost(localStorage, next.endpoint.host);
       }
       snapshot = next;
+      if (next.state !== "connected") lastVisibilitySent = null;
+      else sendVisibilityCommand();
     });
     if (shell.shouldAutoConnect) session.connect();
     return unsubscribe;
+  });
+
+  function sendVisibilityCommand(): void {
+    if (
+      snapshot.state !== "connected" ||
+      !loadClientSettings(localStorage).settings.tabObservabilityEnabled
+    )
+      return;
+    const hidden = document.visibilityState !== "visible";
+    if (lastVisibilitySent === hidden) return;
+    const command = hidden ? "tab-away" : "tab-back";
+    if (!session.terminal.sendCommand(command)) return;
+    lastVisibilitySent = hidden;
+    session.terminal.appendOutput(`> ${command}\n`, "echo-line");
+  }
+
+  $effect(() => {
+    const onVisibilityChange = () => sendVisibilityCommand();
+    const onSettingsChanged = () => {
+      if (!loadClientSettings(localStorage).settings.tabObservabilityEnabled)
+        lastVisibilitySent = null;
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    window.addEventListener("darkflow:client-settings-changed", onSettingsChanged);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.removeEventListener("darkflow:client-settings-changed", onSettingsChanged);
+    };
   });
 
   $effect(() => {
@@ -521,6 +552,7 @@
     {debugGmcp}
     {session}
     {workspaceToolbar}
+    openSettings={() => (settingsOpen = true)}
   />
   <StatusFooter
     {clientVersion}

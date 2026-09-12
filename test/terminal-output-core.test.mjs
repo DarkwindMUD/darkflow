@@ -432,6 +432,36 @@ test("split scrollback requires current wheel or scrollbar intent", (t) => {
   core.dispose();
 });
 
+test("keyboard paging marks split-scroll intent and targets active history", (t) => {
+  const scheduler = installDom(t);
+  const shell = new FakeElement("section");
+  const output = new FakeElement("div");
+  const historyOutput = new FakeElement("div");
+  const liveOutput = new FakeElement("div");
+  const core = createTerminalOutputCore({
+    shell,
+    output,
+    historyOutput,
+    liveOutput,
+    pauseButton: new FakeElement("button"),
+    liveButton: new FakeElement("button"),
+    clearButton: new FakeElement("button"),
+    announcer: new FakeElement("div"),
+  });
+
+  core.configure({ scrollbackBehavior: "split" });
+  core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n");
+  scheduler.flushFrames();
+  output.scrollTop = output.scrollHeight - output.clientHeight;
+  core.scrollByPage(-0.8);
+  output.dispatch("scroll");
+  assert.equal(shell.classList.contains("split-active"), true);
+  const historyBefore = historyOutput.scrollTop;
+  core.scrollByPage(0.8);
+  assert.ok(historyOutput.scrollTop > historyBefore);
+  core.dispose();
+});
+
 test("split divider clamps and persists its ratio", (t) => {
   const scheduler = installDom(t);
   const shell = new FakeElement("section");

@@ -4,6 +4,7 @@
   import { CONFIG_KINDS } from "../model/configuration.ts";
   import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
   import DefinitionEditor from "./DefinitionEditor.svelte";
+  import SettingsCheckbox from "./SettingsCheckbox.svelte";
   import {
     DEFAULT_PHASE2_CLIENT_SETTINGS,
     TERMINAL_FONT_FAMILIES,
@@ -715,11 +716,17 @@
             </p>
             <p>{health.diagnosis.headline}</p>
           </div>
-          <label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.lagMonitorEnabled} /> Measure connection health</label
-          ><label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.autoReconnect} /> Auto-reconnect</label
-          ><button
+          <SettingsCheckbox
+            bind:checked={settings.lagMonitorEnabled}
+            label="Measure connection health"
+            help="Measure latency in the background and show it in the status bar; the Connection panel breaks lag down into network, server, and local causes."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.autoReconnect}
+            label="Auto-reconnect"
+            help="Reconnect automatically after unexpected connection loss."
+          />
+          <button
             class="settings-action"
             type="button"
             disabled={connection.state !== "connected"}
@@ -797,9 +804,11 @@
             /></label
           >
           <fieldset>
-            <legend>Visual effects</legend><label class="settings-check"
-              ><input type="checkbox" bind:checked={settings.visualEffectsEnabled} /> Enable visual effects</label
-            >
+            <legend>Visual effects</legend><SettingsCheckbox
+              bind:checked={settings.visualEffectsEnabled}
+              label="Enable visual effects"
+              help="Enable visual presentation across the game. Individual effects can be selected below without changing game text, controls, or combatbrief settings."
+            />
             <details>
               <summary
                 >Choose effects ({Object.values(settings.visualEffectPreferences).filter(Boolean)
@@ -827,13 +836,13 @@
           hidden={panelHidden("audio")}
         >
           <h3>Audio</h3>
-          <label class="settings-check"
-            ><input
-              type="checkbox"
-              checked={audio.enabled}
-              onchange={(event) => session.audio.setEnabled(event.currentTarget.checked)}
-            /> Enable audio</label
-          ><label class="settings-row"
+          <SettingsCheckbox
+            checked={audio.enabled}
+            label="Enable audio"
+            help="Allow game-triggered sound effects in this browser."
+            onchange={(checked) => session.audio.setEnabled(checked)}
+          />
+          <label class="settings-row"
             ><span>Volume</span>
             <input
               aria-label="Volume"
@@ -864,20 +873,82 @@
           hidden={panelHidden("controls")}
         >
           <h3>Controls</h3>
-          <label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.repeatLastCommand} /> Repeat last command</label
-          ><label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.aliasTabCompletionEnabled} /> Complete aliases
-            with Tab</label
-          ><label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.historyTabCompletionEnabled} /> Complete from
-            history with Tab</label
-          ><label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.emojiPickerEnabled} /> Show emoji picker</label
-          ><label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.settingsBackupPromptEnabled} /> Ask before
-            closing changed settings</label
-          >{#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
+          <SettingsCheckbox
+            bind:checked={settings.repeatLastCommand}
+            label="Keep last command selected after send"
+            help="Keep the last command in the input selected so Enter repeats it and typing replaces it."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.aliasTabCompletionEnabled}
+            label="Use aliases for Tab completion"
+            help="Complete matching client aliases before falling back to command history or server-side Tab completion."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.historyTabCompletionEnabled}
+            label="Use command history for Tab completion"
+            help="Try recent commands with the same verb before falling back to server-side Tab completion."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.emojiPickerEnabled}
+            label="Show emoji picker"
+            help="Show emoji suggestions when typing a colon followed by an emoji name."
+          />
+          <fieldset>
+            <legend>Global shortcuts</legend>
+            <SettingsCheckbox
+              bind:checked={settings.openSettingsShortcutEnabled}
+              label="Open Settings (Ctrl/Cmd+,)"
+              help="Open Settings from the active terminal."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.clearTerminalShortcutEnabled}
+              label="Clear terminal output (Ctrl+L)"
+              help="Clear output for the active terminal."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.resyncGamePanelsShortcutEnabled}
+              label="Resync game panels (Ctrl+K)"
+              help="Refresh transient game panel data."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.escapeShortcutEnabled}
+              label="Return to live output / clear command (Escape)"
+              help="Return to live output, or clear the command input."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.pageUpShortcutEnabled}
+              label="Scroll one page back (PageUp)"
+              help="Scroll terminal history back by one page."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.pageDownShortcutEnabled}
+              label="Scroll one page forward (PageDown)"
+              help="Scroll terminal history forward by one page."
+            />
+            <SettingsCheckbox
+              bind:checked={settings.focusCommandInputShortcutEnabled}
+              label="Focus command input when typing in Darkflow"
+              help="When the Darkflow window is active and no text field or dialog is open, send ordinary typing to the command input."
+            />
+          </fieldset>
+          <SettingsCheckbox
+            bind:checked={settings.keyMapperEnabled}
+            label="Enable custom key mappings"
+            help="Bind keys like ArrowUp or 1 to send commands immediately without pressing Enter."
+          />
+          <div hidden={!settings.keyMapperEnabled}>
+            {#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
+          </div>
+          <SettingsCheckbox
+            bind:checked={settings.tabObservabilityEnabled}
+            label="Send tab-away / tab-back on tab changes"
+            help="Automatically notifies the game when this browser tab becomes inactive or active again."
+          />
+          <SettingsCheckbox
+            bind:checked={settings.settingsBackupPromptEnabled}
+            label="Prompt to export changed settings"
+            help="Ask to download a backup when settings changed during the session and the settings panel is closed."
+          />
         </div>
         <div
           class="settings-panel"
@@ -946,9 +1017,11 @@
                   : null)}
             /></label
           >
-          <label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.screenReaderMode} /> Screen reader announcements</label
-          >
+          <SettingsCheckbox
+            bind:checked={settings.screenReaderMode}
+            label="Screen reader announcements"
+            help="Mirror new terminal lines into a hidden polite live region for browser screen readers."
+          />
         </div>
         <div
           class="settings-panel"
@@ -1033,9 +1106,11 @@
           hidden={panelHidden("debug")}
         >
           <h3>Debug</h3>
-          <label class="settings-check"
-            ><input type="checkbox" bind:checked={settings.gmcpDebugEnabled} /> Enable GMCP Debug</label
-          >
+          <SettingsCheckbox
+            bind:checked={settings.gmcpDebugEnabled}
+            label="Enable GMCP Debug"
+            help="Show received GMCP messages in the GMCP Debug panel."
+          />
         </div>
         <div
           class="settings-panel"

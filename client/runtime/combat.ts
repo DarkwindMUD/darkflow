@@ -255,6 +255,17 @@ export function createSessionCombat(
       publish();
     }),
   );
+  scope.own(
+    "subscription",
+    eventBus.subscribe("session:resync", () => {
+      stopBeat();
+      model = createCombatVisualState({ reducedMotion: model.reducedMotion }) as SessionCombatModel;
+      enemy = null;
+      manuallyDismissedEncounter = "";
+      presentationGeneration += 1;
+      publish();
+    }),
+  );
 
   scope.own(
     "subscription",

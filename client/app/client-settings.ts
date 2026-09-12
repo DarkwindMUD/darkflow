@@ -85,6 +85,15 @@ export interface Phase2ClientSettings {
   settingsBackupPromptEnabled: boolean;
   terminalWidthColumns: number | null;
   screenReaderMode: boolean;
+  openSettingsShortcutEnabled: boolean;
+  clearTerminalShortcutEnabled: boolean;
+  resyncGamePanelsShortcutEnabled: boolean;
+  escapeShortcutEnabled: boolean;
+  pageUpShortcutEnabled: boolean;
+  pageDownShortcutEnabled: boolean;
+  focusCommandInputShortcutEnabled: boolean;
+  keyMapperEnabled: boolean;
+  tabObservabilityEnabled: boolean;
 }
 
 export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
@@ -110,6 +119,15 @@ export const DEFAULT_PHASE2_CLIENT_SETTINGS: Phase2ClientSettings = {
   settingsBackupPromptEnabled: true,
   terminalWidthColumns: null,
   screenReaderMode: false,
+  openSettingsShortcutEnabled: true,
+  clearTerminalShortcutEnabled: true,
+  resyncGamePanelsShortcutEnabled: true,
+  escapeShortcutEnabled: true,
+  pageUpShortcutEnabled: true,
+  pageDownShortcutEnabled: true,
+  focusCommandInputShortcutEnabled: true,
+  keyMapperEnabled: false,
+  tabObservabilityEnabled: false,
 };
 
 export type ClientSettingsResult =
@@ -196,6 +214,15 @@ function normalize(settings: Record<string, unknown>): Phase2ClientSettings {
     settingsBackupPromptEnabled: settings.settingsBackupPromptEnabled !== false,
     terminalWidthColumns: normalizeTerminalWidth(settings.terminalWidthColumns),
     screenReaderMode: settings.screenReaderMode === true,
+    openSettingsShortcutEnabled: settings.openSettingsShortcutEnabled !== false,
+    clearTerminalShortcutEnabled: settings.clearTerminalShortcutEnabled !== false,
+    resyncGamePanelsShortcutEnabled: settings.resyncGamePanelsShortcutEnabled !== false,
+    escapeShortcutEnabled: settings.escapeShortcutEnabled !== false,
+    pageUpShortcutEnabled: settings.pageUpShortcutEnabled !== false,
+    pageDownShortcutEnabled: settings.pageDownShortcutEnabled !== false,
+    focusCommandInputShortcutEnabled: settings.focusCommandInputShortcutEnabled !== false,
+    keyMapperEnabled: settings.keyMapperEnabled === true,
+    tabObservabilityEnabled: settings.tabObservabilityEnabled === true,
   };
 }
 
@@ -373,6 +400,15 @@ export function validateClientSettingsDocument(
     "autoReconnect",
     "screenReaderMode",
     "settingsBackupPromptEnabled",
+    "openSettingsShortcutEnabled",
+    "clearTerminalShortcutEnabled",
+    "resyncGamePanelsShortcutEnabled",
+    "escapeShortcutEnabled",
+    "pageUpShortcutEnabled",
+    "pageDownShortcutEnabled",
+    "focusCommandInputShortcutEnabled",
+    "keyMapperEnabled",
+    "tabObservabilityEnabled",
   ] as const;
   for (const key of booleanKeys) {
     if (key in value && typeof value[key] !== "boolean")

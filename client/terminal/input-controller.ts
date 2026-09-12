@@ -22,18 +22,15 @@ function extractBatchCommands(text: string): string[] {
     .filter(Boolean);
 }
 
-function isInteractiveTarget(target: EventTarget | null): boolean {
-  return (
-    target instanceof HTMLElement &&
-    (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT|BUTTON|A|SUMMARY)$/.test(target.tagName))
-  );
-}
-
 function isEditableTarget(target: EventTarget | null): boolean {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))
   );
+}
+
+function isActivationTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && /^(BUTTON|A|SUMMARY)$/.test(target.tagName);
 }
 
 function isBlockingDialogTarget(target: EventTarget | null): boolean {
@@ -56,6 +53,8 @@ export function createTerminalInputController({
   executeCommand,
   getMappedCommand,
   returnOutputToLive,
+  scrollOutputByPage,
+  openSettings,
 }: {
   session: Session;
   input: HTMLInputElement;
@@ -69,6 +68,8 @@ export function createTerminalInputController({
   executeCommand?: (text: string) => boolean;
   getMappedCommand?: (event: KeyboardEvent) => string | null;
   returnOutputToLive?: () => boolean;
+  scrollOutputByPage?: (direction: number) => void;
+  openSettings?: () => void;
 }): { dispose(): void } {
   let history = loadCommandHistory(localStorage, session.characterProfileId);
   let historyIndex = history.length;
@@ -174,6 +175,7 @@ export function createTerminalInputController({
     batchInput.focus();
   };
   const executeMappedKey = (event: KeyboardEvent) => {
+    if (!loadClientSettings(localStorage).settings.keyMapperEnabled) return false;
     const mappedCommand = getMappedCommand?.(event);
     if (!mappedCommand) return false;
     event.preventDefault();
@@ -188,7 +190,13 @@ export function createTerminalInputController({
       handleEmojiPickerKeydown(event)
     )
       return;
-    if (!event.ctrlKey && !event.altKey && !event.metaKey && executeMappedKey(event)) {
+    if (
+      !event.ctrlKey &&
+      !event.altKey &&
+      !event.metaKey &&
+      !hasEnabledBuiltin(event) &&
+      executeMappedKey(event)
+    ) {
       return;
     } else if (event.key === "Enter") {
       event.preventDefault();
@@ -234,29 +242,72 @@ export function createTerminalInputController({
       event.altKey ||
       event.metaKey ||
       isEditableTarget(event.target) ||
-      isBlockingDialogTarget(event.target)
+      isBlockingDialogTarget(event.target) ||
+      hasEnabledBuiltin(event)
     )
       return;
     executeMappedKey(event);
   };
+  const hasEnabledBuiltin = (event: KeyboardEvent) => {
+    const settings = loadClientSettings(localStorage).settings;
+    return (
+      (settings.openSettingsShortcutEnabled && isSettingsShortcut(event)) ||
+      (settings.clearTerminalShortcutEnabled && event.ctrlKey && event.key.toLowerCase() === "l") ||
+      (settings.resyncGamePanelsShortcutEnabled &&
+        event.ctrlKey &&
+        event.key.toLowerCase() === "k") ||
+      (settings.escapeShortcutEnabled && event.key === "Escape") ||
+      (settings.pageUpShortcutEnabled && event.key === "PageUp") ||
+      (settings.pageDownShortcutEnabled && event.key === "PageDown")
+    );
+  };
+  const isSettingsShortcut = (event: KeyboardEvent) =>
+    (event.ctrlKey || event.metaKey) &&
+    !event.altKey &&
+    !event.shiftKey &&
+    (event.key === "," || event.code === "Comma");
   const onDocumentKeydown = (event: KeyboardEvent) => {
     if (event.defaultPrevented) return;
     if (isBlockingDialogTarget(event.target)) return;
-    if (isInteractiveTarget(event.target) && event.target !== input) return;
-    if (event.key === "Escape" && returnOutputToLive?.()) {
+    if (isEditableTarget(event.target) && event.target !== input) return;
+    const settings = loadClientSettings(localStorage).settings;
+    if (settings.openSettingsShortcutEnabled && isSettingsShortcut(event)) {
+      event.preventDefault();
+      openSettings?.();
+      return;
+    }
+    if (settings.clearTerminalShortcutEnabled && event.ctrlKey && event.key.toLowerCase() === "l") {
+      event.preventDefault();
+      session.terminal.clearOutput();
+      return;
+    }
+    if (
+      settings.resyncGamePanelsShortcutEnabled &&
+      event.ctrlKey &&
+      event.key.toLowerCase() === "k"
+    ) {
+      event.preventDefault();
+      session.resyncGamePanels();
+      return;
+    }
+    if (settings.escapeShortcutEnabled && event.key === "Escape" && returnOutputToLive?.()) {
       event.preventDefault();
       input.focus();
       return;
     }
-    if (isInteractiveTarget(event.target) || event.ctrlKey || event.altKey || event.metaKey) return;
-    if (event.key === "Escape") {
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    if (event.key === " " && isActivationTarget(event.target)) return;
+    if (settings.escapeShortcutEnabled && event.key === "Escape") {
       completion.reset();
       input.value = "";
       input.focus();
-    } else if (event.key === "PageUp" || event.key === "PageDown") {
+    } else if (settings.pageUpShortcutEnabled && event.key === "PageUp") {
       event.preventDefault();
-      output.scrollTop += output.clientHeight * (event.key === "PageUp" ? -0.8 : 0.8);
-    } else if (event.key.length === 1) {
+      scrollOutputByPage?.(-0.8);
+    } else if (settings.pageDownShortcutEnabled && event.key === "PageDown") {
+      event.preventDefault();
+      scrollOutputByPage?.(0.8);
+    } else if (settings.focusCommandInputShortcutEnabled && event.key.length === 1) {
       input.focus();
     }
   };

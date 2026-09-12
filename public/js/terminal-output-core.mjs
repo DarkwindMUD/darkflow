@@ -213,6 +213,12 @@ export function createTerminalOutputCore({
     output.scrollTop = output.scrollHeight;
     return changed;
   };
+  const scrollByPage = (direction) => {
+    if (disposed) return;
+    markUserScrollIntent();
+    const target = splitActive ? historyOutput : output;
+    target.scrollTop += target.clientHeight * direction;
+  };
   const pause = () => {
     if (splitActive) deactivateSplit();
     else {
@@ -318,6 +324,7 @@ export function createTerminalOutputCore({
       return true;
     },
     returnToLive,
+    scrollByPage,
     snapshot: () => ({ buffer: targetOutput.textContent ?? '', scrollTop: targetOutput.scrollTop }),
     dispose: () => {
       if (disposed) return;

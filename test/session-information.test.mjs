@@ -229,3 +229,42 @@ test("information resets on disconnect and stays isolated after disposal", async
   first.bus.dispatch("Char.Status", { name: "Late" });
   assert.equal(first.information.getSnapshot().status, null);
 });
+
+test("resync clears the complete transient information snapshot", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, information, scope, sent } = createInformation(modules);
+  bus.dispatch("Char.Status", { name: "Acer" });
+  bus.dispatch("Char.Vitals", { hp: 90, maxhp: 100 });
+  bus.dispatch("Darkwind.Cyberware.List", {
+    installed: [{ id: "eyes", name: "Eyes" }],
+    strain: { used: 1, total: 2 },
+  });
+  assert.equal(information.requestCyberwareDetails("eyes"), true);
+  bus.dispatch("Darkwind.Cyberware.Details", { id: "eyes", description: "Sharp" });
+  assert.ok(information.getSnapshot().cyberwareDetail);
+  const sentBefore = sent.length;
+
+  eventBus.publish("session:resync", undefined);
+  assert.deepEqual(information.getSnapshot(), {
+    game: null,
+    avatar: null,
+    status: null,
+    statusVars: null,
+    vitals: null,
+    guildVitals: null,
+    xpmon: null,
+    omens: null,
+    sky: null,
+    stats: { current: null, base: null },
+    worth: null,
+    defences: [],
+    group: null,
+    inventory: [],
+    quests: null,
+    achievements: null,
+    cyberware: null,
+    cyberwareDetail: null,
+  });
+  assert.equal(sent.length, sentBefore);
+  scope.dispose();
+});

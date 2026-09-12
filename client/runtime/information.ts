@@ -367,6 +367,13 @@ export function createSessionInformation(
       }
     }),
   );
+  scope.own(
+    "subscription",
+    eventBus.subscribe("session:resync", () => {
+      requestedCyberwareId = null;
+      publish(emptySnapshot());
+    }),
+  );
 
   return {
     getSnapshot: () => snapshot,

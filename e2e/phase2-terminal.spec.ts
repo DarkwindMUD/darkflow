@@ -28,7 +28,7 @@ async function connect(page: Page): Promise<void> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -47,6 +47,74 @@ async function skipChangedSettingsBackup(dialog: Locator): Promise<void> {
     .getByRole("button", { name: "Skip", exact: true })
     .click();
 }
+
+async function setVisibility(
+  page: Page,
+  visibilityState: "hidden" | "visible" | "prerender",
+): Promise<void> {
+  await page.evaluate((state) => {
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: state });
+    document.dispatchEvent(new Event("visibilitychange"));
+  }, visibilityState);
+}
+
+test("Phase 2 global shortcuts work from focused game panel controls", async ({ page }) => {
+  await connect(page);
+  const panelControl = page.getByRole("button", { name: "Settings for Status", exact: true });
+  const input = page.getByLabel("Command input", { exact: true });
+
+  await panelControl.focus();
+  await page.keyboard.type("look");
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue("look");
+
+  await panelControl.focus();
+  await page.keyboard.press("Meta+Comma");
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
+});
+
+test("Phase 2 reports opted-in browser tab visibility once per state", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
+  await dialog.getByLabel("Send tab-away / tab-back on tab changes", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await setVisibility(page, "prerender");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "tab-away"))
+    .toHaveLength(1);
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText("> tab-away");
+  await setVisibility(page, "prerender");
+  expect(endpoint.commands.filter((command) => command === "tab-away")).toHaveLength(1);
+
+  await setVisibility(page, "visible");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "tab-back"))
+    .toHaveLength(1);
+  endpoint.dropConnections();
+  await expect(page.getByTestId("connection-status")).toHaveText("Connected", { timeout: 4_000 });
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "tab-back"))
+    .toHaveLength(2);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
+  await dialog.getByLabel("Send tab-away / tab-back on tab changes", { exact: true }).uncheck();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await setVisibility(page, "hidden");
+  expect(endpoint.commands.filter((command) => command === "tab-away")).toHaveLength(1);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await dialog.getByRole("tab", { name: "Controls", exact: true }).click();
+  await dialog.getByLabel("Send tab-away / tab-back on tab changes", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await setVisibility(page, "hidden");
+  expect(endpoint.commands.filter((command) => command === "tab-away")).toHaveLength(1);
+});
 
 test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async ({ page }) => {
   const endpoint = fixtures.endpoints.ws;
@@ -273,6 +341,10 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
       },
     ];
     localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ theme: "darkflow-default", keyMapperEnabled: true }),
+    );
   });
   await page.reload();
 }
@@ -499,7 +571,7 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   const endpoint = fixtures.endpoints.ws;
   await installAutomationDefinitions(page);
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -577,8 +649,8 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   const output = page.getByLabel("Terminal output", { exact: true });
   endpoint.sendText(Array.from({ length: 80 }, (_, index) => `split line ${index}\n`).join(""));
   await expect(output).toContainText("split line 79");
-  await output.hover();
-  await page.mouse.wheel(0, -300);
+  await input.focus();
+  await input.press("PageUp");
   await expect(page.getByLabel("Scrollback history", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Live output", { exact: true })).toBeVisible();
   await expect(output).toBeHidden();
@@ -646,7 +718,7 @@ test("Phase 2 processes output without Terminal and hydrates remount silently", 
   });
   await installAutomationDefinitions(page);
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -707,7 +779,7 @@ test("Phase 2 disposal cancels pending terminal work and rejects late events", a
   const endpoint = fixtures.endpoints.ws;
   await installAutomationDefinitions(page);
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");

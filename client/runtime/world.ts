@@ -499,6 +499,18 @@ export function createSessionWorld(
       publish();
     }),
   );
+  scope.own(
+    "subscription",
+    eventBus.subscribe("session:resync", () => {
+      speedwalk.cancel();
+      void selector.resetLiveMapModeForConnection();
+      room = null;
+      players = [];
+      roomGeneration += 1;
+      roomImage = null;
+      publish();
+    }),
+  );
 
   const playlistAction = (action: PlaylistActionInput): boolean => {
     if (disposed || !connected || !playlistFresh || !playlist.enabled || playlist.room_id === null)

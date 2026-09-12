@@ -51,6 +51,7 @@ function createHarness(modules) {
     });
   return {
     combat,
+    eventBus,
     gmcp,
     reconnect,
     scope,
@@ -60,6 +61,26 @@ function createHarness(modules) {
     },
   };
 }
+
+test("resync clears combat presentation while retaining reduced-motion preference", async (t) => {
+  const modules = await loadModules(t);
+  const harness = createHarness(modules);
+  t.after(() => harness.scope.dispose());
+  harness.reconnect("connected");
+  harness.combat.setReducedMotion(true);
+  harness.gmcp.dispatch("Char.Enemy", { enemy_name: "an ash drake", enemy_curhp: 40, enemy_maxhp: 50 });
+  harness.gmcp.dispatch("Darkwind.Combat.State", state());
+  assert.equal(harness.combat.getSnapshot().shouldPresent, true);
+  assert.ok(harness.combat.getSnapshot().enemy);
+
+  harness.eventBus.publish("session:resync", undefined);
+  const snapshot = harness.combat.getSnapshot();
+  assert.equal(snapshot.enemy, null);
+  assert.equal(snapshot.model.active, false);
+  assert.equal(snapshot.shouldPresent, false);
+  assert.equal(snapshot.presentationReady, false);
+  assert.equal(snapshot.model.reducedMotion, true);
+});
 
 function state(overrides = {}) {
   return {

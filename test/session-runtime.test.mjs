@@ -1231,3 +1231,37 @@ test("gmcp frame dispatch works immediately after socket open", async (t) => {
   );
   assert.equal(harness.session.getRuntimeSnapshot().isLoggedIntoCharacter, true);
 });
+
+test("Ctrl+K resync uses the session handshake path only while connected", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
+  FakeWebSocket.reset();
+
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  assert.equal(harness.session.resyncGamePanels(), false);
+
+  harness.session.connect();
+  const socket = harness.latestSocket();
+  socket?.open();
+  socket?.emitMessage(
+    new TextEncoder().encode('Char.Vitals {"hp":100,"mhp":100,"mana":50,"mmana":50,"move":100,"mmove":100}'),
+  );
+  assert.equal(harness.session.getRuntimeSnapshot().isLoggedIntoCharacter, true);
+  socket.clearSent();
+  assert.equal(harness.session.resyncGamePanels(), true);
+  assert.equal(harness.session.getRuntimeSnapshot().isLoggedIntoCharacter, false);
+
+  const packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(
+    packages.map((item) => item.packageName),
+    [
+      "Core.Hello",
+      "Core.Supports.Set",
+      "Darkwind.Client.Subscriptions",
+      "Darkwind.Client.RefreshMedia",
+    ],
+  );
+  assert.equal(packages[2]?.data?.reason, "ctrl-k");
+  assert.equal(packages[2]?.data?.full, true);
+});

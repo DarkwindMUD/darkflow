@@ -136,7 +136,13 @@ test("settings bundle exports the full graph but imports only active-character s
     }),
   });
   const exported = bundle.buildSettingsBundle(sourceStore, {
-    clientSettings: { repeatLastCommand: false, gmcpDebugEnabled: true },
+    clientSettings: {
+      repeatLastCommand: false,
+      gmcpDebugEnabled: true,
+      keyMapperEnabled: true,
+      tabObservabilityEnabled: true,
+      pageUpShortcutEnabled: false,
+    },
   });
   assert.equal(exported.success, true);
   assert.equal(JSON.parse(exported.data.text).formatVersion, 2);
@@ -148,6 +154,9 @@ test("settings bundle exports the full graph but imports only active-character s
   });
   assert.equal(prepared.data.clientSettings.repeatLastCommand, false);
   assert.equal(prepared.data.clientSettings.gmcpDebugEnabled, true);
+  assert.equal(prepared.data.clientSettings.keyMapperEnabled, true);
+  assert.equal(prepared.data.clientSettings.tabObservabilityEnabled, true);
+  assert.equal(prepared.data.clientSettings.pageUpShortcutEnabled, false);
   assert.deepEqual(prepared.data.applicationState, source);
   prepared.data.applicationState.configurationSets[sharedSet].definitions[0] = new Proxy(
     prepared.data.applicationState.configurationSets[sharedSet].definitions[0],
@@ -205,6 +214,7 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
     ["applicationState", {}],
     ["clientSettings", { ...validBundle.data.clientSettings, repeatLastCommand: "bad" }],
     ["clientSettings", { ...validBundle.data.clientSettings, gmcpDebugEnabled: "bad" }],
+    ["clientSettings", { ...validBundle.data.clientSettings, keyMapperEnabled: "bad" }],
     ["clientSettings", { ...validBundle.data.clientSettings, terminalFontFamily: "fantasy" }],
     ["clientSettings", { ...validBundle.data.clientSettings, terminalFontSize: 17 }],
     ["clientSettings", { ...validBundle.data.clientSettings, panelPreferences: [] }],

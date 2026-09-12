@@ -15,7 +15,7 @@ async function connect(page: Page): Promise<void> {
   const endpoint = fixtures.endpoints.ws;
   await page.goto("/phase2/");
   await page.getByLabel("Host").fill("127.0.0.1");
-  await page.getByLabel("Port").fill(String(endpoint.port));
+  await page.getByLabel("Port", { exact: true }).fill(String(endpoint.port));
   await page.getByLabel("Connection protocol").selectOption("ws");
   await page.getByRole("button", { name: "Connect", exact: true }).click();
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
@@ -152,6 +152,10 @@ async function installDirectDefinitions(page: Page): Promise<void> {
       ],
     };
     localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ theme: "darkflow-default", keyMapperEnabled: true }),
+    );
   });
   await page.reload();
 }
@@ -370,9 +374,9 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByLabel("Terminal background opacity").fill("43");
   await settingsTab(dialog, "Controls");
   await expect(dialog.getByLabel("Show emoji picker")).toBeChecked();
-  await dialog.getByLabel("Repeat last command").uncheck();
-  await dialog.getByLabel("Complete aliases with Tab").uncheck();
-  await dialog.getByLabel("Complete from history with Tab").check();
+  await dialog.getByLabel("Keep last command selected after send").uncheck();
+  await dialog.getByLabel("Use aliases for Tab completion").uncheck();
+  await dialog.getByLabel("Use command history for Tab completion").check();
   await dialog.getByLabel("Show emoji picker").uncheck();
   await settingsTab(dialog, "Terminal");
   await expect(dialog.getByLabel("Terminal font family")).toHaveValue("");
@@ -386,8 +390,8 @@ test("Phase 2 settings save current preferences without replacing deferred field
   await dialog.getByLabel("Terminal font size").selectOption("18");
   await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Add variable" }).click();
-  await dialog.getByLabel("Name").fill("target");
-  await dialog.getByLabel("Value").fill("goblin");
+  await dialog.getByLabel("Name", { exact: true }).fill("target");
+  await dialog.getByLabel("Value", { exact: true }).fill("goblin");
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
 
@@ -489,17 +493,17 @@ test("Phase 2 settings save current preferences without replacing deferred field
     dialog.getByLabel("Theme", { exact: true }).locator("option", { hasText: "Saved" }),
   ).toHaveCount(1);
   await settingsTab(dialog, "Controls");
-  await expect(dialog.getByLabel("Repeat last command")).not.toBeChecked();
-  await expect(dialog.getByLabel("Complete aliases with Tab")).not.toBeChecked();
-  await expect(dialog.getByLabel("Complete from history with Tab")).toBeChecked();
+  await expect(dialog.getByLabel("Keep last command selected after send")).not.toBeChecked();
+  await expect(dialog.getByLabel("Use aliases for Tab completion")).not.toBeChecked();
+  await expect(dialog.getByLabel("Use command history for Tab completion")).toBeChecked();
   await expect(dialog.getByLabel("Show emoji picker")).not.toBeChecked();
   await settingsTab(dialog, "Terminal");
   await expect(dialog.getByLabel("Scrollback behavior")).toHaveValue("split");
   await expect(dialog.getByLabel("Scrollback memory")).toHaveValue("high");
   await settingsTab(dialog, "Variables");
   await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
-  await expect(dialog.getByLabel("Name")).toHaveValue("target");
-  await expect(dialog.getByLabel("Value")).toHaveValue("goblin");
+  await expect(dialog.getByLabel("Name", { exact: true })).toHaveValue("target");
+  await expect(dialog.getByLabel("Value", { exact: true })).toHaveValue("goblin");
 });
 
 test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => {
@@ -516,6 +520,55 @@ test("Phase 2 settings remain usable on a mobile viewport", async ({ page }) => 
   await page.keyboard.press("Escape");
   await expect(dialog).not.toBeVisible();
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toBeFocused();
+});
+
+test("Phase 2 Controls persist global shortcuts and retain hidden key-mapping drafts", async ({
+  page,
+}) => {
+  await page.goto("/phase2/");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByRole("group", { name: "Global shortcuts" })).toBeVisible();
+  await expect(dialog.getByLabel("Open Settings (Ctrl/Cmd+,)", { exact: true })).toBeChecked();
+  await expect(
+    dialog.getByText(
+      "When the Darkflow window is active and no text field or dialog is open, send ordinary typing to the command input.",
+    ),
+  ).toBeVisible();
+  await expect(dialog.getByLabel("Scroll one page back (PageUp)", { exact: true })).toBeChecked();
+  await expect(dialog.getByText("Scroll terminal history back by one page.")).toBeVisible();
+  await expect(dialog.getByLabel("Enable custom key mappings", { exact: true })).not.toBeChecked();
+  await expect(dialog.getByRole("group", { name: "Key mappings" })).toBeHidden();
+
+  await dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }).uncheck();
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).check();
+  const mappings = dialog.getByRole("group", { name: "Key mappings" });
+  await mappings.getByRole("button", { name: "Add mapping" }).click();
+  await mappings.getByLabel("Command for new mapping").fill("look");
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).uncheck();
+  await expect(mappings).toBeHidden();
+  await dialog.getByLabel("Enable custom key mappings", { exact: true }).check();
+  await expect(mappings.getByLabel("Command for new mapping")).toHaveValue("look");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Controls");
+  await expect(
+    dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }),
+  ).not.toBeChecked();
+  await expect(dialog.getByLabel("Enable custom key mappings", { exact: true })).toBeChecked();
+  await expect(dialog.getByRole("group", { name: "Key mappings" })).toBeVisible();
+  await dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }).check();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await settingsTab(dialog, "Controls");
+  await expect(
+    dialog.getByLabel("Scroll one page back (PageUp)", { exact: true }),
+  ).not.toBeChecked();
 });
 
 test("Phase 2 appearance controls preview live, revert on Close, and persist on Apply", async ({
@@ -938,7 +991,7 @@ test("Phase 3 imports settings without replacing the active session or profile s
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await settingsTab(dialog, "Controls");
-  await dialog.getByLabel("Repeat last command").check();
+  await dialog.getByLabel("Keep last command selected after send").check();
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   const backup = dialog.getByRole("dialog", { name: "Download changed settings?" });
   await expect(backup.getByRole("button", { name: "Download backup", exact: true })).toBeFocused();
@@ -1167,7 +1220,7 @@ test("Phase 2 settings recovers from corrupted stored settings", async ({ page }
     "Saved client settings are invalid. Fix or replace them before saving.",
   );
   await settingsTab(dialog, "Controls");
-  await expect(dialog.getByLabel("Repeat last command")).toBeChecked();
+  await expect(dialog.getByLabel("Keep last command selected after send")).toBeChecked();
 
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
@@ -1195,7 +1248,7 @@ test("Phase 2 settings apply to terminal input immediately without reload", asyn
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Settings" });
   await settingsTab(dialog, "Controls");
-  await dialog.getByLabel("Repeat last command").uncheck();
+  await dialog.getByLabel("Keep last command selected after send").uncheck();
   await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
   await skipChangedSettingsBackup(dialog);
   await expect(dialog).not.toBeVisible();
@@ -1407,7 +1460,9 @@ test("Phase 2 edits local direct definitions and updates live consumers", async 
     .poll(() => endpoint.commands)
     .toEqual(expect.arrayContaining(["inventory", "percent-command", "salute"]));
   endpoint.sendText("glow\n");
-  await expect(page.getByLabel("Terminal output").locator(".ansi-fg-blue")).toContainText("glow");
+  await expect(
+    page.getByLabel("Terminal output", { exact: true }).locator(".ansi-fg-blue"),
+  ).toContainText("glow");
 
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -1557,9 +1612,9 @@ test("Phase 2 routes shared direct definitions through stale-safe publication", 
     .poll(() => endpoint.commands)
     .toEqual(expect.arrayContaining(["shared-after", "shared-function-after"]));
   endpoint.sendText("shimmer\n");
-  await expect(page.getByLabel("Terminal output").locator(".ansi-fg-blue")).toContainText(
-    "shimmer",
-  );
+  await expect(
+    page.getByLabel("Terminal output", { exact: true }).locator(".ansi-fg-blue"),
+  ).toContainText("shimmer");
 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const [groupName, label] of [
@@ -1702,7 +1757,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await expect
     .poll(() => endpoint.commands)
     .toEqual(expect.arrayContaining(["inventory", "retreat", "timer-after"]));
-  await expect(page.getByLabel("Terminal output")).not.toContainText("danger");
+  await expect(page.getByLabel("Terminal output", { exact: true })).not.toContainText("danger");
 
   await page.reload();
   await page.getByRole("button", { name: "Settings", exact: true }).click();

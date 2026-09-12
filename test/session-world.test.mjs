@@ -395,3 +395,37 @@ test("disconnect clears live view state, retains playlist data, and disposal rel
   assert.equal(lifecycle.liveAnimationFrames, 0);
   assert.equal(lifecycle.liveChildScopes, 0);
 });
+
+test("resync clears transient world state without clearing playlist or durable maps", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, commands, eventBus, scope, world } = createWorld(modules);
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  eventBus.publish("transport:reconnect-status", { status: "connected", attempt: 0, transport: "wss" });
+  bus.dispatch("Darkwind.MapData2.Current", {
+    ...current(101),
+    exits: { north: 102 },
+    liveExits: { north: 102 },
+    walkSafe: { north: 1 },
+  });
+  bus.dispatch("Darkwind.MapData2.Area", { area: "Test Area", rooms: [current(102)], replace: 0 });
+  bus.dispatch("Room.Info", { num: 101, name: "Atrium", exits: {} });
+  bus.dispatch("Room.Players", [{ name: "Alice" }]);
+  bus.dispatch("Darkwind.Room.Image", { url: "/rooms/atrium.webp" });
+  bus.dispatch("Darkwind.Room.Playlist.State", playlistState);
+  assert.equal(world.speedwalkTo(102), true);
+  const before = world.getSnapshot();
+  assert.equal(before.source.getRoom(102)?.name, "Room 102");
+  assert.equal(before.playlist.enabled, true);
+
+  eventBus.publish("session:resync", undefined);
+  const after = world.getSnapshot();
+  assert.equal(after.room, null);
+  assert.deepEqual(after.players, []);
+  assert.equal(after.roomImage, null);
+  assert.equal(after.speedwalking, false);
+  assert.equal(after.playlist.enabled, true);
+  assert.equal(after.playlistFresh, true);
+  assert.equal(after.source.getRoom(102)?.name, "Room 102");
+  assert.deepEqual(commands, ["north"]);
+  scope.dispose();
+});

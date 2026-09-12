@@ -115,6 +115,7 @@ export interface Session {
   getConnectionSnapshot(): SessionConnectionSnapshot;
   setConnectionEndpoint(endpoint: TransportEndpoint): void;
   retryConnection(): void;
+  resyncGamePanels(): boolean;
   subscribeConnection(listener: (snapshot: SessionConnectionSnapshot) => void): Unsubscribe;
   onDispose(listener: () => void): Unsubscribe;
 }
@@ -285,6 +286,19 @@ export function createSession(parts: SessionParts): Session {
       }, LOST_TRANSMISSION_RECOVERY_DELAY_MS);
     }),
   );
+
+  const resyncGamePanels = (): boolean => {
+    if (disposed || transport.state !== "connected") {
+      terminalProcessing?.appendSystemMessage("GMCP restart unavailable: not connected.");
+      return false;
+    }
+    automationRuntime.resetGmcpVariables();
+    runtimeState.resetCharacterVitals();
+    eventBus.publish("session:resync", undefined);
+    if (!gmcp.restartHandshake({ reason: "ctrl-k" })) return false;
+    terminalProcessing?.appendSystemMessage("GMCP handshake and full pane sync requested.");
+    return true;
+  };
 
   const terminal: SessionTerminal = {
     automation: automationRuntime,
@@ -467,6 +481,8 @@ export function createSession(parts: SessionParts): Session {
     retryConnection() {
       transport.retryNow();
     },
+
+    resyncGamePanels,
 
     subscribeConnection(listener) {
       listener(getConnectionSnapshot());

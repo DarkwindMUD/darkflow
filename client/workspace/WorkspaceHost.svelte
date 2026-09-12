@@ -61,12 +61,14 @@
     debugGmcp,
     session,
     workspaceToolbar,
+    openSettings,
   }: {
     characterProfileId: CharacterProfileId;
     presentationAllowed: boolean;
     debugGmcp: boolean;
     session: Session;
     workspaceToolbar?: HTMLElement | undefined;
+    openSettings?: () => void;
   } = $props();
 
   const terminal: WorkspacePanelSpec = {
@@ -764,7 +766,7 @@
     const rendererRegistry: WorkspaceRendererRegistry = {
       terminal: {
         component: TerminalPanel,
-        componentProps: { registerLineNavigator: registerTerminalLineNavigator },
+        componentProps: { registerLineNavigator: registerTerminalLineNavigator, openSettings },
         floatable: true,
         preserveDomWhenHidden: true,
         session,

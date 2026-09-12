@@ -23,6 +23,10 @@
   import * as scriptCore from "../../public/js/automation-script-core.mjs";
   // @ts-expect-error Shared catalog validation remains in the legacy module.
   import { getSoundCatalog, isKnownSound } from "../../public/js/sound-manager.js";
+  // @ts-expect-error Legacy Highlight helpers operate only on explicit rule arrays here.
+  import { highlightManager } from "../../public/js/highlight-manager.js";
+  // @ts-expect-error Legacy-safe ANSI renderer has no declaration file.
+  import { styleToElement } from "../../public/js/ansi.js";
 
   type Definition =
     | AliasDefinition
@@ -59,6 +63,14 @@
   type EditSource =
     { kind: "local" } | { kind: "shared-set"; configSetId: ConfigSetId; revision: number };
   const { previewAliasInput, previewFunction, previewTimer, previewTriggerOutput } = previewCore;
+  const {
+    applyHighlightsToText,
+    colorTokenToCss,
+    formatRuleStyle,
+    getColorSuggestions,
+    isValidColorToken,
+    normalizeColorToken,
+  } = highlightManager;
 
   let { session, kind }: { session: Session; kind: ConfigKind } = $props();
   let snapshot = $state<CharacterConfigurationSnapshot>(
@@ -79,7 +91,9 @@
   let selectedGroups = $state<string[] | null>(null);
   let previousGroupKeys: string[] = [];
   let original = $state<string | null>(null);
-  let previewInput = $state("");
+  let previewInput = $state(
+    untrack(() => (kind === "highlights" ? "You have emptied the keg!" : "")),
+  );
   let timerResult = $state("");
   const soundCatalog = getSoundCatalog();
   let previewCollapsed = $state(
@@ -93,7 +107,9 @@
                 ? "timerPreviewCollapsed"
                 : kind === "functions"
                   ? "functionPreviewCollapsed"
-                  : "aliasPreviewCollapsed"
+                  : kind === "highlights"
+                    ? "highlightPreviewCollapsed"
+                    : "aliasPreviewCollapsed"
           ] === true
         );
       } catch {
@@ -121,7 +137,13 @@
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
   const groups = $derived.by(() => {
     const seen: Array<{ key: string; label: string; count: number }> = [];
-    if (kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions")
+    if (
+      kind !== "aliases" &&
+      kind !== "triggers" &&
+      kind !== "timers" &&
+      kind !== "functions" &&
+      kind !== "highlights"
+    )
       return [];
     for (const { definition } of entries) {
       const label = "group" in definition ? definition.group.trim() : "";
@@ -143,7 +165,11 @@
           .includes(needle);
       return (
         matchesSearch &&
-        ((kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions") ||
+        ((kind !== "aliases" &&
+          kind !== "triggers" &&
+          kind !== "timers" &&
+          kind !== "functions" &&
+          kind !== "highlights") ||
           selectedGroups === null ||
           selectedGroups.includes(group))
       );
@@ -167,11 +193,17 @@
   const functionWarnings = $derived(
     kind !== "functions" || !draft ? [] : warningsForFunction(draft),
   );
+  const highlightWarnings = $derived(
+    kind !== "highlights" || !draft ? [] : warningsForHighlight(draft),
+  );
   const preview = $derived(
     (kind !== "aliases" && kind !== "triggers" && kind !== "timers" && kind !== "functions") ||
       !draft
       ? null
       : previewFor(draft),
+  );
+  const highlightPreview = $derived(
+    kind !== "highlights" || !draft ? null : previewHighlights(draft),
   );
 
   $effect(() =>
@@ -184,7 +216,13 @@
     }),
   );
   $effect(() => {
-    if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions") {
+    if (
+      kind === "aliases" ||
+      kind === "triggers" ||
+      kind === "timers" ||
+      kind === "functions" ||
+      kind === "highlights"
+    ) {
       const keys = groups.map((group) => group.key);
       const currentGroups = untrack(() => selectedGroups);
       if (currentGroups === null) selectedGroups = keys;
@@ -263,7 +301,11 @@
         description: value.description.trim(),
         group: value.group.trim(),
         ignoreCase: value.ignoreCase,
-        style: { fg: value.fg.trim(), bg: value.bg.trim(), bold: value.bold },
+        style: {
+          fg: normalizeColorToken(value.fg) || value.fg.trim(),
+          bg: normalizeColorToken(value.bg) || value.bg.trim(),
+          bold: value.bold,
+        },
       };
     }
     if (kind === "aliases") {
@@ -553,6 +595,10 @@
       status = "Correct function warnings before saving.";
       return;
     }
+    if (kind === "highlights" && highlightWarnings.length) {
+      status = "Correct highlight warnings before saving.";
+      return;
+    }
 
     const definition = toDefinition(draft);
     const definitions = targetDefinitions(source);
@@ -698,6 +744,66 @@
       definition.id === value.id ? timerDefinition : definition,
     );
     return previewTimer({ ...catalogs, timers, timer: timerDefinition });
+  }
+
+  function warningsForHighlight(value: Draft): string[] {
+    const warnings: string[] = [];
+    const pattern = value.patternSource.trim();
+    if (!pattern) warnings.push("Pattern is required.");
+    else {
+      try {
+        new RegExp(pattern, value.ignoreCase ? "i" : "");
+      } catch {
+        warnings.push("Invalid regular expression.");
+      }
+      if (
+        source &&
+        targetDefinitions(source).some(
+          (definition) =>
+            definition.id !== value.id &&
+            "patternSource" in definition &&
+            identityKeyForDefinition("highlights", definition as HighlightDefinition) ===
+              identityKeyForDefinition("highlights", toDefinition(value) as HighlightDefinition),
+        )
+      )
+        warnings.push("Pattern duplicates an existing highlight rule in this owner.");
+    }
+    if (!isValidColorToken(value.fg)) warnings.push("Foreground color is invalid.");
+    if (!isValidColorToken(value.bg)) warnings.push("Background color is invalid.");
+    return warnings;
+  }
+
+  function previewHighlights(value: Draft) {
+    const definition = toDefinition(value) as HighlightDefinition;
+    const rules = snapshot.effectiveConfiguration.highlights.map(({ definition: current }) =>
+      current.id === definition.id ? definition : structuredClone(current),
+    );
+    if (!rules.some((rule) => rule.id === definition.id)) rules.push(definition);
+    const fragments = applyHighlightsToText(previewInput, rules);
+    return {
+      fragments,
+      summary: fragments.some(
+        (fragment: { style: { bold?: boolean; fg?: unknown; bg?: unknown } }) =>
+          fragment.style.bold || fragment.style.fg || fragment.style.bg,
+      )
+        ? "styled"
+        : "no match",
+    };
+  }
+
+  function renderHighlightPreview(
+    node: HTMLElement,
+    fragments: Array<{ text: string; style: Record<string, unknown> }>,
+  ) {
+    const render = (next: Array<{ text: string; style: Record<string, unknown> }>) => {
+      node.replaceChildren();
+      for (const fragment of next) {
+        const child = styleToElement(fragment.text, fragment.style);
+        if (child) node.appendChild(child);
+      }
+    };
+    render(fragments);
+    return { update: render };
   }
 
   function warningsForAutomation(value: Draft): string[] {
@@ -910,7 +1016,9 @@
             ? "timerPreviewCollapsed"
             : kind === "functions"
               ? "functionPreviewCollapsed"
-              : "aliasPreviewCollapsed"]: previewCollapsed,
+              : kind === "highlights"
+                ? "highlightPreviewCollapsed"
+                : "aliasPreviewCollapsed"]: previewCollapsed,
       }),
     );
   }
@@ -996,7 +1104,7 @@
       />
       <button type="button" onclick={add}>New {noun}</button>
     </div>
-    {#if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions") && groups.length}
+    {#if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions" || kind === "highlights") && groups.length}
       <div
         class="group-filters"
         aria-label={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} groups`}
@@ -1043,11 +1151,20 @@
                 onkeydown={(event) => moveListFocus(event, index)}
               >
                 <strong
-                  >{(kind === "aliases" || kind === "triggers" || kind === "functions") &&
+                  >{(kind === "aliases" ||
+                    kind === "triggers" ||
+                    kind === "functions" ||
+                    kind === "highlights") &&
                   "description" in entry.definition
                     ? entry.definition.description.trim() || labelFor(entry.definition)
                     : labelFor(entry.definition)}</strong
                 >
+                {#if kind === "highlights" && "patternSource" in entry.definition}
+                  <small>{entry.definition.patternSource}</small>
+                  {#if entry.definition.group}<small>{entry.definition.group}</small>{/if}
+                  <small>{formatRuleStyle(entry.definition)}</small>
+                  {#if entry.definition.ignoreCase}<small>Ignore case</small>{/if}
+                {/if}
                 {#if kind === "aliases" || kind === "triggers"}
                   <small
                     >{"trigger" in entry.definition
@@ -1133,13 +1250,88 @@
           <section bind:this={editor} class="editor" aria-label={`Edit ${title.toLowerCase()}`}>
             <label><input type="checkbox" bind:checked={draft.enabled} /> Enabled</label>
             {#if kind === "highlights"}
-              <label>Pattern <input bind:value={draft.patternSource} required /></label>
+              <label
+                >Pattern (regular expression) <input
+                  aria-label="Pattern"
+                  bind:value={draft.patternSource}
+                  required
+                /></label
+              >
               <label>Description <input bind:value={draft.description} /></label>
               <label>Group <input bind:value={draft.group} /></label>
               <label><input type="checkbox" bind:checked={draft.ignoreCase} /> Ignore case</label>
-              <label>Foreground <input bind:value={draft.fg} required /></label>
-              <label>Background <input bind:value={draft.bg} required /></label>
+              <label
+                >Foreground
+                <span class="color-input-row"
+                  ><input
+                    aria-label="Foreground"
+                    bind:value={draft.fg}
+                    list="highlight-colors"
+                    placeholder="yellow, bright-cyan, ansi-214, #38bdf8"
+                    class:invalid-color={Boolean(draft.fg.trim()) && !isValidColorToken(draft.fg)}
+                    onblur={() => {
+                      if (draft)
+                        draft.fg = normalizeColorToken(draft.fg) || draft.fg.trim().toLowerCase();
+                    }}
+                    required
+                  />
+                  <span
+                    class="color-swatch"
+                    style:background-color={colorTokenToCss(draft.fg) || "transparent"}
+                    title={normalizeColorToken(draft.fg) || "Invalid color"}
+                  ></span></span
+                ></label
+              >
+              <label
+                >Background
+                <span class="color-input-row"
+                  ><input
+                    aria-label="Background"
+                    bind:value={draft.bg}
+                    list="highlight-colors"
+                    placeholder="yellow, bright-cyan, ansi-214, #38bdf8"
+                    class:invalid-color={Boolean(draft.bg.trim()) && !isValidColorToken(draft.bg)}
+                    onblur={() => {
+                      if (draft)
+                        draft.bg = normalizeColorToken(draft.bg) || draft.bg.trim().toLowerCase();
+                    }}
+                    required
+                  />
+                  <span
+                    class="color-swatch"
+                    style:background-color={colorTokenToCss(draft.bg) || "transparent"}
+                    title={normalizeColorToken(draft.bg) || "Invalid color"}
+                  ></span></span
+                ></label
+              >
+              <datalist id="highlight-colors">
+                {#each getColorSuggestions() as color (color)}<option value={color}></option>{/each}
+              </datalist>
               <label><input type="checkbox" bind:checked={draft.bold} /> Bold</label>
+              {#if highlightWarnings.length}
+                <ul class="warnings" aria-live="polite">
+                  {#each highlightWarnings as warning (warning)}<li>{warning}</li>{/each}
+                </ul>
+              {/if}
+              <section class="alias-preview">
+                <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
+                  >Test output</button
+                >
+                {#if !previewCollapsed}
+                  <label
+                    >Test output <textarea
+                      aria-label="Test output"
+                      bind:value={previewInput}
+                      placeholder="Example: danger"></textarea></label
+                  >
+                  <p>{highlightPreview?.summary}</p>
+                  <output
+                    aria-label="Highlight test output"
+                    class="highlight-preview-output"
+                    use:renderHighlightPreview={highlightPreview?.fragments ?? []}
+                  ></output>
+                {/if}
+              </section>
             {:else if kind === "functions"}
               <label
                 >Name <input
@@ -1405,6 +1597,37 @@
 
   .alias-preview {
     display: grid;
+  }
+
+  .color-input-row {
+    display: flex;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .color-input-row input {
+    flex: 1;
+  }
+
+  .color-swatch {
+    width: 2.75rem;
+    min-width: 2.75rem;
+    min-height: 2.75rem;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 0.25rem;
+  }
+
+  .invalid-color {
+    border-color: var(--df-err, #ff6b6b);
+  }
+
+  .highlight-preview-output {
+    display: block;
+    min-height: 2.75rem;
+    padding: 0.5rem;
+    border: 1px solid var(--border-color, #30363d);
+    border-radius: 0.25rem;
+    white-space: pre-wrap;
   }
 
   .group-filters,

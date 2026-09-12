@@ -1711,6 +1711,165 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
 });
 
+test("Phase 2 highlights restore legacy discovery, validation, color authoring, and preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installDirectDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { highlights: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.highlights.push(
+      {
+        id: "highlight-combat",
+        enabled: true,
+        patternSource: "owl",
+        description: "Combat owl",
+        group: "combat",
+        ignoreCase: true,
+        style: { fg: "bright-cyan", bg: "ansi-17", bold: true },
+      },
+      {
+        id: "highlight-ungrouped",
+        enabled: false,
+        patternSource: "quiet",
+        description: "Quiet rule",
+        group: "",
+        ignoreCase: false,
+        style: { fg: "#ff4d4f", bg: "xterm-255", bold: false },
+      },
+    );
+    character.localDefinitions.highlights[0] = {
+      ...character.localDefinitions.highlights[0],
+      description: "Glow spell",
+      group: "Combat",
+    };
+    const shared = Object.values(graph.configurationSets).find(
+      (set) => (set as { kind: string }).kind === "highlights",
+    ) as { definitions: Array<Record<string, unknown>> };
+    shared.definitions[0] = { ...shared.definitions[0], group: "Travel" };
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const highlights = await settingsGroup(settingsDialog(page), "Highlights", "Highlights");
+  const filters = highlights.getByLabel("Highlight groups");
+  await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(1\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await expect(highlights.getByText("No highlights match.")).toBeVisible();
+  await filters.getByLabel(/combat \(2\)/i).check();
+  await highlights.getByLabel("Search Highlights").fill("owl");
+  await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeVisible();
+  await expect(highlights.getByRole("button", { name: "Edit glow" })).not.toBeVisible();
+  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await highlights.getByLabel("Search Highlights").fill("");
+
+  const glow = highlights.getByRole("button", { name: "Edit glow" });
+  await expect(glow).toContainText("Glow spell");
+  await expect(glow).toContainText("glow");
+  await expect(glow).toContainText("Combat");
+  await expect(glow).toContainText("red b black");
+  await glow.focus();
+  await glow.press("ArrowDown");
+  await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeFocused();
+  await glow.click();
+  const editor = highlights.getByRole("region", { name: "Edit highlights" });
+  await expect(editor.getByText("Regular expression")).toBeVisible();
+  await expect(editor.getByLabel("Foreground")).toHaveAttribute("list", "highlight-colors");
+  await expect(
+    editor.locator('datalist#highlight-colors option[value="bright-yellow"]'),
+  ).toHaveCount(1);
+  await expect(editor.locator('datalist#highlight-colors option[value="ansi-255"]')).toHaveCount(1);
+  await expect(editor.locator('datalist#highlight-colors option[value="#ff4d4f"]')).toHaveCount(1);
+  await expect(editor.getByLabel("Foreground").locator("..").locator(".color-swatch")).toHaveCSS(
+    "background-color",
+    "rgb(205, 0, 0)",
+  );
+  await editor.getByLabel("Pattern").fill("[");
+  await editor.getByLabel("Foreground").fill("not-a-color");
+  await expect(editor.getByText(/Invalid regular expression/)).toBeVisible();
+  await expect(editor.getByText("Foreground color is invalid.")).toBeVisible();
+  const definitionsBefore = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (
+      Object.values(graph.characterProfiles)[0] as {
+        localDefinitions: { highlights: Array<Record<string, unknown>> };
+      }
+    ).localDefinitions.highlights;
+  });
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { highlights: Array<Record<string, unknown>> };
+        }
+      ).localDefinitions.highlights;
+    }),
+  ).toEqual(definitionsBefore);
+  await editor.getByLabel("Foreground").fill("red");
+  await editor.getByLabel("Pattern").fill("owl");
+  await expect(
+    editor.getByText("Pattern duplicates an existing highlight rule in this owner."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { highlights: Array<Record<string, unknown>> };
+        }
+      ).localDefinitions.highlights;
+    }),
+  ).toEqual(definitionsBefore);
+  await editor.getByLabel("Pattern").fill("glow\\s+owl");
+  await editor.getByLabel("Foreground").fill("BRIGHT-YELLOW");
+  await editor.getByLabel("Background").fill("#FF4D4F");
+  await editor.getByRole("button", { name: "Save highlights" }).click();
+  await expect(editor.getByLabel("Foreground")).toHaveValue("bright-yellow");
+  await expect(editor.getByLabel("Background")).toHaveValue("#ff4d4f");
+
+  const commandsBefore = endpoint.commands.length;
+  await expect(editor.getByRole("textbox", { name: "Test output", exact: true })).toHaveValue(
+    "You have emptied the keg!",
+  );
+  await editor.getByRole("textbox", { name: "Test output", exact: true }).fill("glow owl\nquiet");
+  await expect(editor.getByText("styled")).toBeVisible();
+  const previewOutput = editor.getByLabel("Highlight test output");
+  await expect(previewOutput.locator("span")).toHaveCount(1);
+  await expect(previewOutput.locator("span")).toHaveText("glow owl");
+  await expect(previewOutput.locator("span")).toHaveCSS("color", "rgb(255, 255, 0)");
+  expect(endpoint.commands).toHaveLength(commandsBefore);
+  await editor.getByLabel("Enabled", { exact: true }).uncheck();
+  await expect(previewOutput.locator("span")).toHaveCount(1);
+  await expect(previewOutput.locator("span")).toHaveText("owl");
+  await expect(previewOutput.locator("span")).toHaveCSS("color", "rgb(0, 255, 255)");
+  await editor.getByRole("textbox", { name: "Test output", exact: true }).fill("nothing");
+  await expect(editor.getByText("no match")).toBeVisible();
+  await editor.getByRole("button", { name: "Test output", exact: true }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", highlightPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedHighlights = await settingsGroup(settingsDialog(page), "Highlights", "Highlights");
+  await reloadedHighlights.getByRole("button", { name: "Edit glow" }).click();
+  await expect(
+    reloadedHighlights.getByRole("region", { name: "Edit highlights" }).getByRole("button", {
+      name: "Test output",
+    }),
+  ).toHaveAttribute("aria-expanded", "false");
+});
+
 test("Phase 2 functions restore legacy discovery, authoring, and safe preview", async ({
   page,
 }) => {

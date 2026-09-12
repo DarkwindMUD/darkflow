@@ -308,6 +308,14 @@ async function installAutomationDefinitions(page: Page): Promise<void> {
         command: "score",
       },
       {
+        id: "key-f6",
+        enabled: true,
+        code: "F6",
+        label: "F6",
+        legacyKey: "",
+        command: "f6-command",
+      },
+      {
         id: "key-east",
         enabled: true,
         code: "ArrowRight",
@@ -584,6 +592,10 @@ test("Phase 2 executes effective definitions and session variables", async ({ pa
   await input.press("F2");
   await expect
     .poll(() => endpoint.commands.filter((command) => command === "score"))
+    .toHaveLength(1);
+  await input.press("F6");
+  await expect
+    .poll(() => endpoint.commands.filter((command) => command === "f6-command"))
     .toHaveLength(1);
   await input.evaluate((element) => element.blur());
   await page.keyboard.press("F2");

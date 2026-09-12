@@ -55,6 +55,7 @@ interface DockviewPanelLike {
 
 type FloatingBounds = { height: number; left: number; top: number; width: number };
 type FloatingSnapTarget = FloatingBounds & { element: HTMLElement };
+const DISABLED_DOCKVIEW_TAB_KEYS = new Set(["Home", "End", "Enter", " ", "Delete", "Backspace"]);
 
 // Legacy snapping adjusts only the current drag position; it never links the panes.
 function attractFloatingGroup<T extends FloatingBounds>(
@@ -253,9 +254,28 @@ export function createWorkspace(
       );
       return snapped ? { left: snapped.left, top: snapped.top } : undefined;
     },
-    keyboardNavigation: true,
+    keyboardNavigation: {
+      keymap: {
+        focusNextGroup: "",
+        focusPrevGroup: "",
+      },
+    },
     singleTabMode: "fullwidth",
   });
+
+  const suppressDisabledDockviewTabKey = (event: KeyboardEvent) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      target.classList.contains("dv-tab") &&
+      DISABLED_DOCKVIEW_TAB_KEYS.has(event.key)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  };
+  const releaseDisabledTabKeyListener = diagnostics.trackResource("listener");
+  host.addEventListener("keydown", suppressDisabledDockviewTabKey, true);
 
   const setSnapTarget = (target?: HTMLElement): void => {
     if (activeSnapTarget === target) return;
@@ -1111,6 +1131,8 @@ export function createWorkspace(
       disposed = true;
       layoutSubscribers.clear();
       panelDragSubscribers.clear();
+      host.removeEventListener("keydown", suppressDisabledDockviewTabKey, true);
+      releaseDisabledTabKeyListener();
       api.dispose();
       layoutListener.dispose();
       activePanelListener.dispose();

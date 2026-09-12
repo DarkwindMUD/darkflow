@@ -25,6 +25,33 @@ function panelDragHandle(page: Page, panelId: string): Locator {
   return page.locator(`[data-panel-drag-handle][data-panel-id="${panelId}"]`);
 }
 
+test("Dockview tab shortcuts reserved for Darkflow stay disabled", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop Dockview only");
+  await openWorkspace(page);
+
+  const terminalTab = page.locator('.dv-tab:has([data-panel-id="terminal"])');
+  await terminalTab.evaluate((tab) => {
+    const state = window as unknown as { __darkflowDockviewTabKeys: string[] };
+    state.__darkflowDockviewTabKeys = [];
+    tab.addEventListener("keydown", (event) =>
+      state.__darkflowDockviewTabKeys.push((event as KeyboardEvent).key),
+    );
+  });
+  await terminalTab.focus();
+
+  for (const key of ["Home", "End", "Enter", "Space", "Delete", "Backspace"]) {
+    await page.keyboard.press(key);
+  }
+
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __darkflowDockviewTabKeys: string[] }).__darkflowDockviewTabKeys,
+    ),
+  ).toEqual([]);
+  await expect(page.locator("[data-terminal-identity]")).toHaveCount(1);
+});
+
 async function moveFloatingPanel(
   page: Page,
   panelId: string,

@@ -1664,14 +1664,13 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
-  await editor.getByLabel("Duration (milliseconds)").fill("50");
+  await editor.getByLabel("Duration (seconds)").fill("1");
   await editor.getByLabel("Start automatically").check();
   await editor.getByLabel("Template").fill("timer-after");
   await editor.getByRole("button", { name: "Save timers" }).click();
   await timers.getByRole("button", { name: "New timer" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
   await editor.getByLabel("Name").fill("temporary timer");
-  await editor.getByRole("button", { name: "Add automation step" }).click();
   await editor.getByLabel("Template").fill("temporary");
   await editor.getByRole("button", { name: "Save timers" }).click();
   await timers.getByRole("button", { name: "Edit temporary timer" }).click();
@@ -2079,7 +2078,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit shared pulse" }).click();
   editor = timers.getByRole("region", { name: "Edit timers" });
-  await editor.getByLabel("Duration (milliseconds)").fill("50");
+  await editor.getByLabel("Duration (seconds)").fill("1");
   await editor.getByLabel("Start automatically").check();
   await editor.getByLabel("Template").fill("shared-timer-after");
   await editor.getByRole("button", { name: "Save timers" }).click();
@@ -2133,4 +2132,301 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
     await group.getByRole("button", { name: `Delete ${label}` }).click();
     await confirmDefinitionDelete(page, label);
   }
+});
+
+test("Phase 2 timers restore legacy discovery, authoring, controls, and safe preview", async ({
+  page,
+}) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { timers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.timers.push(
+      {
+        id: "timer-combat",
+        enabled: true,
+        name: "combat pulse",
+        description: "Combat pulse",
+        group: "Combat",
+        durationMs: 30000,
+        recurring: true,
+        autoStart: true,
+        steps: [{ type: "send_command", template: "combat-pulse" }],
+      },
+      {
+        id: "timer-ungrouped",
+        enabled: true,
+        name: "plain pulse",
+        description: "Plain pulse",
+        group: "",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "run_alias", template: "missing legacy arguments" }],
+      },
+      {
+        id: "timer-travel",
+        enabled: true,
+        name: "travel pulse",
+        description: "Travel pulse",
+        group: "Travel",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "travel-pulse" }],
+      },
+    );
+    character.localDefinitions.timers[0]!.group = "combat";
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem("darkwind-settings-automation-ui", JSON.stringify({ future: "keep" }));
+  });
+  await page.reload();
+  await connect(page);
+  await page.evaluate(() => {
+    const target = window as unknown as {
+      __darkflowPhase1Runtime: { session: { audio: { playLocal(...args: unknown[]): boolean } } };
+      __timerPreviewAudioCalls: unknown[][];
+    };
+    target.__timerPreviewAudioCalls = [];
+    target.__darkflowPhase1Runtime.session.audio.playLocal = (...args) => {
+      target.__timerPreviewAudioCalls.push(args);
+      return true;
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const timers = await settingsGroup(settingsDialog(page), "Timers", "Timers");
+  const filters = timers.getByLabel("Timer groups");
+  await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
+  await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
+  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await expect(timers.getByText("No timers match.")).toBeVisible();
+  await filters.getByLabel(/combat \(2\)/i).check();
+  await timers.getByLabel("Search Timers").fill("pulse");
+  await expect(timers.getByRole("button", { name: "Edit pulse" })).toBeVisible();
+  await expect(timers.getByRole("button", { name: "Edit travel pulse" })).not.toBeVisible();
+  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await timers.getByLabel("Search Timers").fill("");
+  const pulse = timers.getByRole("button", { name: "Edit pulse" });
+  await expect(pulse).toContainText("1m, once, 1 step");
+  await pulse.click();
+  let editor = timers.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Duration (seconds)")).toHaveValue("60");
+  await expect(editor.getByRole("button", { name: "Start" })).toBeVisible();
+  await editor.getByRole("button", { name: "Start" }).click();
+  await expect(editor.getByText("Timer started.")).toBeVisible();
+  const started = await page.evaluate(() =>
+    (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+  );
+  expect(started).not.toBeNull();
+  await page.waitForTimeout(2);
+  await editor.getByRole("button", { name: "Reset" }).click();
+  await expect(editor.getByText("Timer reset.")).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    ),
+  ).not.toEqual(started);
+  await editor.getByRole("button", { name: "Stop" }).click();
+  await expect(editor.getByText("Timer stopped.")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getTimerRuntimeState(id: string): unknown } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+      ),
+    )
+    .toBeNull();
+  await editor.getByRole("button", { name: "Run now" }).click();
+  await expect(editor.getByText("Timer ran once.")).toBeVisible();
+  await expect.poll(() => endpoint.commands).toContain("pulse-before");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getTimerRuntimeState(id: string): unknown } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+      ),
+    )
+    .toBeNull();
+  await editor.getByLabel("Duration (seconds)").fill("125");
+  await editor.getByLabel("Add step type").selectOption("run_alias");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const runStep = editor.getByRole("region", { name: "Automation step 2" });
+  await runStep.getByRole("combobox").nth(1).selectOption("alias-local");
+  await runStep.getByLabel("Arguments").fill("north");
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      const character = Object.values(graph.characterProfiles)[0] as {
+        localDefinitions: { timers: Array<{ id: string; durationMs: number }> };
+      };
+      return character.localDefinitions.timers.find(({ id }) => id === "timer-local")!.durationMs;
+    }),
+  ).toBe(125000);
+  await expect(pulse).toContainText("2m 5s, once, 2 steps");
+  await pulse.click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  await expect(
+    editor.getByRole("region", { name: "Automation step 2" }).getByLabel("Arguments"),
+  ).toHaveValue("north");
+  await editor.getByLabel("Add step type").selectOption("set_variable");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const variableStep = editor.getByRole("region", { name: "Automation step 3" });
+  await variableStep.getByLabel("Variable name").fill("preview_only");
+  await variableStep.getByLabel("Template").fill("value");
+  await editor.getByLabel("Add step type").selectOption("play_sound");
+  await editor.getByRole("button", { name: "Add automation step" }).click();
+  const effectsBeforePreview = await page.evaluate(() => ({
+    timer: (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: {
+              automation: {
+                getAutomationVariables(): Record<string, string>;
+                getTimerRuntimeState(id: string): unknown;
+              };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    variables: (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation.getAutomationVariables(),
+    audio: (window as unknown as { __timerPreviewAudioCalls: unknown[][] })
+      .__timerPreviewAudioCalls,
+  }));
+  const commandsBeforePreview = endpoint.commands.length;
+  await editor
+    .getByRole("region", { name: "Automation step 1" })
+    .getByLabel("Template")
+    .fill("preview-only");
+  await expect(editor.getByText("Runs after: 2m 5s. Starts manually.")).toBeVisible();
+  await expect(editor.getByText("Send: preview-only")).toBeVisible();
+  expect(endpoint.commands).toHaveLength(commandsBeforePreview);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: { terminal: { automation: { getTimerRuntimeState(id: string): unknown } } };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getTimerRuntimeState("timer-local"),
+    ),
+  ).toEqual(effectsBeforePreview.timer);
+  expect(
+    await page.evaluate(() =>
+      (
+        window as unknown as {
+          __darkflowPhase1Runtime: {
+            session: {
+              terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+            };
+          };
+        }
+      ).__darkflowPhase1Runtime.session.terminal.automation.getAutomationVariables(),
+    ),
+  ).toEqual(effectsBeforePreview.variables);
+  expect(
+    await page.evaluate(
+      () =>
+        (window as unknown as { __timerPreviewAudioCalls: unknown[][] }).__timerPreviewAudioCalls,
+    ),
+  ).toEqual(effectsBeforePreview.audio);
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  const legacy = timers.getByRole("button", { name: "Edit plain pulse" });
+  await legacy.click();
+  editor = timers.getByRole("region", { name: "Edit timers" });
+  const legacyStep = editor.getByRole("region", { name: "Automation step 1" });
+  await expect(legacyStep.getByRole("combobox").nth(1)).toContainText(
+    "Unresolved: missing legacy arguments",
+  );
+  await editor.getByText("Template syntax", { exact: true }).click();
+  await expect(editor.getByText(/%0 is the timer name/)).toBeVisible();
+  await expect(editor.getByText("Runs after: 1s. Starts manually.")).toBeVisible();
+  await editor.getByRole("button", { name: "Timer preview" }).click();
+  expect(
+    await page.evaluate(() => JSON.parse(localStorage.getItem("darkwind-settings-automation-ui")!)),
+  ).toEqual({ future: "keep", timerPreviewCollapsed: true });
+  await page.reload();
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const reloadedTimers = await settingsGroup(settingsDialog(page), "Timers", "Timers");
+  await reloadedTimers.getByRole("button", { name: "Edit pulse" }).click();
+  await expect(
+    reloadedTimers.getByRole("region", { name: "Edit timers" }).getByRole("button", {
+      name: "Timer preview",
+    }),
+  ).toHaveAttribute("aria-expanded", "false");
+  await reloadedTimers.getByRole("button", { name: "New timer" }).click();
+  editor = reloadedTimers.getByRole("region", { name: "Edit timers" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Duration (seconds)")).toHaveValue("60");
+  await expect(
+    editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
+  ).toHaveValue("send_command");
+  await expect(editor.getByText("Save this timer before using controls.")).toBeVisible();
+  await expect(editor.getByText("Timer name needs content.")).toBeVisible();
+  await expect(editor.getByText("Step 1 needs content.")).toBeVisible();
+  await editor.getByLabel("Name").fill("invalid duration");
+  await editor.getByLabel("Template").fill("look");
+  await editor.getByLabel("Duration (seconds)").fill("0");
+  await expect(
+    editor.getByText("Timer duration needs whole seconds from 1 to 86400."),
+  ).toBeVisible();
+  const timerCount = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    return (
+      Object.values(graph.characterProfiles)[0] as { localDefinitions: { timers: unknown[] } }
+    ).localDefinitions.timers.length;
+  });
+  await editor.getByRole("button", { name: "Save timers" }).click();
+  expect(
+    await page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return (
+        Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { timers: unknown[] };
+        }
+      ).localDefinitions.timers.length;
+    }),
+  ).toBe(timerCount);
 });

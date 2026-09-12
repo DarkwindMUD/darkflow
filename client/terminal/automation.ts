@@ -1,4 +1,9 @@
-import type { AutomationStep, ConfigKind, TimerDefinition } from "../model/configuration";
+import type {
+  AutomationStep,
+  ConfigKind,
+  TimerControlMode,
+  TimerDefinition,
+} from "../model/configuration";
 import type { Session } from "../runtime/session";
 
 // @ts-expect-error Shared legacy/Phase 2 executor core is JavaScript.
@@ -22,6 +27,7 @@ export type TerminalOutputFragment = {
   style: Record<string, unknown>;
   href?: string | null;
 };
+export type TimerControlResult = { success: boolean; message: string };
 
 /** One session-scoped consumer of the frozen effective definitions. */
 export function createTerminalAutomation({
@@ -37,6 +43,7 @@ export function createTerminalAutomation({
     text: string,
     fragments: TerminalOutputFragment[],
   ): { fragments: TerminalOutputFragment[]; gag: boolean };
+  controlTimer(id: string, mode: TimerControlMode): TimerControlResult;
   dispose(): void;
 } {
   const scopeKey = session.characterProfileId;
@@ -138,7 +145,7 @@ export function createTerminalAutomation({
     scheduleWait: (delayMs: number) => runtime.scheduleWait(delayMs),
     playSound,
   });
-  const executeTimer = (timer: TimerDefinition) => {
+  const executeTimer = (timer: TimerDefinition, reschedule = false) => {
     if (disposed || timer.enabled === false) return;
     const result = executeAutomationSteps(timer.steps, {
       ...context(),
@@ -150,16 +157,17 @@ export function createTerminalAutomation({
       source: { prefix: "Timer", description: `timer "${timer.name}"` },
       aliasContext: { depth: 0, trail: [] },
     });
-    const reschedule = () => {
+    const scheduleNext = () => {
       const current = findById("timers", timer.id) as TimerDefinition | null;
       if (!disposed && current?.enabled !== false && current?.recurring) startTimer(current);
     };
-    if (result?.completion) result.completion.finally(reschedule);
-    else reschedule();
+    // Scheduled firings recur; explicit Run now remains a one-shot action.
+    if (reschedule && result?.completion) result.completion.finally(scheduleNext);
+    else if (reschedule) scheduleNext();
   };
   const startTimer = (timer: TimerDefinition) => {
     if (!timer || timer.enabled === false) return { target: timer ?? null, running: false };
-    runtime.scheduleTimer(timer.id, timer.durationMs, () => executeTimer(timer));
+    runtime.scheduleTimer(timer.id, timer.durationMs, () => executeTimer(timer, true));
     return { target: timer, running: true };
   };
   const timerRuntime = {
@@ -196,6 +204,24 @@ export function createTerminalAutomation({
       const timer = findByName("timers", name) as TimerDefinition | null;
       return this.runTimerById(timer?.id ?? "");
     },
+  };
+
+  const controlTimer = (id: string, mode: TimerControlMode): TimerControlResult => {
+    if (disposed)
+      return { success: false, message: "Timer controls are unavailable after disposal." };
+    const timer = findById("timers", id) as TimerDefinition | null;
+    if (!timer) return { success: false, message: "Timer was not found." };
+    if (timer.enabled === false) return { success: false, message: "Timer is disabled." };
+    if (mode === "stop") {
+      timerRuntime.stopTimerById(timer.id);
+      return { success: true, message: "Timer stopped." };
+    }
+    if (mode === "run") {
+      executeTimer(timer);
+      return { success: true, message: "Timer ran once." };
+    }
+    timerRuntime[mode === "reset" ? "resetTimerById" : "startTimerById"](timer.id);
+    return { success: true, message: mode === "reset" ? "Timer reset." : "Timer started." };
   };
 
   const reconcileTimers = () => {
@@ -237,6 +263,7 @@ export function createTerminalAutomation({
         );
       return mapping?.command ?? null;
     },
+    controlTimer,
     processLine(text, fragments) {
       if (disposed) return { fragments, gag: false };
       const result = evaluateTriggerDefinitions(text, definitions("triggers"));

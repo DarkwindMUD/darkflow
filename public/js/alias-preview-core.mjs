@@ -98,3 +98,22 @@ export function previewTriggerOutput({ triggers = [], aliases = [], functions = 
   }
   return { matches: result.matches.map(({ trigger }) => trigger), gag: result.gag, rows, warnings: [] };
 }
+
+/** Pure display-only timer preview. It never schedules or executes a timer. */
+export function previewTimer({ timer, aliases = [], triggers = [], functions = [], timers = [], sounds = [], variables = {} }) {
+  const catalogs = structuredClone({ aliases, triggers, functions, timers, sounds });
+  const current = structuredClone(timer);
+  const context = { args: [current.name], remainder: current.name, variables: { ...variables } };
+  const rows = [];
+  for (const step of current.steps || []) previewStep(step, context, catalogs, rows);
+  return {
+    timer: current,
+    schedule: {
+      label: current.recurring ? 'Runs every' : 'Runs after',
+      durationMs: current.durationMs,
+      start: current.autoStart ? 'Starts automatically.' : 'Starts manually.',
+    },
+    rows,
+    warnings: [],
+  };
+}

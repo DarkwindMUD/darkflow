@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { previewAliasInput, previewTriggerOutput } from '../public/js/alias-preview-core.mjs';
+import { previewAliasInput, previewTimer, previewTriggerOutput } from '../public/js/alias-preview-core.mjs';
 
 test('preview resolves the winning unsent alias without mutating inputs', () => {
   const aliases = [{ id: 'a', enabled: true, trigger: 'go', isRegex: false, steps: [{ type: 'set_variable', name: 'place', template: '%1' }, { type: 'send_command', template: 'walk $place' }] }];
@@ -60,4 +60,38 @@ test('trigger preview reports no match and unknown sound without effects', () =>
   assert.deepEqual(previewTriggerOutput({ sample: 'none' }).warnings, ['No enabled trigger matches this output.']);
   const result = previewTriggerOutput({ triggers: [{ enabled: true, pattern: 'x', isRegex: false, steps: [{ type: 'play_sound', category: 'missing', sound: 'sound', volume: 1 }] }], sample: 'x' });
   assert.match(result.rows[2].warnings.join(' '), /Sound not found/);
+});
+
+test('timer preview uses the timer name without mutating its catalogs or variables', () => {
+  const timer = {
+    id: 'timer-preview',
+    enabled: true,
+    name: 'Heartbeat',
+    durationMs: 60000,
+    recurring: true,
+    autoStart: true,
+    steps: [
+      { type: 'send_command', template: 'say %0 $target' },
+      { type: 'run_alias', template: 'heal %0' },
+      { type: 'control_timer', mode: 'start', target: 'missing', targetId: '' },
+      { type: 'play_sound', category: 'missing', sound: 'sound', volume: 1 },
+      { type: 'script', script: 'while 1 == 1\n  send loop\nend' },
+    ],
+  };
+  const variables = { target: 'ready' };
+  const timers = [timer];
+  const aliases = [{ id: 'alias-heal', enabled: true, trigger: 'heal', isRegex: false, steps: [] }];
+
+  const result = previewTimer({ timer, timers, aliases, variables });
+
+  assert.deepEqual(result.schedule, { label: 'Runs every', durationMs: 60000, start: 'Starts automatically.' });
+  assert.equal(result.rows[0].text, 'say Heartbeat ready');
+  assert.equal(result.rows[1].text, 'heal Heartbeat -> heal');
+  assert.match(result.rows[2].warnings.join(' '), /Target not found/);
+  assert.match(result.rows[3].warnings.join(' '), /Sound not found/);
+  assert.equal(result.rows.filter((row) => row.text === 'loop').length, 10);
+  assert.match(result.rows.at(-1).warnings.join(' '), /10 iterations/);
+  assert.equal(timer.steps[2].target, 'missing');
+  assert.deepEqual(variables, { target: 'ready' });
+  assert.equal(aliases[0].enabled, true);
 });

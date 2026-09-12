@@ -31,7 +31,9 @@ import type { SessionCombat } from "./combat";
 import type { SessionTutorial } from "./tutorial";
 import type { SessionVisualEffects } from "./visual-effects";
 import type { TerminalProcessing } from "./terminal-processing";
+import type { TimerControlResult } from "../terminal/automation";
 import type { SessionGmcpDiagnostics } from "./gmcp-diagnostics";
+import type { TimerControlMode } from "../model/configuration";
 
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
@@ -72,6 +74,7 @@ export interface SessionTerminal {
   sendCommand(text: string): boolean;
   executeCommand(text: string): boolean;
   getMappedCommand(event: KeyboardEvent): string | null;
+  controlTimer(id: string, mode: TimerControlMode): TimerControlResult;
   appendOutput(text: string, cssClass?: string): void;
   appendSystemMessage(text: string): void;
   clearOutput(): void;
@@ -304,6 +307,14 @@ export function createSession(parts: SessionParts): Session {
     },
     getMappedCommand(event) {
       return terminalProcessing?.getMappedCommand(event) ?? null;
+    },
+    controlTimer(id, mode) {
+      return (
+        terminalProcessing?.controlTimer(id, mode) ?? {
+          success: false,
+          message: "Timer controls are unavailable.",
+        }
+      );
     },
     appendOutput(text, cssClass) {
       terminalProcessing?.appendOutput(text, cssClass);

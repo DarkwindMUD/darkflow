@@ -10,6 +10,7 @@
     FunctionDefinition,
     HighlightDefinition,
     KeyMappingDefinition,
+    TimerControlMode,
     TimerDefinition,
     TriggerDefinition,
   } from "../model/configuration.ts";
@@ -17,7 +18,7 @@
   import type { Session } from "../runtime/session.ts";
   import AutomationStepsEditor from "./AutomationStepsEditor.svelte";
   // @ts-expect-error The preview adapter is intentionally shared plain JavaScript.
-  import { previewAliasInput, previewTriggerOutput } from "../../public/js/alias-preview-core.mjs";
+  import * as previewCore from "../../public/js/alias-preview-core.mjs";
   // @ts-expect-error Shared legacy parser provides the persisted script diagnostics.
   import { getAutomationScriptDiagnostics } from "../../public/js/automation-script-core.mjs";
   // @ts-expect-error Shared catalog validation remains in the legacy module.
@@ -57,6 +58,7 @@
   };
   type EditSource =
     { kind: "local" } | { kind: "shared-set"; configSetId: ConfigSetId; revision: number };
+  const { previewAliasInput, previewTimer, previewTriggerOutput } = previewCore;
 
   let { session, kind }: { session: Session; kind: ConfigKind } = $props();
   let snapshot = $state<CharacterConfigurationSnapshot>(
@@ -78,13 +80,18 @@
   let previousGroupKeys: string[] = [];
   let original = $state<string | null>(null);
   let previewInput = $state("");
+  let timerResult = $state("");
   const soundCatalog = getSoundCatalog();
   let previewCollapsed = $state(
     (() => {
       try {
         return (
           JSON.parse(localStorage.getItem("darkwind-settings-automation-ui") ?? "{}")[
-            kind === "triggers" ? "triggerPreviewCollapsed" : "aliasPreviewCollapsed"
+            kind === "triggers"
+              ? "triggerPreviewCollapsed"
+              : kind === "timers"
+                ? "timerPreviewCollapsed"
+                : "aliasPreviewCollapsed"
           ] === true
         );
       } catch {
@@ -112,7 +119,7 @@
   const entries = $derived(snapshot.effectiveConfiguration[kind]);
   const groups = $derived.by(() => {
     const seen: Array<{ key: string; label: string; count: number }> = [];
-    if (kind !== "aliases" && kind !== "triggers") return [];
+    if (kind !== "aliases" && kind !== "triggers" && kind !== "timers") return [];
     for (const { definition } of entries) {
       const label = "group" in definition ? definition.group.trim() : "";
       const key = label.toLowerCase();
@@ -133,7 +140,7 @@
           .includes(needle);
       return (
         matchesSearch &&
-        ((kind !== "aliases" && kind !== "triggers") ||
+        ((kind !== "aliases" && kind !== "triggers" && kind !== "timers") ||
           selectedGroups === null ||
           selectedGroups.includes(group))
       );
@@ -150,10 +157,14 @@
     functions: entriesFor("functions", "name"),
   });
   const automationWarnings = $derived(
-    (kind !== "aliases" && kind !== "triggers") || !draft ? [] : warningsForAutomation(draft),
+    (kind !== "aliases" && kind !== "triggers" && kind !== "timers") || !draft
+      ? []
+      : warningsForAutomation(draft),
   );
   const preview = $derived(
-    (kind !== "aliases" && kind !== "triggers") || !draft ? null : previewFor(draft),
+    (kind !== "aliases" && kind !== "triggers" && kind !== "timers") || !draft
+      ? null
+      : previewFor(draft),
   );
 
   $effect(() =>
@@ -166,7 +177,7 @@
     }),
   );
   $effect(() => {
-    if (kind === "aliases" || kind === "triggers") {
+    if (kind === "aliases" || kind === "triggers" || kind === "timers") {
       const keys = groups.map((group) => group.key);
       const currentGroups = untrack(() => selectedGroups);
       if (currentGroups === null) selectedGroups = keys;
@@ -205,11 +216,13 @@
       pattern: "",
       isRegex: false,
       gag: false,
-      durationMs: 1000,
+      durationMs: kind === "timers" ? 60000 : 1000,
       recurring: false,
       autoStart: false,
       steps:
-        kind === "aliases" || kind === "triggers" ? [{ type: "send_command", template: "" }] : [],
+        kind === "aliases" || kind === "triggers" || kind === "timers"
+          ? [{ type: "send_command", template: "" }]
+          : [],
     };
   }
 
@@ -472,6 +485,7 @@
     stale = false;
     original = JSON.stringify(toDefinition(draft));
     status = "";
+    timerResult = "";
     queueMicrotask(() =>
       editor?.querySelector<HTMLInputElement>("input:not([type=checkbox])")?.focus(),
     );
@@ -487,6 +501,7 @@
     stale = false;
     original = JSON.stringify(toDefinition(draft));
     status = "";
+    timerResult = "";
     queueMicrotask(() => {
       if (kind === "keyMappings") keyCapture?.focus();
       else editor?.querySelector<HTMLInputElement>("input:not([type=checkbox])")?.focus();
@@ -611,6 +626,13 @@
     }));
   }
 
+  function formatTimerDuration(durationMs: number): string {
+    const seconds = Math.round(durationMs / 1000);
+    if (seconds < 60) return `${seconds}s`;
+    const minutes = Math.floor(seconds / 60);
+    return `${minutes}m${seconds % 60 ? ` ${seconds % 60}s` : ""}`;
+  }
+
   function previewFor(value: Draft) {
     const aliases = snapshot.effectiveConfiguration.aliases.map(({ definition }) =>
       kind === "aliases" && definition.id === value.id
@@ -645,15 +667,42 @@
       variables: session.terminal.automation.getAutomationVariables(),
       sample: previewInput,
     };
-    return kind === "aliases" ? previewAliasInput(catalogs) : previewTriggerOutput(catalogs);
+    if (kind === "aliases") return previewAliasInput(catalogs);
+    if (kind === "triggers") return previewTriggerOutput(catalogs);
+    const timerDefinition = toDefinition(value) as TimerDefinition;
+    const timers = catalogs.timers.map((definition) =>
+      definition.id === value.id ? timerDefinition : definition,
+    );
+    return previewTimer({ ...catalogs, timers, timer: timerDefinition });
   }
 
   function warningsForAutomation(value: Draft): string[] {
     const warnings: string[] = [];
-    if (!value.description.trim())
+    if (kind !== "timers" && !value.description.trim())
       warnings.push(`Name is recommended so this ${noun} is easy to find.`);
     const pattern = kind === "triggers" ? value.pattern : value.trigger;
-    if (!pattern.trim()) warnings.push("Pattern needs content.");
+    if (kind === "timers") {
+      if (!value.name.trim()) warnings.push("Timer name needs content.");
+      const identity = identityKeyForDefinition("timers", toDefinition(value) as TimerDefinition);
+      if (
+        value.name.trim() &&
+        source &&
+        targetDefinitions(source).some(
+          (definition) =>
+            definition.id !== value.id &&
+            "name" in definition &&
+            identityKeyForDefinition("timers", definition as TimerDefinition) === identity,
+        )
+      )
+        warnings.push("Timer name duplicates an existing timer.");
+      if (
+        !Number.isInteger(value.durationMs / 1000) ||
+        value.durationMs < 1000 ||
+        value.durationMs > 86400000
+      )
+        warnings.push("Timer duration needs whole seconds from 1 to 86400.");
+      if (!value.steps.length) warnings.push("Timer needs at least one step.");
+    } else if (!pattern.trim()) warnings.push("Pattern needs content.");
     if (value.isRegex)
       try {
         new RegExp(pattern, value.ignoreCase ? "i" : "");
@@ -692,6 +741,31 @@
         !step.target.trim()
       )
         warnings.push(`Step ${index + 1} needs a target.`);
+      if (
+        (step.type === "set_alias_enabled" ||
+          step.type === "set_trigger_enabled" ||
+          step.type === "set_timer_enabled" ||
+          step.type === "control_timer" ||
+          step.type === "call_function") &&
+        (step.targetId || step.target.trim())
+      ) {
+        const targets =
+          step.type === "set_alias_enabled"
+            ? targetCatalogs.aliases
+            : step.type === "set_trigger_enabled"
+              ? targetCatalogs.triggers
+              : step.type === "set_timer_enabled" || step.type === "control_timer"
+                ? targetCatalogs.timers
+                : targetCatalogs.functions;
+        if (
+          !targets.some(
+            (target) =>
+              target.id === step.targetId ||
+              target.label.trim().toLowerCase() === step.target.trim().toLowerCase(),
+          )
+        )
+          warnings.push(`Step ${index + 1} target was not found.`);
+      }
       if (step.type === "script")
         warnings.push(
           ...getAutomationScriptDiagnostics(step.script).map(
@@ -700,6 +774,20 @@
         );
     }
     return warnings;
+  }
+
+  function timerControlsAvailable(): boolean {
+    return Boolean(
+      kind === "timers" && draft && selectedEntry?.definition.id === draft.id && !dirty,
+    );
+  }
+
+  function controlTimer(mode: TimerControlMode): void {
+    if (!timerControlsAvailable() || !draft) {
+      timerResult = "Save this timer before using controls.";
+      return;
+    }
+    timerResult = session.terminal.controlTimer(draft.id, mode).message;
   }
 
   function requestEdit(definition: Definition, metadata: ConfigSourceMetadata): void {
@@ -737,8 +825,11 @@
       "darkwind-settings-automation-ui",
       JSON.stringify({
         ...current,
-        [kind === "triggers" ? "triggerPreviewCollapsed" : "aliasPreviewCollapsed"]:
-          previewCollapsed,
+        [kind === "triggers"
+          ? "triggerPreviewCollapsed"
+          : kind === "timers"
+            ? "timerPreviewCollapsed"
+            : "aliasPreviewCollapsed"]: previewCollapsed,
       }),
     );
   }
@@ -824,7 +915,7 @@
       />
       <button type="button" onclick={add}>New {noun}</button>
     </div>
-    {#if (kind === "aliases" || kind === "triggers") && groups.length}
+    {#if (kind === "aliases" || kind === "triggers" || kind === "timers") && groups.length}
       <div
         class="group-filters"
         aria-label={`${noun.charAt(0).toUpperCase()}${noun.slice(1)} groups`}
@@ -896,6 +987,19 @@
                         "No actions"}</small
                     >{/if}
                 {/if}
+                {#if kind === "timers" && "durationMs" in entry.definition}
+                  <small>{entry.definition.group || "Ungrouped"}</small>
+                  <small
+                    >{formatTimerDuration(entry.definition.durationMs)}, {entry.definition.recurring
+                      ? "recurring"
+                      : "once"}{entry.definition.autoStart && entry.definition.enabled
+                      ? ", auto-start"
+                      : ""}, {entry.definition.steps.length} step{entry.definition.steps.length ===
+                    1
+                      ? ""
+                      : "s"}</small
+                  >
+                {/if}
                 <span>{sourceLabel(entry.source)}</span>
               </button>
               <input
@@ -964,10 +1068,15 @@
               {:else}
                 <label>Name <input bind:value={draft.name} required /></label>
                 <label
-                  >Duration (milliseconds) <input
+                  >Duration (seconds) <input
                     type="number"
-                    min="0"
-                    bind:value={draft.durationMs}
+                    min="1"
+                    max="86400"
+                    step="1"
+                    value={draft.durationMs / 1000}
+                    oninput={(event) => {
+                      if (draft) draft.durationMs = Number(event.currentTarget.value) * 1000;
+                    }}
                     required
                   /></label
                 >
@@ -999,25 +1108,46 @@
                 {...targetCatalogs}
                 sounds={soundCatalog}
                 triggerMode={kind === "triggers"}
+                timerMode={kind === "timers"}
                 testSound={(category, sound, volume) =>
                   session.audio.playLocal(category, sound, volume)}
               />
-              {#if kind === "aliases" || kind === "triggers"}
+              {#if kind === "timers"}
+                <div class="timer-controls">
+                  {#if timerControlsAvailable()}
+                    <button type="button" onclick={() => controlTimer("start")}>Start</button>
+                    <button type="button" onclick={() => controlTimer("stop")}>Stop</button>
+                    <button type="button" onclick={() => controlTimer("reset")}>Reset</button>
+                    <button type="button" onclick={() => controlTimer("run")}>Run now</button>
+                  {:else}
+                    <p>Save this timer before using controls.</p>
+                  {/if}
+                  <p aria-live="polite">{timerResult}</p>
+                </div>
+              {/if}
+              {#if kind === "aliases" || kind === "triggers" || kind === "timers"}
                 <section class="alias-preview">
                   <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
-                    >Test {kind === "aliases" ? "input" : "output"}</button
+                    >{kind === "timers"
+                      ? "Timer preview"
+                      : `Test ${kind === "aliases" ? "input" : "output"}`}</button
                   >
                   {#if !previewCollapsed}
-                    <label
-                      >Test {kind === "aliases" ? "input" : "output"}
-                      {#if kind === "triggers"}<textarea
-                          bind:value={previewInput}
-                          placeholder="Example: danger"></textarea>{:else}<input
-                          bind:value={previewInput}
-                          placeholder="Example: gi sword"
-                        />{/if}</label
-                    >
-                    {#if previewInput.trim()}
+                    {#if kind !== "timers"}<label
+                        >Test {kind === "aliases" ? "input" : "output"}
+                        {#if kind === "triggers"}<textarea
+                            bind:value={previewInput}
+                            placeholder="Example: danger"></textarea>{:else}<input
+                            bind:value={previewInput}
+                            placeholder="Example: gi sword"
+                          />{/if}</label
+                      >{/if}
+                    {#if kind === "timers" || previewInput.trim()}
+                      {#if kind === "timers"}<p>
+                          {preview?.schedule?.label}: {formatTimerDuration(
+                            preview?.schedule?.durationMs ?? 0,
+                          )}. {preview?.schedule?.start}
+                        </p>{/if}
                       {#if kind === "aliases" && preview?.match}<p>
                           Matches: {preview.match.trigger}
                         </p>{/if}
@@ -1125,7 +1255,8 @@
   .inline-actions,
   .automation-toolbar,
   .list-actions,
-  .actions {
+  .actions,
+  .timer-controls {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;

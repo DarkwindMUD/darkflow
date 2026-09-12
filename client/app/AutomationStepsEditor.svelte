@@ -11,6 +11,7 @@
     functions = [],
     sounds = [],
     triggerMode = false,
+    timerMode = false,
     testSound = () => false,
   }: {
     steps: AutomationStep[];
@@ -20,6 +21,7 @@
     functions?: Target[];
     sounds?: Sound[];
     triggerMode?: boolean;
+    timerMode?: boolean;
     testSound?: (category: string, sound: string, volume: number) => boolean;
   } = $props();
   let addType = $state<AutomationStep["type"]>("send_command");
@@ -156,7 +158,7 @@
 
       {#if step.type === "send_command" || step.type === "show_message"}
         <label>Template <textarea bind:value={step.template} required></textarea></label>
-      {:else if step.type === "run_alias" && triggerMode}
+      {:else if step.type === "run_alias" && (triggerMode || timerMode)}
         {@const parsedAlias = splitAliasTemplate(step.template)}
         <label
           >Alias <select
@@ -327,6 +329,9 @@
     {#if triggerMode}<p>
         Simple patterns use * or %1-%9 captures. Regular expressions use their captures; %0 is the
         full matching output. Variables and script actions use the same template syntax.
+      </p>{/if}
+    {#if timerMode}<p>
+        For timers, %0 is the timer name. Variables and script actions use the same template syntax.
       </p>{/if}
   </details>
 </fieldset>

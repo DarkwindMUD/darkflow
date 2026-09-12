@@ -1,6 +1,11 @@
 import type { Unsubscribe } from "./events";
 import type { Session, TerminalOutputEvent } from "./session";
-import { createTerminalAutomation, type TerminalOutputFragment } from "../terminal/automation";
+import type { TimerControlMode } from "../model/configuration";
+import {
+  createTerminalAutomation,
+  type TerminalOutputFragment,
+  type TimerControlResult,
+} from "../terminal/automation";
 
 // @ts-expect-error Shared output processing is JavaScript for legacy compatibility.
 import { createTerminalOutputModel } from "../../public/js/terminal-output-model.mjs";
@@ -12,6 +17,7 @@ export interface TerminalProcessing {
   setOutputRecordLimit(limit: number): void;
   executeCommand(text: string): boolean;
   getMappedCommand(event: KeyboardEvent): string | null;
+  controlTimer(id: string, mode: TimerControlMode): TimerControlResult;
   subscribe(listener: (event: TerminalOutputEvent) => void): Unsubscribe;
   dispose(): void;
 }
@@ -47,6 +53,7 @@ export function createTerminalProcessing(
     setOutputRecordLimit: output.setRecordLimit,
     executeCommand: automation.sendCommand,
     getMappedCommand: automation.getMappedCommand,
+    controlTimer: automation.controlTimer,
     subscribe: output.subscribe,
     dispose() {
       unsubscribeConnection();

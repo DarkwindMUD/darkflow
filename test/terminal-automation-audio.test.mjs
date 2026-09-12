@@ -324,3 +324,59 @@ test("disposed automation ignores sounds resumed after a deferred wait", async (
   assert.deepEqual(harness.played, []);
   assert.deepEqual(harness.sent, []);
 });
+
+test("timer controls keep recurring schedules separate from Run now", () => {
+  const harness = createHarness({
+    timers: [
+      {
+        id: "timer-recurring",
+        enabled: true,
+        name: "Recurring",
+        description: "",
+        group: "",
+        durationMs: 1000,
+        recurring: true,
+        autoStart: true,
+        steps: [{ type: "send_command", template: "tick" }],
+      },
+      {
+        id: "timer-disabled",
+        enabled: false,
+        name: "Disabled",
+        description: "",
+        group: "",
+        durationMs: 1000,
+        recurring: false,
+        autoStart: false,
+        steps: [],
+      },
+      {
+        id: "timer-once",
+        enabled: true,
+        name: "Once",
+        description: "",
+        group: "",
+        durationMs: 1000,
+        recurring: true,
+        autoStart: false,
+        steps: [{ type: "send_command", template: "once" }],
+      },
+    ],
+  });
+  const scheduled = harness.timerCallbacks.get("timer-recurring");
+
+  assert.equal(harness.automation.controlTimer("timer-recurring", "run").success, true);
+  assert.deepEqual(harness.sent, ["tick"]);
+  assert.equal(harness.timerCallbacks.get("timer-recurring"), scheduled);
+  assert.equal(harness.automation.controlTimer("missing", "start").message, "Timer was not found.");
+  assert.equal(harness.automation.controlTimer("timer-disabled", "start").message, "Timer is disabled.");
+  assert.equal(harness.automation.controlTimer("timer-once", "run").success, true);
+  assert.equal(harness.timerCallbacks.has("timer-once"), false);
+
+  scheduled();
+  assert.deepEqual(harness.sent, ["tick", "once", "tick"]);
+  assert.notEqual(harness.timerCallbacks.get("timer-recurring"), scheduled);
+
+  harness.automation.dispose();
+  assert.equal(harness.automation.controlTimer("timer-recurring", "run").success, false);
+});

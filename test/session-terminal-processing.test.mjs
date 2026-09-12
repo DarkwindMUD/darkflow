@@ -30,7 +30,7 @@ async function loadModule(t) {
   return ssr.runner.import("/runtime/terminal-processing.ts");
 }
 
-function createHarness(createTerminalProcessing) {
+function createHarness(createTerminalProcessing, timers = []) {
   const textListeners = new Set();
   const connectionListeners = new Set();
   const outputLines = [];
@@ -42,7 +42,7 @@ function createHarness(createTerminalProcessing) {
     highlights: [],
     functions: [],
     keyMappings: [],
-    timers: [],
+    timers: timers.map((definition) => ({ definition, source: { kind: "local" } })),
   };
   const automation = {
     getAutomationVariables: () => ({}),
@@ -144,4 +144,27 @@ test("reconnect resets partial stream only and disposal stops delivery", async (
   assert.equal(harness.listenerCount, 0);
   harness.deliver("late\n");
   assert.deepEqual(harness.outputLines.map(({ text }) => text), ["kept", "new"]);
+});
+
+test("processing forwards timer controls to the session automation owner", async (t) => {
+  const { createTerminalProcessing } = await loadModule(t);
+  const harness = createHarness(createTerminalProcessing, [
+    {
+      id: "timer-forwarded",
+      enabled: true,
+      name: "Forwarded",
+      description: "",
+      group: "",
+      durationMs: 1000,
+      recurring: false,
+      autoStart: false,
+      steps: [{ type: "send_command", template: "forwarded" }],
+    },
+  ]);
+
+  assert.deepEqual(harness.processing.controlTimer("timer-forwarded", "run"), {
+    success: true,
+    message: "Timer ran once.",
+  });
+  assert.deepEqual(harness.sent, ["forwarded"]);
 });

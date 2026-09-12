@@ -1600,15 +1600,10 @@
     user-select: none;
   }
   header h2,
-  header span,
   p,
   h3,
   h4 {
     margin: 0;
-  }
-  header span {
-    color: var(--df-muted, #8b949e);
-    font-size: 0.75rem;
   }
   footer {
     border-top: 1px solid var(--border-color, #30363d);
@@ -1860,9 +1855,6 @@
     }
     header {
       cursor: default;
-    }
-    header span {
-      display: none;
     }
     .settings-layout {
       grid-template-columns: 1fr;

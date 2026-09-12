@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { untrack } from "svelte";
+  import { onMount, untrack } from "svelte";
   import type { Session } from "../runtime/session.ts";
   import { CONFIG_KINDS } from "../model/configuration.ts";
   import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
@@ -33,6 +33,8 @@
   import { convertVsCodeTheme } from "../../public/js/theme-manager.js";
   // @ts-expect-error Retained visual-effect settings are JavaScript without declarations.
   import * as visualEffectSettings from "../../public/js/visual-effects-settings.mjs";
+  // @ts-expect-error The retained alias helper is plain JavaScript.
+  import { aliasManager } from "../../public/js/alias-manager.js";
 
   let {
     clientVersion,
@@ -74,7 +76,13 @@
   let theme = $state("");
   let settings = $state<Phase2ClientSettings>({ ...DEFAULT_PHASE2_CLIENT_SETTINGS });
   let variables = $state<Array<{ name: string; value: string }>>([]);
-  let gmcpVariables = $state<Record<string, string>>({});
+  let gmcpVariables = $state<Array<{ name: string; value: string }>>([]);
+  let gmcpSearch = $state("");
+  let gmcpPage = $state(1);
+  let configuration = $state<CharacterConfigurationSnapshot>(
+    untrack(() => session.configuration.getSnapshot()),
+  );
+  let aliasEditor = $state<DefinitionEditor>();
   let status = $state("");
   let invalidStoredSettings = $state(false);
   let selectedTab = $state<TabId>("connection");
@@ -101,7 +109,35 @@
   let importing = $state(false);
   let originalConfiguration: CharacterConfigurationSnapshot | null = null;
   let baseline = "";
+  const GMCP_PAGE_SIZE = 200;
   const audioCategories = $derived(Object.entries(audio.categoryEnabled));
+  const aliasUsage = $derived.by(() =>
+    aliasManager.collectAliasUsageDetails({
+      aliases: configuration.effectiveConfiguration.aliases.map(({ definition }) => definition),
+    }),
+  );
+  const filteredGmcpVariables = $derived(
+    gmcpVariables.filter(({ name, value }) => {
+      const needle = gmcpSearch.trim().toLowerCase();
+      return !needle || `${name} ${value}`.toLowerCase().includes(needle);
+    }),
+  );
+  const gmcpPageCount = $derived(
+    Math.max(1, Math.ceil(filteredGmcpVariables.length / GMCP_PAGE_SIZE)),
+  );
+  const effectiveGmcpPage = $derived(Math.min(gmcpPage, gmcpPageCount));
+  const visibleGmcpVariables = $derived(
+    filteredGmcpVariables.slice(
+      (effectiveGmcpPage - 1) * GMCP_PAGE_SIZE,
+      effectiveGmcpPage * GMCP_PAGE_SIZE,
+    ),
+  );
+  const gmcpRangeStart = $derived(
+    filteredGmcpVariables.length ? (effectiveGmcpPage - 1) * GMCP_PAGE_SIZE + 1 : 0,
+  );
+  const gmcpRangeEnd = $derived(
+    Math.min(effectiveGmcpPage * GMCP_PAGE_SIZE, filteredGmcpVariables.length),
+  );
 
   function loadDraft(): void {
     const result = loadClientSettings(localStorage);
@@ -112,15 +148,38 @@
       terminalFontFamily: result.settings.terminalFontFamily,
       terminalFontSize: result.settings.terminalFontSize,
     };
-    originalConfiguration = structuredClone(session.configuration.getSnapshot());
+    const snapshot = session.configuration.getSnapshot();
+    configuration = snapshot;
+    originalConfiguration = structuredClone(snapshot);
     theme = originalConfiguration.themeKey;
     variables = session.terminal.automation
       .listVariableNames()
       .map((name) => ({ name, value: session.terminal.automation.getVariable(name) ?? "" }));
-    gmcpVariables = session.terminal.automation.getGmcpVariables();
+    gmcpSearch = "";
+    gmcpPage = 1;
+    discoverVariables();
+    refreshGmcpVariables();
     invalidStoredSettings = !result.success;
     status = result.success ? "" : result.message;
     baseline = settingsFingerprint();
+  }
+
+  function discoverVariables(): void {
+    const existingNames = variables.map(({ name }) => name.trim());
+    for (const entry of [
+      ...configuration.effectiveConfiguration.aliases,
+      ...configuration.effectiveConfiguration.triggers,
+      ...configuration.effectiveConfiguration.timers,
+    ]) {
+      for (const step of entry.definition.steps) {
+        if (step.type !== "set_variable") continue;
+        const name = step.name.trim();
+        if (name && !existingNames.includes(name)) {
+          existingNames.push(name);
+          variables.push({ name, value: "" });
+        }
+      }
+    }
   }
 
   function soundSettings(): Record<string, unknown> {
@@ -295,7 +354,11 @@
   });
   $effect(() => {
     connection = session.getConnectionSnapshot();
-    return session.subscribeConnection((next) => (connection = next));
+    return session.subscribeConnection((next) => {
+      connection = next;
+      if (next.state !== "connected" && dialog?.open && selectedTab === "variables")
+        refreshGmcpVariables();
+    });
   });
   $effect(() => {
     health = session.connectionHealth.getSnapshot();
@@ -307,17 +370,17 @@
     observer.observe(dialog);
     return () => observer.disconnect();
   });
+  $effect(() => session.configuration.subscribe((next) => (configuration = next)));
+  onMount(() => {
+    const refresh = () => {
+      if (dialog?.open && selectedTab === "variables") refreshGmcpVariables();
+    };
+    window.addEventListener("darkwind:gmcp-variables-changed", refresh);
+    return () => window.removeEventListener("darkwind:gmcp-variables-changed", refresh);
+  });
 
   function save(close = true): void {
-    const invalidVariable = dialog?.querySelector<HTMLInputElement>(
-      "#settings-panel-variables input:invalid",
-    );
-    if (invalidVariable) {
-      selectTab("variables");
-      status = "Variable names cannot be empty.";
-      queueMicrotask(() => invalidVariable.reportValidity());
-      return;
-    }
+    if (!validateVariables()) return;
     const themeResult = session.configuration.setThemeKey(theme);
     if (!themeResult.success) {
       status = themeResult.message;
@@ -476,16 +539,7 @@
     requestClose("discard");
   }
   function requestClose(intent: "discard" | "apply"): void {
-    const invalidVariable =
-      intent === "apply"
-        ? dialog?.querySelector<HTMLInputElement>("#settings-panel-variables input:invalid")
-        : null;
-    if (invalidVariable) {
-      selectTab("variables");
-      status = "Variable names cannot be empty.";
-      queueMicrotask(() => invalidVariable.reportValidity());
-      return;
-    }
+    if (intent === "apply" && !validateVariables()) return;
     closeIntent = intent;
     closeReturnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -563,7 +617,10 @@
   function selectTab(tab: TabId, focus = false): void {
     selectedTab = tab;
     search = "";
-    if (tab === "variables") gmcpVariables = session.terminal.automation.getGmcpVariables();
+    if (tab === "variables") {
+      discoverVariables();
+      refreshGmcpVariables();
+    }
     saveSettingsWindowState(localStorage, { tab });
     if (focus) queueMicrotask(() => document.getElementById(`settings-tab-${tab}`)?.focus());
   }
@@ -624,6 +681,61 @@
   }
   function panelHidden(tab: TabId): boolean {
     return search.trim() ? !matches(tab) : selectedTab !== tab;
+  }
+  function refreshGmcpVariables(): void {
+    gmcpVariables = session.terminal.automation.listGmcpVariables();
+    const needle = gmcpSearch.trim().toLowerCase();
+    const count = needle
+      ? gmcpVariables.filter(({ name, value }) => `${name} ${value}`.toLowerCase().includes(needle))
+          .length
+      : gmcpVariables.length;
+    gmcpPage = Math.min(gmcpPage, Math.max(1, Math.ceil(count / GMCP_PAGE_SIZE)));
+  }
+  function updateGmcpSearch(value: string): void {
+    gmcpSearch = value;
+    gmcpPage = 1;
+  }
+  function addVariable(): void {
+    const names = variables.map(({ name }) => name.trim());
+    let index = 1;
+    while (names.includes(`var${index}`)) index++;
+    const row = variables.length;
+    variables.push({ name: `var${index}`, value: "" });
+    queueMicrotask(() => document.getElementById(`settings-variable-name-${row}`)?.focus());
+  }
+  function variableReferences(
+    name: string,
+  ): Array<{ id: string; trigger: string; description: string }> {
+    return aliasUsage.get(name.trim()) ?? [];
+  }
+  function openAlias(id: string): void {
+    selectTab("aliases");
+    queueMicrotask(() => aliasEditor?.editById(id));
+  }
+  function duplicateVariableName(): string | null {
+    const names: string[] = [];
+    for (const variable of variables) {
+      const name = variable.name.trim();
+      if (name && names.includes(name)) return name;
+      names.push(name);
+    }
+    return null;
+  }
+  function validateVariables(): boolean {
+    const invalidVariable = dialog?.querySelector<HTMLInputElement>(
+      "#settings-panel-variables input:invalid",
+    );
+    if (invalidVariable) {
+      selectTab("variables");
+      status = "Variable names cannot be empty.";
+      queueMicrotask(() => invalidVariable.reportValidity());
+      return false;
+    }
+    const duplicate = duplicateVariableName();
+    if (!duplicate) return true;
+    selectTab("variables");
+    status = `Variable names must be unique. Duplicate: ${duplicate}.`;
+    return false;
   }
   function matches(tab: TabId): boolean {
     const query = search.trim().toLowerCase();
@@ -1031,7 +1143,7 @@
           hidden={panelHidden("aliases")}
         >
           <h3>Aliases</h3>
-          {#if open}<DefinitionEditor {session} kind="aliases" />{/if}
+          {#if open}<DefinitionEditor bind:this={aliasEditor} {session} kind="aliases" />{/if}
         </div>
         <div
           class="settings-panel"
@@ -1081,22 +1193,118 @@
           hidden={panelHidden("variables")}
         >
           <h3>Variables</h3>
-          {#each variables as variable, index (index)}<div class="variable-row">
-              <label>Name <input bind:value={variable.name} pattern=".*\S.*" required /></label
-              ><label>Value <input bind:value={variable.value} /></label><button
-                type="button"
-                onclick={() => variables.splice(index, 1)}>Remove</button
-              >
-            </div>{/each}<button
-            class="settings-action"
-            type="button"
-            onclick={() => variables.push({ name: "", value: "" })}>Add variable</button
-          >
-          <p>Variables are saved for this character.</p>
-          <h4>GMCP variables</h4>
-          {#each Object.entries(gmcpVariables) as [name, value] (name)}<p>
-              {name}: {value}
-            </p>{:else}<p>No GMCP variables received.</p>{/each}
+          <div class="settings-card">
+            <h4>Persistent variables</h4>
+            <p>
+              Persistent variables back aliases like $pack. Aliases can also write to them with Set
+              variable steps.
+            </p>
+            {#each variables as variable, index (index)}
+              {@const references = variableReferences(variable.name)}
+              <div class="variable-row">
+                <label
+                  >Name <input
+                    id={`settings-variable-name-${index}`}
+                    bind:value={variable.name}
+                    pattern=".*\S.*"
+                    required
+                  /></label
+                >
+                <label>Value <input bind:value={variable.value} /></label>
+                <button type="button" onclick={() => variables.splice(index, 1)}>Remove</button>
+              </div>
+              {#if references.length}
+                <details class="variable-references">
+                  <summary
+                    >{references.length} alias reference{references.length === 1
+                      ? ""
+                      : "s"}</summary
+                  >
+                  {#each references as reference (reference.id)}
+                    <button type="button" onclick={() => openAlias(reference.id)}>
+                      {reference.description
+                        ? `${reference.description} (${reference.trigger})`
+                        : reference.trigger}
+                    </button>
+                  {/each}
+                </details>
+              {:else}
+                <button type="button" disabled>0 alias references</button>
+              {/if}
+            {:else}
+              <p>No variables yet. Add one here, or open Aliases and write a Set variable step.</p>
+              <button type="button" onclick={() => selectTab("aliases")}>Open Aliases</button>
+            {/each}
+            <button class="settings-action" type="button" onclick={addVariable}>Add variable</button
+            >
+            <p>Variables are saved for this character.</p>
+          </div>
+          <div class="settings-card gmcp-variables-card">
+            <h4>GMCP variables</h4>
+            <p>
+              Live runtime variables from GMCP messages. They are available to automations, clear on
+              reconnect, and are not saved.
+            </p>
+            <label
+              >Search GMCP variables
+              <input
+                aria-label="Search GMCP variables"
+                type="search"
+                value={gmcpSearch}
+                oninput={(event) => updateGmcpSearch(event.currentTarget.value)}
+              />
+            </label>
+            <p role="status" aria-live="polite">
+              Showing {gmcpRangeStart}-{gmcpRangeEnd} of {filteredGmcpVariables.length} matching {gmcpVariables.length}
+              total GMCP variables.
+            </p>
+            {#if !gmcpVariables.length}
+              <p>No GMCP variables have been received yet.</p>
+            {:else if !filteredGmcpVariables.length}
+              <p>No GMCP variables match your search.</p>
+            {:else}
+              <div class="gmcp-pagination" role="group" aria-label="Top GMCP pagination">
+                <button type="button" disabled={effectiveGmcpPage === 1} onclick={() => gmcpPage--}
+                  >Previous</button
+                >
+                <span>Page {effectiveGmcpPage} of {gmcpPageCount}</span>
+                <button
+                  type="button"
+                  disabled={effectiveGmcpPage === gmcpPageCount}
+                  onclick={() => gmcpPage++}>Next</button
+                >
+              </div>
+              {#each visibleGmcpVariables as variable (variable.name)}
+                <div class="variable-row gmcp-variable-row">
+                  <label
+                    >Name <input
+                      aria-label={`GMCP Name ${variable.name}`}
+                      value={variable.name}
+                      readonly
+                    /></label
+                  >
+                  <label
+                    >Value <input
+                      aria-label={`GMCP Value ${variable.name}`}
+                      value={variable.value}
+                      readonly
+                    /></label
+                  >
+                </div>
+              {/each}
+              <div class="gmcp-pagination" role="group" aria-label="Bottom GMCP pagination">
+                <button type="button" disabled={effectiveGmcpPage === 1} onclick={() => gmcpPage--}
+                  >Previous</button
+                >
+                <span>Page {effectiveGmcpPage} of {gmcpPageCount}</span>
+                <button
+                  type="button"
+                  disabled={effectiveGmcpPage === gmcpPageCount}
+                  onclick={() => gmcpPage++}>Next</button
+                >
+              </div>
+            {/if}
+          </div>
         </div>
         <div
           class="settings-panel"
@@ -1438,6 +1646,31 @@
   }
   .variable-row label {
     flex: 1 1 10rem;
+    min-width: 0;
+  }
+  .variable-row input {
+    box-sizing: border-box;
+    width: 100%;
+  }
+  .variable-references {
+    gap: 0.25rem;
+  }
+  .variable-references button {
+    justify-self: start;
+    overflow-wrap: anywhere;
+  }
+  .gmcp-variable-row {
+    padding-top: 0.5rem;
+    border-top: 1px solid var(--border-color, #30363d);
+  }
+  .gmcp-variables-card {
+    margin-top: 0.75rem;
+  }
+  .gmcp-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
   }
   .audio-categories {
     display: grid;
@@ -1491,6 +1724,9 @@
     footer {
       align-items: stretch;
       flex-direction: column;
+    }
+    .variable-row label {
+      flex: none;
     }
     .settings-row {
       grid-template-columns: 1fr;

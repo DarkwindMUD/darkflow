@@ -983,6 +983,15 @@
     edit(definition, metadata);
   }
 
+  export function editById(id: string): void {
+    if (kind !== "aliases") return;
+    snapshot = session.configuration.getSnapshot();
+    const entry = snapshot.effectiveConfiguration.aliases.find(
+      ({ definition }) => definition.id === id,
+    );
+    if (entry) requestEdit(entry.definition, entry.source);
+  }
+
   function moveListFocus(event: KeyboardEvent, index: number): void {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
     event.preventDefault();

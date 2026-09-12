@@ -305,6 +305,319 @@ async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: stri
   await dialog.getByRole("tab", { name, exact: true }).click();
 }
 
+test("Phase 2 variables restore legacy persistent and GMCP affordances", async ({ page }) => {
+  await page.goto("/phase2/");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .toBe(true);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: Record<string, unknown[]>;
+    };
+    character.localDefinitions.aliases = [
+      {
+        id: "variables-alias",
+        enabled: true,
+        trigger: "gather",
+        description: "Gather supplies",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        steps: [
+          { type: "set_variable", name: "aliasVar", template: "pack" },
+          { type: "send_command", template: "put $aliasVar in bag" },
+        ],
+      },
+    ];
+    character.localDefinitions.triggers = [
+      {
+        id: "variables-trigger",
+        enabled: true,
+        pattern: "arrives",
+        description: "Arrival",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "set_variable", name: "triggerVar", template: "here" }],
+      },
+    ];
+    character.localDefinitions.timers = [
+      {
+        id: "variables-timer",
+        enabled: true,
+        name: "heartbeat",
+        description: "Heartbeat",
+        group: "",
+        durationMs: 1000,
+        recurring: true,
+        autoStart: false,
+        steps: [{ type: "set_variable", name: "timerVar", template: "now" }],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await connect(page);
+  const storedBeforeOpen = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await settingsTab(dialog, "Variables");
+  const variablesPanel = dialog.locator("#settings-panel-variables");
+
+  await expect(dialog.getByText("Variables are saved for this character.")).toBeVisible();
+  await expect(
+    dialog.getByText(
+      "Persistent variables back aliases like $pack. Aliases can also write to them with Set variable steps.",
+    ),
+  ).toBeVisible();
+  expect(
+    await variablesPanel
+      .getByLabel("Name", { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+  ).toEqual(expect.arrayContaining(["aliasVar", "triggerVar", "timerVar"]));
+  await expect(variablesPanel.getByText("1 alias reference")).toBeVisible();
+  await variablesPanel.getByText("1 alias reference").click();
+  await dialog.getByRole("button", { name: "Gather supplies (gather)" }).click();
+  await expect(dialog.getByRole("tab", { name: "Aliases", exact: true })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(dialog.getByLabel("Trigger", { exact: true })).toHaveValue("gather");
+  await dialog.getByLabel("Trigger", { exact: true }).fill("dirty gather");
+  await settingsTab(dialog, "Variables");
+  await variablesPanel.getByRole("button", { name: "Gather supplies (gather)" }).click();
+  await expect(dialog.getByLabel("Trigger", { exact: true })).toHaveValue("dirty gather");
+  await expect(
+    dialog.getByText("Save or Cancel the current edit before selecting another definition."),
+  ).toBeVisible();
+
+  const storedAfterBrowsing = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  expect(storedAfterBrowsing).toEqual(storedBeforeOpen);
+  await settingsTab(dialog, "Variables");
+  while (await variablesPanel.getByRole("button", { name: "Remove", exact: true }).count())
+    await variablesPanel.getByRole("button", { name: "Remove", exact: true }).first().click();
+  await expect(
+    variablesPanel.getByText(
+      "No variables yet. Add one here, or open Aliases and write a Set variable step.",
+    ),
+  ).toBeVisible();
+  await variablesPanel.getByRole("button", { name: "Add variable", exact: true }).click();
+  await expect(variablesPanel.getByLabel("Name", { exact: true })).toHaveValue("var1");
+  await expect(variablesPanel.getByLabel("Name", { exact: true })).toBeFocused();
+  await variablesPanel.getByRole("button", { name: "Add variable", exact: true }).click();
+  await variablesPanel.getByLabel("Name", { exact: true }).nth(1).fill("var1");
+  const stateBeforeBlockedApply = await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    return {
+      graph: localStorage.getItem("darkflow-session-core-v1"),
+      settings: localStorage.getItem("darkwind-client-settings"),
+      variables: runtime.getAutomationVariables(),
+    };
+  });
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog.getByText("Variable names must be unique. Duplicate: var1.")).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const runtime = (
+          window as unknown as {
+            __darkflowPhase1Runtime: {
+              session: {
+                terminal: { automation: { getAutomationVariables(): Record<string, string> } };
+              };
+            };
+          }
+        ).__darkflowPhase1Runtime.session.terminal.automation;
+        return {
+          graph: localStorage.getItem("darkflow-session-core-v1"),
+          settings: localStorage.getItem("darkwind-client-settings"),
+          variables: runtime.getAutomationVariables(),
+        };
+      }),
+    )
+    .toEqual(stateBeforeBlockedApply);
+
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              getSnapshot(): { localDefinitions: { aliases: unknown[] } };
+              replaceLocalDefinitions(
+                kind: "aliases",
+                definitions: unknown[],
+              ): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    const snapshot = session.configuration.getSnapshot();
+    const result = session.configuration.replaceLocalDefinitions("aliases", [
+      ...snapshot.localDefinitions.aliases,
+      {
+        id: "variables-same-dialog",
+        enabled: true,
+        trigger: "same-dialog",
+        description: "Same dialog",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        steps: [{ type: "set_variable", name: "sameDialogVar", template: "new" }],
+      },
+    ]);
+    if (!result.success) throw new Error("Could not add same-dialog variable definition");
+  });
+  await settingsTab(dialog, "Connection");
+  await settingsTab(dialog, "Variables");
+  expect(
+    await variablesPanel
+      .getByLabel("Name", { exact: true })
+      .evaluateAll((inputs) => inputs.map((input) => (input as HTMLInputElement).value)),
+  ).toContain("sameDialogVar");
+
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    for (let index = 0; index < 4005; index++) {
+      runtime.setGmcpVariable("Test", {
+        [`item${String(index).padStart(4, "0")}`]: `value-${index}`,
+      });
+    }
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await expect(variablesPanel.locator(".gmcp-variable-row")).toHaveCount(200);
+  await expect(
+    variablesPanel.getByText(
+      "Live runtime variables from GMCP messages. They are available to automations, clear on reconnect, and are not saved.",
+    ),
+  ).toBeVisible();
+  await expect(variablesPanel.locator(".gmcp-variable-row input").first()).toHaveAttribute(
+    "readonly",
+    "",
+  );
+  await expect(variablesPanel.locator('p[role="status"]')).toContainText(
+    /Showing 1-200 of 4\d{3} matching 4\d{3}/,
+  );
+  const topPagination = variablesPanel.getByRole("group", { name: "Top GMCP pagination" });
+  const bottomPagination = variablesPanel.getByRole("group", { name: "Bottom GMCP pagination" });
+  await expect(topPagination.getByRole("button", { name: "Previous", exact: true })).toBeDisabled();
+  await expect(bottomPagination.getByText("Page 1 of 21")).toBeVisible();
+  for (let index = 0; index < 20; index++)
+    await topPagination.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(topPagination.getByText("Page 21 of 21")).toBeVisible();
+  await expect(bottomPagination.getByText("Page 21 of 21")).toBeVisible();
+  await expect(topPagination.getByRole("button", { name: "Next", exact: true })).toBeDisabled();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("VaLuE-4004");
+  await expect(variablesPanel.getByLabel("GMCP Value gmcp_test_item4004")).toHaveValue(
+    "value-4004",
+  );
+  await variablesPanel.getByLabel("Search GMCP variables").fill("GMCP_TEST_ITEM4004");
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_test_item4004")).toHaveValue(
+    "gmcp_test_item4004",
+  );
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    runtime.setGmcpVariable("Live", { item: "active" });
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await expect(variablesPanel.getByLabel("Search GMCP variables")).toHaveValue(
+    "GMCP_TEST_ITEM4004",
+  );
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_test_item4004")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("item");
+  await topPagination.getByRole("button", { name: "Next", exact: true }).click();
+  await settingsTab(dialog, "Connection");
+  await page.evaluate(() => {
+    const runtime = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            terminal: { automation: { setGmcpVariable(name: string, value: unknown): void } };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session.terminal.automation;
+    runtime.setGmcpVariable("Other", { visible: "on return" });
+    window.dispatchEvent(new Event("darkwind:gmcp-variables-changed"));
+  });
+  await settingsTab(dialog, "Variables");
+  await expect(variablesPanel.getByLabel("Search GMCP variables")).toHaveValue("item");
+  await variablesPanel.getByLabel("Search GMCP variables").fill("gmcp_other_visible");
+  await expect(variablesPanel.getByLabel("GMCP Name gmcp_other_visible")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("missing-value");
+  await expect(variablesPanel.getByText("No GMCP variables match your search.")).toBeVisible();
+  await variablesPanel.getByLabel("Search GMCP variables").fill("");
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: { disconnect(): void };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    session.disconnect();
+  });
+  await expect(variablesPanel.getByText("No GMCP variables have been received yet.")).toBeVisible();
+});
+
 async function settingsGroup(dialog: ReturnType<typeof settingsDialog>, tab: string, name: string) {
   await settingsTab(dialog, tab);
   return dialog.getByRole("group", { name });
@@ -685,6 +998,7 @@ test("Phase 2 Settings Apply stays open and Save & Close closes", async ({ page 
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   await settingsTab(dialog, "Variables");
   await dialog.getByRole("button", { name: "Add variable", exact: true }).click();
+  await dialog.locator("#settings-panel-variables").getByLabel("Name", { exact: true }).fill("");
   await dialog.getByRole("button", { name: "Apply", exact: true }).click();
   await expect(dialog.getByText("Variable names cannot be empty.", { exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Remove", exact: true }).click();

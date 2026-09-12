@@ -30,6 +30,7 @@
     registerLineNavigator?: (navigate: (lineId: number) => boolean) => (() => void) | void;
     openSettings?: () => void;
   } = $props();
+  let avatarMeterHtml = $state("");
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
   let historyOutput = $state<HTMLElement>();
@@ -40,7 +41,6 @@
   let batchDialog = $state<HTMLDialogElement>();
   let batchInput = $state<HTMLTextAreaElement>();
   let batchForm = $state<HTMLFormElement>();
-  let avatarMeterHtml = $state("");
   let island: TerminalIsland | undefined;
 
   function focusCommandInput(event: MouseEvent): void {
@@ -101,9 +101,17 @@
         saveClientSettings(localStorage, settings, session.configuration.getSnapshot().themeKey);
       },
     });
+    let avatarMeterEnabled = true;
+    const renderAvatarMeter = () => {
+      avatarMeterHtml = avatarMeterEnabled
+        ? avatarChargeMeter(session.information.getSnapshot().vitals)
+        : "";
+    };
     const applyTerminalSettings = () => {
       const settings = loadClientSettings(localStorage).settings;
       terminal.configure(settings);
+      avatarMeterEnabled = settings.terminalAvatarMeter;
+      renderAvatarMeter();
       session.terminal.setOutputRecordLimit(
         OUTPUT_SCROLLBACK_PRESETS[settings.outputScrollbackPreset],
       );
@@ -154,6 +162,10 @@
     geometryObserver.observe(output);
     geometryObserver.observe(output.parentElement!);
     if (liveOutput) geometryObserver.observe(liveOutput);
+    const unsubscribeAvatarMeter = session.information.subscribe(renderAvatarMeter);
+    // The meter predicts charge between server updates; once a second is
+    // enough for that, and it costs nothing while the setting is off.
+    const avatarMeterTicker = window.setInterval(renderAvatarMeter, 1000);
     applyTerminalSettings();
     scheduleGeometry();
     const refreshTerminalSettings = () => {
@@ -161,11 +173,6 @@
       scheduleGeometry();
     };
     window.addEventListener("darkflow:client-settings-changed", refreshTerminalSettings);
-    const renderAvatarMeter = () => {
-      avatarMeterHtml = avatarChargeMeter(session.information.getSnapshot().vitals);
-    };
-    const unsubscribeAvatarMeter = session.information.subscribe(renderAvatarMeter);
-    const avatarMeterTicker = window.setInterval(renderAvatarMeter, 1000);
     const unregisterLineNavigator = registerLineNavigator?.(terminal.navigateToLine);
     const input = createTerminalInputController({
       session,
@@ -242,9 +249,11 @@
           tabindex="-1"
         ></div>
       </div>
-      <!-- The shared renderer only interpolates numeric and allow-listed values. -->
-      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      {@html avatarMeterHtml}
+      {#if avatarMeterHtml}
+        <!-- The shared renderer only interpolates numeric and allow-listed values. -->
+        <!-- eslint-disable-next-line svelte/no-at-html-tags -->
+        {@html avatarMeterHtml}
+      {/if}
       <div class="terminal-input-bar">
         <input
           bind:this={commandInput}

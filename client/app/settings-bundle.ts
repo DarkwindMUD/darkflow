@@ -321,7 +321,11 @@ function parseV1(
       message: "The active character is not present in the application graph.",
     };
   graph.defaults.themeKey = theme;
-  character.localDefinitions = definitions;
+  // A legacy bundle carries no command buttons, so the character's stay.
+  character.localDefinitions = {
+    ...definitions,
+    commandButtons: character.localDefinitions.commandButtons,
+  };
   character.automationVariables = variables;
   if (isObject(data.panels)) {
     character.workspace = {
@@ -404,6 +408,7 @@ export function applySettingsImport(
     functions: materialize(effective.functions),
     keyMappings: materialize(effective.keyMappings),
     timers: materialize(effective.timers),
+    commandButtons: materialize(effective.commandButtons),
   };
   const automationVariables = structuredClone(importedCharacter.automationVariables ?? {});
   const applicationState: ApplicationStateV1 = {

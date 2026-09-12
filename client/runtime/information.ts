@@ -142,6 +142,10 @@ export function createSessionInformation(
     publish({ ...snapshot, ...changes });
   };
 
+  // The workspace re-syncs its visible panels on every layout change, most
+  // of which leave the set alone; the server hears about it only when the
+  // set actually differs from the last one sent on this connection.
+  let lastSentPanels = "";
   const sendVisiblePanels = (ids: readonly InformationPanelId[]): void => {
     const visible = new Set(ids);
     const panels = Object.fromEntries(
@@ -149,7 +153,9 @@ export function createSessionInformation(
     ) as Record<string, boolean>;
     panels.vitals = true;
     if (panels.buffs) panels.status = true;
-    gmcp.sendSubscriptions({ panels });
+    const key = JSON.stringify(panels);
+    if (key === lastSentPanels) return;
+    if (gmcp.sendSubscriptions({ panels })) lastSentPanels = key;
   };
 
   const listen = <T>(
@@ -363,6 +369,7 @@ export function createSessionInformation(
       const payload = event.payload as TransportReconnectStatusPayload;
       if (payload.status !== "connected") {
         requestedCyberwareId = null;
+        lastSentPanels = "";
         publish(emptySnapshot());
       }
     }),

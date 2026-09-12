@@ -1898,18 +1898,26 @@ html[data-background-active="true"] #output-shell {
   display: flex;
 }
 
-/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip. */
+/* Phase 2 renders the meter only when it should be shown, so it needs no .visible flip.
+   Its box matches the 18px label so the label sits centred in it; the legacy
+   #avatar-meter keeps its own 16px basis through the id rule above. */
 .avatar-meter {
   display: flex;
+  flex-basis: 18px;
+  min-height: 18px;
 }
 
 .avatar-meter-fill {
   position: absolute;
   inset: 0 auto 0 0;
-  width: 0%;
+  width: 100%;
+  /* scaleX rather than width: a width transition lays the page out every
+     frame it runs, and this meter refreshes every second. */
+  transform: scaleX(0);
+  transform-origin: left center;
   background: linear-gradient(90deg, #7a1822, var(--df-err));
   box-shadow: 0 0 12px rgba(248, 81, 73, 0.4);
-  transition: width 180ms ease, background 180ms ease, box-shadow 180ms ease;
+  transition: transform 180ms ease, background 180ms ease, box-shadow 180ms ease;
 }
 
 #avatar-meter.full .avatar-meter-fill,

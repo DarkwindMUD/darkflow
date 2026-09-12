@@ -113,7 +113,6 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   await ensurePanelOpen(page, "Avatar", "avatar");
   const endpoint = fixtures.endpoints.ws;
   const meter = page.locator(".terminal-output-shell > .avatar-meter");
-
   endpoint.sendGmcp("Char.Vitals", {
     hp: 100,
     maxhp: 100,
@@ -141,7 +140,6 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   await expect
     .poll(async () => Number((await meter.getAttribute("aria-valuenow")) ?? 0))
     .toBeGreaterThan(25);
-
   endpoint.sendGmcp("Char.Vitals", {
     hp: 100,
     maxhp: 100,
@@ -152,7 +150,6 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   await expect(meter).toHaveClass(/full/);
   await expect(meter).toHaveClass(/patron-set/);
   await expect(meter).toContainText("Wrathful Avatar 100%");
-
   endpoint.sendGmcp("Char.Vitals", {
     hp: 100,
     maxhp: 100,

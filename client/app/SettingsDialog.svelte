@@ -1116,6 +1116,7 @@
           <div hidden={!settings.keyMapperEnabled}>
             {#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
           </div>
+          {#if open}<DefinitionEditor {session} kind="commandButtons" />{/if}
           <SettingsCheckbox
             bind:checked={settings.tabObservabilityEnabled}
             label="Send tab-away / tab-back on tab changes"
@@ -1169,6 +1170,11 @@
               >
             </div>
           </div>
+          <SettingsCheckbox
+            bind:checked={settings.terminalAvatarMeter}
+            label="Show the Wrathful Avatar meter under the terminal"
+            help="Show the Wrathful Avatar charge meter between the terminal output and the command line."
+          />
           <label class="settings-row"
             ><span class="settings-copy"
               ><span class="settings-label">Scrollback memory</span>
@@ -1594,15 +1600,10 @@
     user-select: none;
   }
   header h2,
-  header span,
   p,
   h3,
   h4 {
     margin: 0;
-  }
-  header span {
-    color: var(--df-muted, #8b949e);
-    font-size: 0.75rem;
   }
   footer {
     border-top: 1px solid var(--border-color, #30363d);
@@ -1854,9 +1855,6 @@
     }
     header {
       cursor: default;
-    }
-    header span {
-      display: none;
     }
     .settings-layout {
       grid-template-columns: 1fr;

@@ -111,7 +111,7 @@ the narrowest durable scope that matches its meaning:
 | **Runtime session**      | Ephemeral UUID (`sessionId`)        | Socket, reconnect state, GMCP bus, terminal buffer, scroll position, windows, notifications, active timers                         |
 | **World**                | Server-defined source/world key     | Shareable map data and world metadata                                                                                              |
 
-See [Session and configuration domain model](session-model.md) for graph
+See [Session and configuration domain model](../session-model.md) for graph
 diagrams of the Phase 1 contract.
 
 A character profile may have at most one live runtime session. Two characters

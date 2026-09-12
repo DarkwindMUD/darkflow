@@ -201,6 +201,10 @@
 .fishing-bitebar-fill {
   height: 100%;
   width: 100%;
+  /* Per-frame values animate with transforms: a width, height, or bottom
+     write forces a layout on every frame of the bite, cast, and fight. */
+  transform: scaleX(1);
+  transform-origin: left center;
   background: var(--df-warn, #ffb300);
 }
 
@@ -351,6 +355,8 @@
   width: 64px;
   flex: none;
   height: 100%;
+  /* The fish and bar are placed with cqh units in their transforms. */
+  container-type: size;
   border-radius: 8px;
   background: color-mix(in srgb, var(--df-bg) 55%, transparent);
   border: 1px solid var(--df-border);
@@ -361,6 +367,7 @@
   position: absolute;
   left: 4px;
   right: 4px;
+  bottom: 0;
   height: 20%;
   border-radius: 6px;
   background: color-mix(in srgb, var(--df-ok, #4caf50) 45%, transparent);
@@ -372,6 +379,7 @@
   position: absolute;
   left: 0;
   right: 0;
+  bottom: 0;
   display: flex;
   justify-content: center;
   color: var(--df-text);
@@ -417,7 +425,9 @@
 }
 .fishing-meter-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
   background: var(--df-accent);
   transition: none;
 }
@@ -535,7 +545,9 @@
 }
 .fishing-power-fill {
   width: 100%;
-  height: 0%;
+  height: 100%;
+  transform: scaleY(0);
+  transform-origin: center bottom;
   background: var(--df-accent);
 }
 .fishing-power-fill.hot { background: var(--df-warn, #ffb300); }
@@ -568,4 +580,62 @@
   .fishing-power { width: 24px; height: 100px; }
   .fishing-bitebar { width: 120px; height: 8px; }
   .fishing-meter { height: 30px; }
+}
+
+/* Auto-Angler strip and indicator (client/runtime/fishing-auto.ts) */
+.fishing-auto-strip {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  padding: 6px 8px 2px;
+  font-size: 12px;
+}
+.fishing-auto-toggle {
+  min-width: 92px;
+  padding: 4px 10px;
+  border: 1px solid var(--df-border);
+  border-radius: 6px;
+  background: var(--df-panel, var(--df-bg));
+  color: var(--df-text);
+  font-weight: 700;
+  cursor: pointer;
+}
+.fishing-auto-toggle[aria-pressed="true"] {
+  border-color: var(--df-accent);
+  background: var(--df-accent);
+  color: var(--df-bg);
+}
+.fishing-auto-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--df-text);
+  opacity: 0.85;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Who is in control must be unmistakable: border plus a text badge, never
+   colour alone. */
+.fishing-stage[data-auto="on"] {
+  box-shadow: inset 0 0 0 3px var(--df-accent);
+}
+.fishing-auto-badge {
+  position: absolute;
+  z-index: 10;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--df-accent);
+  color: var(--df-bg);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  pointer-events: none;
+}
+.fishing-stage[data-auto="on"] .fishing-message {
+  right: 44px;
+  left: 64px;
 }

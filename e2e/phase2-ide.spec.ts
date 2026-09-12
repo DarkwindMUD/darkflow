@@ -588,3 +588,29 @@ test("IDE reconstructs chunked opens and sends an exact large save transfer", as
   ]);
   await expect(ide(page)).toHaveCount(0);
 });
+
+test("IDE editor scrolls vertically through a long document", async ({ page }) => {
+  const endpoint = await connect(page);
+  endpoint.sendGmcp("Darkwind.IDE.Open", {
+    path: "/domains/fixture/long.c",
+    title: "Long fixture",
+    content: Array.from({ length: 200 }, (_, index) => `line ${index + 1}`).join("\n"),
+    language: "c",
+    readOnly: 0,
+    editable: 1,
+  });
+
+  const scroller = ide(page).locator(".cm-scroller");
+  await expect
+    .poll(() =>
+      scroller.evaluate((element) => ({
+        clientHeight: element.clientHeight,
+        overflowY: getComputedStyle(element).overflowY,
+        scrollHeight: element.scrollHeight,
+        scrollable: element.scrollHeight > element.clientHeight,
+      })),
+    )
+    .toMatchObject({ overflowY: "auto", scrollable: true });
+  await scroller.evaluate((element) => element.scrollTo({ top: element.scrollHeight }));
+  await expect.poll(() => scroller.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
+});

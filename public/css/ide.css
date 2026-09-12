@@ -30,6 +30,7 @@
 .ide-pane {
   display: flex;
   flex: 1 1 auto;
+  height: 100%;
   min-width: 0;
   min-height: 0;
   background: var(--df-bg);

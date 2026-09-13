@@ -306,6 +306,181 @@ async function settingsTab(dialog: ReturnType<typeof settingsDialog>, name: stri
   await dialog.getByRole("tab", { name, exact: true }).click();
 }
 
+test("Phase 2 automation list rows option 1c", async ({ page }, testInfo) => {
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { aliases: Array<Record<string, string>> };
+    };
+    character.localDefinitions.aliases.forEach((alias, index) =>
+      Object.assign(alias, { group: ["Alpha", "Bravo", "Charlie"][index % 3] }),
+    );
+    Object.assign(
+      character.localDefinitions.aliases.find((alias) => alias.trigger === "quick")!,
+      {
+        description:
+          "A deliberately long alias title that must truncate inside the compact list row",
+        trigger: "a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+      },
+    );
+    Object.assign(
+      character.localDefinitions.aliases.find((alias) => alias.trigger === "allsteps")!,
+      {
+        description: "A long alias name that must not squeeze its short pattern onto two lines",
+        trigger: "gk",
+      },
+    );
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+
+  for (const [tab, label, title, token, meta] of [
+    ["Aliases", "Edit fn", "Function", "fn", "Alpha · Local"],
+    ["Triggers", "Edit Danger", "Danger", "danger (gag)", "send command · Local"],
+    ["Timers", "Edit pulse", "pulse", "1m", "Ungrouped · once · 1 step · Local"],
+    ["Functions", "Edit greet", "Greet", "greet", "Ungrouped · 1 action · Local"],
+    ["Highlights", "Edit glow", "Glow", "glow", "red b black · Local"],
+  ]) {
+    await settingsTab(dialog, tab);
+    const row = dialog.getByRole("button", { name: label, exact: true });
+    await expect(row.locator(".row-copy")).toBeVisible();
+    await expect(row.locator("strong")).toHaveText(title);
+    await expect(row.locator("code")).toHaveText(token);
+    await expect(row.locator("small")).toContainText(meta);
+    await expect(row.locator("xpath=..").getByRole("switch", { name: /Enable/ })).toBeVisible();
+  }
+
+  await settingsTab(dialog, "Aliases");
+  const alias = dialog.getByRole("button", { name: "Edit fn", exact: true });
+  await alias.click();
+  const aliasRow = alias.locator("xpath=..");
+  await expect(aliasRow.locator(".row-actions")).toBeVisible();
+  await expect(dialog.locator("#settings-panel-aliases .row-actions")).toHaveCount(1);
+  await expect(aliasRow.getByRole("button", { name: "Move up", exact: true })).toBeDisabled();
+  for (const action of ["Move up", "Move down", "Duplicate", "Delete fn"])
+    await expect(aliasRow.getByRole("button", { name: action, exact: true })).toBeVisible();
+  for (const [action, icon, tooltip] of [
+    ["Move up", ".lucide-arrow-up", "Move up"],
+    ["Move down", ".lucide-arrow-down", "Move down"],
+    ["Duplicate", ".lucide-copy", "Duplicate"],
+    ["Delete fn", ".lucide-trash", "Delete"],
+  ]) {
+    const button = aliasRow.getByRole("button", { name: action, exact: true });
+    await expect(button.locator(icon)).toBeVisible();
+    await expect(button).toHaveAttribute("title", tooltip);
+  }
+  const enabledVisuals = await aliasRow.evaluate((node) => ({
+    rowBackground: getComputedStyle(node).backgroundColor,
+    titleColor: getComputedStyle(node.querySelector("strong")!).color,
+    tokenBackground: getComputedStyle(node.querySelector("code")!).backgroundColor,
+    tokenColor: getComputedStyle(node.querySelector("code")!).color,
+  }));
+  const enabled = aliasRow.getByRole("switch", { name: "Enable fn" });
+  await enabled.uncheck();
+  await expect(aliasRow).toHaveClass(/active/);
+  await expect(
+    dialog.getByRole("region", { name: "Edit aliases" }).getByLabel("Pattern"),
+  ).toHaveValue("fn");
+  await expect(enabled).not.toBeChecked();
+  const disabledVisuals = await aliasRow.evaluate((node) => ({
+    rowBackground: getComputedStyle(node).backgroundColor,
+    titleColor: getComputedStyle(node.querySelector("strong")!).color,
+    tokenBackground: getComputedStyle(node.querySelector("code")!).backgroundColor,
+    tokenColor: getComputedStyle(node.querySelector("code")!).color,
+  }));
+  expect(disabledVisuals.rowBackground).toBe(enabledVisuals.rowBackground);
+  expect(disabledVisuals.titleColor).not.toBe(enabledVisuals.titleColor);
+  expect(disabledVisuals.tokenBackground).not.toBe(enabledVisuals.tokenBackground);
+  expect(disabledVisuals.tokenColor).not.toBe(enabledVisuals.tokenColor);
+
+  const filters = dialog.getByLabel("Alias groups");
+  const all = filters.getByRole("button", { name: "All", exact: true });
+  await expect(all).toHaveCSS("align-items", "center");
+  await expect(all).toHaveCSS("justify-content", "center");
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "false");
+  const alpha = filters.getByLabel("Alpha (2)");
+  await alpha.check();
+  await expect(alpha.locator("..")).toHaveCSS("outline-style", "none");
+  await all.click();
+  await expect(all).toHaveAttribute("aria-pressed", "true");
+  await all.focus();
+  await page.keyboard.press("Tab");
+  await alpha.focus();
+  await expect(alpha).toBeFocused();
+  await expect(alpha.locator("..")).toHaveCSS("outline-style", "solid");
+
+  const longRow = dialog
+    .getByRole("button", {
+      name: "Edit a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+    })
+    .locator("xpath=..");
+  const longTitle = longRow.locator("strong");
+  const longToken = longRow.locator("code");
+  expect(await longRow.evaluate((node) => getComputedStyle(node).backgroundColor)).not.toBe(
+    disabledVisuals.rowBackground,
+  );
+  await expect(longToken).toHaveCSS("font-family", /monospace/i);
+  await expect(longTitle).toHaveCSS("text-overflow", "ellipsis");
+  await expect(longTitle).toHaveAttribute(
+    "title",
+    "A deliberately long alias title that must truncate inside the compact list row",
+  );
+  expect(await longTitle.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
+  await expect(longToken).toHaveCSS("text-overflow", "clip");
+  await expect(longToken).toHaveCSS("white-space", "normal");
+  await expect(longToken).toHaveText(
+    "a-deliberately-long-alias-token-that-must-wrap-inside-the-compact-list-row",
+  );
+  expect(await longToken.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  const shortToken = dialog.getByRole("button", { name: "Edit gk" }).locator("code");
+  expect(
+    await shortToken.evaluate((node) => {
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      return range.getClientRects().length;
+    }),
+  ).toBe(1);
+
+  const contrast = async () =>
+    longRow.evaluate((node) => {
+      const rgb = (value: string) =>
+        value
+          .match(/\d+(?:\.\d+)?/g)!
+          .slice(0, 3)
+          .map(Number);
+      const luminance = (color: number[]) =>
+        color
+          .map((value) => value / 255)
+          .map((value) => (value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+          .reduce((total, value, index) => total + value * [0.2126, 0.7152, 0.0722][index]!, 0);
+      const foreground = luminance(rgb(getComputedStyle(node.querySelector("strong")!).color));
+      const background = luminance(rgb(getComputedStyle(node).backgroundColor));
+      return (Math.max(foreground, background) + 0.05) / (Math.min(foreground, background) + 0.05);
+    });
+  expect(await contrast()).toBeGreaterThanOrEqual(4.5);
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Theme", { exact: true }).selectOption("solarized-light");
+  await settingsTab(dialog, "Aliases");
+  expect(await contrast()).toBeGreaterThanOrEqual(4.5);
+
+  if (!testInfo.project.name.includes("mobile")) {
+    await dialog.evaluate((node) => (node.style.width = "560px"));
+    const pane = dialog.locator("#settings-panel-aliases .automation-list-pane");
+    const detail = dialog.locator("#settings-panel-aliases .automation-detail");
+    expect((await detail.boundingBox())!.y).toBeGreaterThan((await pane.boundingBox())!.y);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
+});
+
 test("Phase 2 settings use legacy labels and visible help copy", async ({ page }) => {
   await installAutomationDefinitions(page);
   await page.getByRole("button", { name: "Settings", exact: true }).click();
@@ -336,7 +511,7 @@ test("Phase 2 settings use legacy labels and visible help copy", async ({ page }
   await settingsTab(dialog, "Aliases");
   await dialog.getByRole("button", { name: "Edit quick" }).click();
   expect(
-    await dialog.locator("#settings-panel-aliases .list-actions button").evaluateAll((buttons) =>
+    await dialog.locator("#settings-panel-aliases .row-actions button").evaluateAll((buttons) =>
       buttons.map((button) => {
         const style = getComputedStyle(button);
         return [style.minHeight, style.fontSize];
@@ -1984,7 +2159,7 @@ test("Phase 2 confirms definition deletion and restores it when Settings is canc
   await expect(aliases.getByLabel("Search Aliases")).toBeVisible();
   await expect(aliases.getByRole("button", { name: "New alias" })).toBeVisible();
   await expect(aliases.getByRole("region", { name: "Edit aliases" })).toBeVisible();
-  for (const action of ["Up", "Down", "Duplicate", "Delete fn"])
+  for (const action of ["Move up", "Move down", "Duplicate", "Delete fn"])
     await expect(aliases.getByRole("button", { name: action, exact: true })).toBeVisible();
 });
 
@@ -2428,13 +2603,13 @@ test("Phase 2 highlights restore legacy discovery, validation, color authoring, 
   const filters = highlights.getByLabel("Highlight groups");
   await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
   await expect(filters.getByLabel(/Ungrouped \(1\)/)).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await expect(highlights.getByText("No highlights match.")).toBeVisible();
   await filters.getByLabel(/combat \(2\)/i).check();
   await highlights.getByLabel("Search Highlights").fill("owl");
   await expect(highlights.getByRole("button", { name: "Edit owl" })).toBeVisible();
   await expect(highlights.getByRole("button", { name: "Edit glow" })).not.toBeVisible();
-  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await highlights.getByLabel("Search Highlights").fill("");
 
   const glow = highlights.getByRole("button", { name: "Edit glow" });
@@ -2599,15 +2774,15 @@ test("Phase 2 functions restore legacy discovery, authoring, and safe preview", 
   await expect(filters.getByLabel("Combat (1)")).toBeChecked();
   await expect(filters.getByLabel("Utility (1)")).toBeChecked();
   await expect(filters.getByLabel("Ungrouped (1)")).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await expect(functions.getByText("No functions match.")).toBeVisible();
-  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await expect(filters.getByLabel("Travel (2)")).toBeChecked();
   await expect(functions.getByRole("button", { name: "Edit combat" })).toBeVisible();
   await expect(functions.getByRole("button", { name: "Edit broken" })).toContainText(
     "1 script issue",
   );
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await filters.getByLabel("Travel (2)").check();
 
   const search = functions.getByLabel("Search Functions");
@@ -2701,7 +2876,15 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   await expect(filters.getByLabel("Combat (1)")).toBeChecked();
   await expect(filters.getByLabel("Utility (1)")).toBeChecked();
   await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await expect(filters.getByRole("button", { name: "All", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await filters.getByRole("button", { name: "All", exact: true }).click();
+  await expect(filters.getByRole("button", { name: "All", exact: true })).toHaveAttribute(
+    "aria-pressed",
+    "false",
+  );
   await expect(aliases.getByText("No aliases match.")).toBeVisible();
   await filters.getByLabel("Travel (2)").check();
 
@@ -2709,7 +2892,7 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   await search.fill("Quick route");
   const quick = aliases.getByRole("button", { name: "Edit quick" });
   await expect(quick.locator("strong")).toHaveText("Quick route");
-  await expect(quick.locator("small").first()).toContainText("quick");
+  await expect(quick.locator("code")).toHaveText("quick");
   await search.fill("travel");
   await expect(quick).toBeVisible();
   const sharedAlias = aliases.getByRole("button", { name: "Edit sharedalias" });
@@ -2813,9 +2996,27 @@ test("Phase 2 compact Alias and Trigger steps keep headers, payloads, and contro
     await expect(payload).toHaveCount(1);
     await expect(firstStep.getByRole("button", { name: "Move step up" })).toBeDisabled();
     await expect(firstStep.getByRole("button", { name: "Remove step" })).toBeEnabled();
-    await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveText("Up");
-    await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveText("Dn");
-    await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveText("X");
+    await expect(
+      firstStep.getByRole("button", { name: "Move step up" }).locator(".lucide-arrow-up"),
+    ).toBeVisible();
+    await expect(
+      firstStep.getByRole("button", { name: "Move step down" }).locator(".lucide-arrow-down"),
+    ).toBeVisible();
+    await expect(
+      firstStep.getByRole("button", { name: "Remove step" }).locator(".lucide-trash"),
+    ).toBeVisible();
+    await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveAttribute(
+      "title",
+      "Move step up",
+    );
+    await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveAttribute(
+      "title",
+      "Move step down",
+    );
+    await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveAttribute(
+      "title",
+      "Remove step",
+    );
 
     if (page.viewportSize()!.width > 390) {
       const [headerBox, payloadBox, typeBox, actionsBox, templateLabelBox, templateBox] =
@@ -3004,9 +3205,9 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
   await expect(filters.getByLabel("Combat (2)")).toBeChecked();
   await expect(filters.getByLabel("Travel (1)")).toBeChecked();
   await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await expect(triggers.getByText("No triggers match.")).toBeVisible();
-  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await triggers.getByLabel("Search Triggers").fill("First warning");
   const first = triggers.getByRole("button", { name: "Edit First warning" });
   await expect(first.locator("strong")).toHaveText("First warning");
@@ -3290,19 +3491,23 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
   const filters = timers.getByLabel("Timer groups");
   await expect(filters.getByLabel(/combat \(2\)/i)).toBeChecked();
   await expect(filters.getByLabel(/Ungrouped \(\d+\)/)).toBeChecked();
-  await filters.getByRole("button", { name: "Unselect all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await expect(timers.getByText("No timers match.")).toBeVisible();
   await filters.getByLabel(/combat \(2\)/i).check();
   await timers.getByLabel("Search Timers").fill("pulse");
   await expect(timers.getByRole("button", { name: "Edit pulse" })).toBeVisible();
   await expect(timers.getByRole("button", { name: "Edit travel pulse" })).not.toBeVisible();
-  await filters.getByRole("button", { name: "Select all", exact: true }).click();
+  await filters.getByRole("button", { name: "All", exact: true }).click();
   await timers.getByLabel("Search Timers").fill("");
   const pulse = timers.getByRole("button", { name: "Edit pulse" });
-  await expect(pulse).toContainText("1m, once, 1 step");
+  await expect(pulse.locator("code")).toHaveText("1m");
+  await expect(pulse.locator("small")).toContainText("combat · once · 1 step · Local");
   await pulse.click();
   let editor = timers.getByRole("region", { name: "Edit timers" });
   await expect(editor.getByLabel("Duration seconds")).toHaveValue("60");
+  await expect(
+    editor.getByRole("button", { name: "Remove step" }).locator(".lucide-trash"),
+  ).toBeVisible();
   await expect(editor.getByRole("button", { name: "Start" })).toBeVisible();
   await editor.getByRole("button", { name: "Start" }).click();
   await expect(editor.getByText("Timer started.")).toBeVisible();
@@ -3381,7 +3586,8 @@ test("Phase 2 timers restore legacy discovery, authoring, controls, and safe pre
       return character.localDefinitions.timers.find(({ id }) => id === "timer-local")!.durationMs;
     }),
   ).toBe(125000);
-  await expect(pulse).toContainText("2m 5s, once, 2 steps");
+  await expect(pulse.locator("code")).toHaveText("2m 5s");
+  await expect(pulse.locator("small")).toContainText("combat · once · 2 steps · Local");
   await pulse.click();
   editor = timers.getByRole("region", { name: "Edit timers" });
   await expect(

@@ -1,4 +1,8 @@
 <script lang="ts">
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Copy from "@lucide/svelte/icons/copy";
+  import Trash from "@lucide/svelte/icons/trash";
   import { untrack } from "svelte";
   import { identityKeyForDefinition } from "../configuration/identity.ts";
   import type { CharacterConfigurationSnapshot } from "../configuration/editor.ts";
@@ -63,6 +67,17 @@
   };
   type EditSource =
     { kind: "local" } | { kind: "shared-set"; configSetId: ConfigSetId; revision: number };
+  type ListRow = {
+    id: string;
+    title: string;
+    token: string;
+    tokenTitle: string;
+    meta: string;
+    enabled: boolean;
+    editable: boolean;
+    definition: Definition;
+    source: ConfigSourceMetadata;
+  };
   const { previewAliasInput, previewFunction, previewTimer, previewTriggerOutput } = previewCore;
   const {
     applyHighlightsToText,
@@ -176,7 +191,13 @@
       );
     }),
   );
+  const listRows = $derived(
+    visibleEntries.map(({ definition, source }) => listRow(definition, source)),
+  );
   const selectedEntry = $derived(entries.find(({ definition }) => definition.id === draft?.id));
+  const allGroupsSelected = $derived(
+    groups.length > 0 && groups.every((group) => selectedGroups?.includes(group.key)),
+  );
   const dirty = $derived(
     draft !== null && original !== null && JSON.stringify(toDefinition(draft)) !== original,
   );
@@ -363,6 +384,66 @@
     if ("trigger" in definition) return definition.trigger;
     if ("pattern" in definition) return definition.description.trim() || definition.pattern;
     return definition.name;
+  }
+
+  function listRow(definition: Definition, source: ConfigSourceMetadata): ListRow {
+    const meta: string[] = [];
+    let title = labelFor(definition);
+    let token = "";
+    let tokenTitle = "";
+    if (kind === "aliases") {
+      const alias = definition as AliasDefinition;
+      title = alias.description.trim() || alias.trigger;
+      token = `${alias.trigger}${alias.isRegex ? " (regex)" : ""}`;
+      tokenTitle = alias.isRegex ? "Pattern (regex)" : "Pattern";
+      if (alias.group) meta.push(alias.group);
+    } else if (kind === "triggers") {
+      const trigger = definition as TriggerDefinition;
+      title = trigger.description.trim() || trigger.pattern;
+      token = `${trigger.pattern}${trigger.isRegex ? " (regex)" : ""}${trigger.gag ? " (gag)" : ""}`;
+      tokenTitle = `Pattern${trigger.isRegex ? " (regex)" : ""}${trigger.gag ? " (gag)" : ""}`;
+      if (trigger.group) meta.push(trigger.group);
+      meta.push(trigger.steps[0]?.type?.replaceAll("_", " ") ?? "No actions");
+    } else if (kind === "timers") {
+      const timer = definition as TimerDefinition;
+      title = timer.name;
+      token = formatTimerDuration(timer.durationMs);
+      tokenTitle = "Duration";
+      meta.push(timer.group || "Ungrouped");
+      meta.push(timer.recurring ? "recurring" : "once");
+      if (timer.autoStart && timer.enabled) meta.push("auto-start");
+      meta.push(`${timer.steps.length} step${timer.steps.length === 1 ? "" : "s"}`);
+    } else if (kind === "functions") {
+      const fn = definition as FunctionDefinition;
+      title = fn.description.trim() || fn.name;
+      token = fn.name;
+      tokenTitle = "Function name";
+      meta.push(fn.group || "Ungrouped", functionScriptSummary(fn));
+    } else {
+      const highlight = definition as HighlightDefinition;
+      title = highlight.description.trim() || highlight.patternSource;
+      token = highlight.patternSource;
+      tokenTitle = "Pattern";
+      if (highlight.group) meta.push(highlight.group);
+      meta.push(formatRuleStyle(highlight));
+      if (highlight.ignoreCase) meta.push("Ignore case");
+    }
+    meta.push(sourceLabel(source));
+    return {
+      id: definition.id,
+      title,
+      token,
+      tokenTitle,
+      meta: meta.filter(Boolean).join(" · "),
+      enabled: definition.enabled,
+      editable: source.kind !== "builtin",
+      definition,
+      source,
+    };
+  }
+
+  function toggleAllGroups(): void {
+    selectedGroups = allGroupsSelected ? [] : groups.map((group) => group.key);
   }
 
   function keyDefinition(definition: Definition): KeyMappingDefinition {
@@ -1165,9 +1246,10 @@
           <div class="group-filter-actions">
             <button
               type="button"
-              onclick={() => (selectedGroups = groups.map((group) => group.key))}>Select all</button
+              class="group-chip all-groups"
+              aria-pressed={allGroupsSelected}
+              onclick={toggleAllGroups}>All</button
             >
-            <button type="button" onclick={() => (selectedGroups = [])}>Unselect all</button>
           </div>
         {/if}
         <div class="group-chips">
@@ -1190,85 +1272,77 @@
     <div class="automation-layout">
       <div class="automation-list-pane">
         <div class="automation-list" aria-label={title}>
-          {#each visibleEntries as entry, index (entry.definition.id)}
+          {#each listRows as row, index (row.id)}
             <div
-              class:active={selectedEntry?.definition.id === entry.definition.id}
+              class:active={selectedEntry?.definition.id === row.id}
+              class:enabled={row.enabled}
               class="list-row"
             >
-              <button
-                class="list-select"
-                type="button"
-                aria-label={`Edit ${labelFor(entry.definition)}`}
-                onclick={() => requestEdit(entry.definition, entry.source)}
-                onkeydown={(event) => moveListFocus(event, index)}
-              >
-                <strong
-                  >{(kind === "aliases" ||
-                    kind === "triggers" ||
-                    kind === "functions" ||
-                    kind === "highlights") &&
-                  "description" in entry.definition
-                    ? entry.definition.description.trim() || labelFor(entry.definition)
-                    : labelFor(entry.definition)}</strong
-                >
-                {#if kind === "highlights" && "patternSource" in entry.definition}
-                  <small>{entry.definition.patternSource}</small>
-                  {#if entry.definition.group}<small>{entry.definition.group}</small>{/if}
-                  <small>{formatRuleStyle(entry.definition)}</small>
-                  {#if entry.definition.ignoreCase}<small>Ignore case</small>{/if}
-                {/if}
-                {#if kind === "aliases" || kind === "triggers"}
-                  <small
-                    >{"trigger" in entry.definition
-                      ? entry.definition.trigger
-                      : "pattern" in entry.definition
-                        ? entry.definition.pattern
-                        : ""}
-                    {"isRegex" in entry.definition && entry.definition.isRegex
-                      ? "(regex)"
-                      : ""}{"gag" in entry.definition && entry.definition.gag
-                      ? " (gag)"
-                      : ""}</small
-                  >
-                  {#if "group" in entry.definition && entry.definition.group}<small
-                      >{entry.definition.group}</small
-                    >{/if}
-                  {#if kind === "triggers" && "steps" in entry.definition}<small
-                      >{entry.definition.steps[0]?.type?.replaceAll("_", " ") ??
-                        "No actions"}</small
-                    >{/if}
-                {/if}
-                {#if kind === "timers" && "durationMs" in entry.definition}
-                  <small>{entry.definition.group || "Ungrouped"}</small>
-                  <small
-                    >{formatTimerDuration(entry.definition.durationMs)}, {entry.definition.recurring
-                      ? "recurring"
-                      : "once"}{entry.definition.autoStart && entry.definition.enabled
-                      ? ", auto-start"
-                      : ""}, {entry.definition.steps.length} step{entry.definition.steps.length ===
-                    1
-                      ? ""
-                      : "s"}</small
-                  >
-                {/if}
-                {#if kind === "functions" && "script" in entry.definition}
-                  <small>{entry.definition.name}</small>
-                  <small>{entry.definition.group || "Ungrouped"}</small>
-                  <small>{functionScriptSummary(entry.definition)}</small>
-                {/if}
-                <span>{sourceLabel(entry.source)}</span>
-              </button>
               <input
-                aria-label={`Enable ${labelFor(entry.definition)}`}
+                class="enabled-switch"
+                aria-label={`Enable ${labelFor(row.definition)}`}
                 title={`Enable or disable this ${noun}.`}
                 type="checkbox"
-                checked={entry.definition.enabled}
-                disabled={entry.source.kind === "builtin"}
+                role="switch"
+                checked={row.enabled}
+                disabled={!row.editable}
                 onchange={(event) =>
-                  updateExistingDefinition(entry.definition, entry.source, {
+                  updateExistingDefinition(row.definition, row.source, {
                     enabled: event.currentTarget.checked,
                   })}
               />
+              <button
+                class="list-select"
+                type="button"
+                aria-label={`Edit ${labelFor(row.definition)}`}
+                onclick={() => requestEdit(row.definition, row.source)}
+                onkeydown={(event) => moveListFocus(event, index)}
+              >
+                <span class="row-copy"
+                  ><strong title={row.title}>{row.title}</strong><small>{row.meta}</small></span
+                >
+                <code title={row.tokenTitle}>{row.token}</code>
+              </button>
+              {#if selectedEntry?.definition.id === row.id}
+                <div class="row-actions">
+                  {#if row.editable}
+                    <span>Editing this {noun}</span>
+                    <button
+                      class="toolbar-icon-btn"
+                      type="button"
+                      aria-label="Move up"
+                      title="Move up"
+                      disabled={!canMove(-1)}
+                      onclick={() => moveSelected(-1)}><ArrowUp size={14} /></button
+                    >
+                    <button
+                      class="toolbar-icon-btn"
+                      type="button"
+                      aria-label="Move down"
+                      title="Move down"
+                      disabled={!canMove(1)}
+                      onclick={() => moveSelected(1)}><ArrowDown size={14} /></button
+                    >
+                    <button
+                      class="toolbar-icon-btn"
+                      type="button"
+                      aria-label="Duplicate"
+                      title="Duplicate"
+                      onclick={duplicateSelected}><Copy size={14} /></button
+                    >
+                    <button
+                      class="toolbar-icon-btn danger"
+                      type="button"
+                      aria-label={`Delete ${labelFor(row.definition)}`}
+                      title="Delete"
+                      onclick={() => requestRemove(row.definition, row.source)}
+                      ><Trash size={14} /></button
+                    >
+                  {:else}
+                    <span>Built-in - read only.</span>
+                  {/if}
+                </div>
+              {/if}
             </div>
           {:else}
             <p>
@@ -1277,25 +1351,6 @@
                 : `No ${title.toLowerCase()} configured.`}
             </p>
           {/each}
-        </div>
-        <div class="list-actions">
-          <button type="button" disabled={!canMove(-1)} onclick={() => moveSelected(-1)}>Up</button>
-          <button type="button" disabled={!canMove(1)} onclick={() => moveSelected(1)}>Down</button>
-          <button
-            type="button"
-            disabled={!selectedEntry || selectedEntry.source.kind === "builtin"}
-            onclick={duplicateSelected}>Duplicate</button
-          >
-          <button
-            type="button"
-            disabled={!selectedEntry || selectedEntry.source.kind === "builtin"}
-            aria-label={selectedEntry
-              ? `Delete ${labelFor(selectedEntry.definition)}`
-              : `Delete ${noun}`}
-            onclick={() =>
-              selectedEntry && requestRemove(selectedEntry.definition, selectedEntry.source)}
-            >Delete</button
-          >
         </div>
       </div>
       <div class="automation-detail">
@@ -1647,19 +1702,12 @@
 
   .inline-actions,
   .automation-toolbar,
-  .list-actions,
   .actions,
   .timer-controls {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     align-items: center;
-  }
-
-  .list-actions button {
-    min-height: 28px;
-    padding: 5px 14px;
-    font-size: 12px;
   }
 
   .warnings,
@@ -1733,7 +1781,7 @@
     gap: 0.25rem;
   }
 
-  .group-filters label.group-chip {
+  .group-filters .group-chip {
     position: relative;
     display: inline-flex;
     min-height: 1.5rem;
@@ -1742,12 +1790,15 @@
     border-radius: 999px;
     background: transparent;
     font-size: 0.75rem;
-    line-height: 1.2;
+    line-height: 1;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     user-select: none;
   }
 
-  .group-filters label.group-chip.selected {
+  .group-filters .group-chip.selected,
+  .group-filters .all-groups[aria-pressed="true"] {
     background: var(--df-btn-bg, #238636);
     color: var(--df-btn-fg, white);
   }
@@ -1763,7 +1814,7 @@
     cursor: pointer;
   }
 
-  .group-filters label.group-chip:focus-within {
+  .group-filters label.group-chip:has(input:focus-visible) {
     outline: 2px solid var(--df-btn-bg, #238636);
     outline-offset: 2px;
   }
@@ -1774,13 +1825,14 @@
 
   .automation-layout {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
     min-height: 320px;
   }
 
   .automation-list-pane {
     display: flex;
-    flex: 0 1 230px;
+    flex: 0 1 300px;
     min-width: 150px;
     min-height: 0;
     flex-direction: column;
@@ -1799,22 +1851,21 @@
 
   .list-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 0.375rem;
     align-items: center;
     border: 1px solid var(--border-color, #30363d);
     border-radius: 0.35rem;
-    background: var(--df-bg, #0d1117);
+    background: var(--df-panel, #161b22);
   }
 
   .list-row.active {
     border-color: var(--df-accent, #58a6ff);
-    background: rgb(88 166 255 / 12%);
+    background: color-mix(in srgb, var(--df-accent) 12%, var(--df-panel));
   }
 
   .list-select {
-    display: grid;
-    gap: 0.15rem;
+    display: flex;
     min-width: 0;
     padding: 0.5rem;
     border: 0;
@@ -1824,23 +1875,126 @@
   }
 
   .list-select strong,
-  .list-select span {
+  .row-copy small {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .list-select span {
-    color: var(--df-muted, #8b949e);
+  .row-copy {
+    display: grid;
+    min-width: 0;
+    gap: 0.15rem;
+  }
+
+  .row-copy strong,
+  .row-copy small {
+    color: var(--df-muted, var(--df-text, inherit));
+  }
+
+  .list-row.enabled .row-copy strong {
+    color: var(--df-text-strong, var(--df-text, inherit));
+  }
+
+  .row-copy small {
     font-size: 0.75rem;
   }
 
-  .list-row > input {
-    margin-right: 0.5rem;
+  .list-select code {
+    align-self: center;
+    flex: 0 0 auto;
+    max-width: 45%;
+    margin-left: auto;
+    padding: 0.2rem 0.45rem;
+    border-radius: 0.25rem;
+    background: var(--df-elevated, var(--df-panel));
+    color: var(--df-muted, var(--df-text, inherit));
+    font-family: var(--df-font-mono, monospace);
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .list-row.enabled .list-select code {
+    background: color-mix(in srgb, var(--df-accent) 12%, transparent);
+    color: var(--df-accent);
+  }
+
+  .enabled-switch {
+    appearance: none;
+    position: relative;
+    width: 2.25rem;
+    min-width: 2.25rem;
+    min-height: 1.25rem;
+    margin-left: 0.5rem;
+    border: 1px solid var(--df-border-muted, var(--border-color, currentColor));
+    border-radius: 999px;
+    background: var(--df-elevated, var(--df-panel));
+    cursor: pointer;
+  }
+
+  .enabled-switch::before {
+    content: "";
+    position: absolute;
+    top: 0.15rem;
+    left: 0.15rem;
+    width: 0.75rem;
+    height: 0.75rem;
+    border-radius: 50%;
+    background: var(--df-muted, currentColor);
+    transition: transform 120ms ease;
+  }
+
+  .enabled-switch:checked {
+    border-color: var(--df-accent, currentColor);
+    background: color-mix(in srgb, var(--df-accent) 32%, transparent);
+  }
+
+  .enabled-switch:checked::before {
+    transform: translateX(0.95rem);
+    background: var(--df-accent-strong, var(--df-accent, currentColor));
+  }
+
+  .enabled-switch:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+  }
+
+  .enabled-switch:focus-visible {
+    outline: 2px solid var(--df-accent, currentColor);
+    outline-offset: 2px;
+  }
+
+  .row-actions {
+    display: flex;
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem;
+    border-top: 1px solid var(--df-border-muted, var(--border-color));
+  }
+
+  .row-actions > span {
+    color: var(--df-muted, var(--df-text));
+    font-size: 0.75rem;
+  }
+
+  .row-actions > span + button {
+    margin-left: auto;
+  }
+
+  .row-actions .toolbar-icon-btn {
+    min-height: 28px;
+  }
+
+  .row-actions .danger,
+  .row-actions .danger:hover {
+    border-color: color-mix(in srgb, var(--df-err) 45%, transparent);
+    color: var(--df-err);
   }
 
   .automation-detail {
-    flex: 1;
+    flex: 1 1 300px;
     min-width: 0;
     min-height: 0;
     overflow-y: auto;
@@ -1931,6 +2085,11 @@
     .automation-list-pane {
       flex-basis: auto;
       min-height: 220px;
+    }
+
+    .group-chips {
+      flex-wrap: nowrap;
+      overflow-x: auto;
     }
   }
 </style>

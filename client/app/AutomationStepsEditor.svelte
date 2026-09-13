@@ -1,4 +1,7 @@
 <script lang="ts">
+  import ArrowDown from "@lucide/svelte/icons/arrow-down";
+  import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import Trash from "@lucide/svelte/icons/trash";
   import type { AutomationStep } from "../model/configuration.ts";
 
   type Target = { id: string; label: string; target: string };
@@ -161,18 +164,28 @@
           </label>
           <div class="step-actions">
             <button
+              class="toolbar-icon-btn"
               type="button"
               aria-label="Move step up"
+              title="Move step up"
               disabled={index === 0}
-              onclick={() => move(index, -1)}>Up</button
+              onclick={() => move(index, -1)}><ArrowUp size={14} /></button
             >
             <button
+              class="toolbar-icon-btn"
               type="button"
               aria-label="Move step down"
+              title="Move step down"
               disabled={index === steps.length - 1}
-              onclick={() => move(index, 1)}>Dn</button
+              onclick={() => move(index, 1)}><ArrowDown size={14} /></button
             >
-            <button type="button" aria-label="Remove step" onclick={() => remove(index)}>X</button>
+            <button
+              class="toolbar-icon-btn danger"
+              type="button"
+              aria-label="Remove step"
+              title="Remove step"
+              onclick={() => remove(index)}><Trash size={14} /></button
+            >
           </div>
         </div>
       {:else}
@@ -337,13 +350,29 @@
       </div>
       {#if !compactMode}
         <div class="step-actions">
-          <button type="button" disabled={index === 0} onclick={() => move(index, -1)}
-            >Move step up</button
+          <button
+            class="toolbar-icon-btn"
+            type="button"
+            aria-label="Move step up"
+            title="Move step up"
+            disabled={index === 0}
+            onclick={() => move(index, -1)}><ArrowUp size={14} /></button
           >
-          <button type="button" disabled={index === steps.length - 1} onclick={() => move(index, 1)}
-            >Move step down</button
+          <button
+            class="toolbar-icon-btn"
+            type="button"
+            aria-label="Move step down"
+            title="Move step down"
+            disabled={index === steps.length - 1}
+            onclick={() => move(index, 1)}><ArrowDown size={14} /></button
           >
-          <button type="button" onclick={() => remove(index)}>Remove step</button>
+          <button
+            class="toolbar-icon-btn danger"
+            type="button"
+            aria-label="Remove step"
+            title="Remove step"
+            onclick={() => remove(index)}><Trash size={14} /></button
+          >
         </div>
       {/if}
     </section>
@@ -400,6 +429,16 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .step-actions .toolbar-icon-btn {
+    min-height: 28px;
+  }
+
+  .step-actions .danger,
+  .step-actions .danger:hover {
+    border-color: color-mix(in srgb, var(--df-err) 45%, transparent);
+    color: var(--df-err);
   }
 
   .step-payload {

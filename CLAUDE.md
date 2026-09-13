@@ -1,7 +1,7 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with
-code in this repository.
+code in this repository. THIS FILE IS OUT OF DATE AND DOES NOT REPRESENT V2.
 
 ## Project Overview
 

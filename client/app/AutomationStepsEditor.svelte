@@ -142,173 +142,211 @@
 <fieldset>
   <legend>Steps</legend>
   {#each steps as step, index (index)}
-    <section aria-label={`Automation step ${index + 1}`}>
-      <label>
-        Step type
-        <select
-          value={step.type}
-          onchange={(event) =>
-            replace(index, blankStep(event.currentTarget.value as AutomationStep["type"]))}
-        >
-          {#each stepTypes as option (option.value)}
-            <option value={option.value}>{option.label}</option>
-          {/each}
-        </select>
-      </label>
-
-      {#if step.type === "send_command" || step.type === "show_message"}
-        <label>Template <textarea bind:value={step.template} required></textarea></label>
-      {:else if step.type === "run_alias" && (triggerMode || timerMode)}
-        {@const parsedAlias = splitAliasTemplate(step.template)}
-        <label
-          >Alias <select
-            value={parsedAlias.id}
+    <section aria-label={`Automation step ${index + 1}`} class:trigger-step={triggerMode}>
+      {#if triggerMode}
+        <div class="trigger-step-header">
+          <span class="step-index">{index + 1}</span>
+          <label>
+            <span class:sr-only={triggerMode}>Step type</span>
+            <select
+              value={step.type}
+              onchange={(event) =>
+                replace(index, blankStep(event.currentTarget.value as AutomationStep["type"]))}
+            >
+              {#each stepTypes as option (option.value)}
+                <option value={option.value}>{option.label}</option>
+              {/each}
+            </select>
+          </label>
+          <div class="step-actions">
+            <button
+              type="button"
+              aria-label="Move step up"
+              disabled={index === 0}
+              onclick={() => move(index, -1)}>{triggerMode ? "Up" : "Move step up"}</button
+            >
+            <button
+              type="button"
+              aria-label="Move step down"
+              disabled={index === steps.length - 1}
+              onclick={() => move(index, 1)}>{triggerMode ? "Dn" : "Move step down"}</button
+            >
+            <button type="button" aria-label="Remove step" onclick={() => remove(index)}
+              >{triggerMode ? "X" : "Remove step"}</button
+            >
+          </div>
+        </div>
+      {:else}
+        <label>
+          Step type
+          <select
+            value={step.type}
             onchange={(event) =>
-              updateAliasTemplate(step, event.currentTarget.value, parsedAlias.arguments)}
+              replace(index, blankStep(event.currentTarget.value as AutomationStep["type"]))}
           >
-            {#if !parsedAlias.id && step.template}<option value=""
-                >Unresolved: {step.template}</option
-              >{:else}<option value="">Select alias</option>{/if}
-            {#each aliases as alias (alias.id)}<option value={alias.id}>{alias.label}</option
-              >{/each}
-          </select></label
-        >
-        <label
-          >Arguments <input
-            value={parsedAlias.arguments}
-            oninput={(event) =>
-              updateAliasTemplate(step, parsedAlias.id, event.currentTarget.value)}
-          /></label
-        >
-      {:else if step.type === "run_alias"}
-        <label>Template <textarea bind:value={step.template} required></textarea></label>
-      {:else if step.type === "set_variable"}
-        <label>Variable name <input bind:value={step.name} required /></label>
-        <label>Template <textarea bind:value={step.template}></textarea></label>
-      {:else if step.type === "script"}
-        <label>Script <textarea bind:value={step.script} required></textarea></label>
-      {:else if step.type === "wait"}
-        <label
-          >Seconds <input
-            type="number"
-            min="0"
-            max="86400"
-            step="0.1"
-            bind:value={step.seconds}
-            required
-          /></label
-        >
-      {:else if step.type === "set_alias_enabled" || step.type === "set_trigger_enabled" || step.type === "set_timer_enabled"}
-        <label>
-          Mode
-          <select bind:value={step.mode}>
-            <option value="enable">Enable</option>
-            <option value="disable">Disable</option>
-            <option value="toggle">Toggle</option>
+            {#each stepTypes as option (option.value)}
+              <option value={option.value}>{option.label}</option>
+            {/each}
           </select>
         </label>
-        <label
-          >Target <select
-            value={step.targetId}
-            onchange={(event) => updateTarget(step, event.currentTarget.value)}
-          >
-            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
-              <option value="">Unresolved: {step.target || step.targetId}</option>
-            {:else}<option value="">Select target</option>{/if}
-            {#each targetOptions(step) as target (target.id)}<option value={target.id}
-                >{target.label}</option
-              >{/each}
-          </select></label
-        >
-      {:else if step.type === "control_timer"}
-        <label>
-          Mode
-          <select bind:value={step.mode}>
-            <option value="start">Start</option>
-            <option value="stop">Stop</option>
-            <option value="reset">Reset</option>
-            <option value="run">Run now</option>
-          </select>
-        </label>
-        <label
-          >Target <select
-            value={step.targetId}
-            onchange={(event) => updateTarget(step, event.currentTarget.value)}
-          >
-            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
-              <option value="">Unresolved: {step.target || step.targetId}</option>
-            {:else}<option value="">Select target</option>{/if}
-            {#each targetOptions(step) as target (target.id)}<option value={target.id}
-                >{target.label}</option
-              >{/each}
-          </select></label
-        >
-      {:else if step.type === "play_sound"}
-        <label
-          >Category <select
-            value={step.category}
-            onchange={(event) => updateSoundCategory(step, event.currentTarget.value)}
-            required
-          >
-            {#if step.category && !soundsFor(step.category).length}<option value={step.category}
-                >Unresolved: {step.category}</option
-              >{/if}
-            {#each Array.from(new Set(sounds.map((item) => item.category))) as category (category)}<option
-                value={category}>{categoryLabel(category)}</option
-              >{/each}
-          </select></label
-        >
-        <label
-          >Sound <select bind:value={step.sound} required>
-            {#if step.sound && !soundsFor(step.category).some((item) => item.sound === step.sound)}<option
-                value={step.sound}>Unresolved: {step.sound}</option
-              >{/if}
-            {#each soundsFor(step.category) as sound (sound.sound)}<option value={sound.sound}
-                >{sound.label}</option
-              >{/each}
-          </select></label
-        >
-        <label
-          >Volume ({Math.round(step.volume * 100)}%)
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            bind:value={step.volume}
-            required
-          /></label
-        >
-        {#if triggerMode}<button
-            type="button"
-            onclick={() => testSound(step.category, step.sound, step.volume)}>Test Sound</button
-          >{/if}
-      {:else if step.type === "call_function"}
-        <label
-          >Target <select
-            value={step.targetId}
-            onchange={(event) => updateTarget(step, event.currentTarget.value)}
-          >
-            {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
-              <option value="">Unresolved: {step.target || step.targetId}</option>
-            {:else}<option value="">Select target</option>{/if}
-            {#each targetOptions(step) as target (target.id)}<option value={target.id}
-                >{target.label}</option
-              >{/each}
-          </select></label
-        >
-        <label>Template <textarea bind:value={step.template}></textarea></label>
       {/if}
 
-      <div class="step-actions">
-        <button type="button" disabled={index === 0} onclick={() => move(index, -1)}
-          >Move step up</button
-        >
-        <button type="button" disabled={index === steps.length - 1} onclick={() => move(index, 1)}
-          >Move step down</button
-        >
-        <button type="button" onclick={() => remove(index)}>Remove step</button>
+      <div class="step-payload" class:trigger-step-payload={triggerMode}>
+        {#if step.type === "send_command" || step.type === "show_message"}
+          <label>Template <textarea bind:value={step.template} required></textarea></label>
+        {:else if step.type === "run_alias" && (triggerMode || timerMode)}
+          {@const parsedAlias = splitAliasTemplate(step.template)}
+          <label
+            >Alias <select
+              value={parsedAlias.id}
+              onchange={(event) =>
+                updateAliasTemplate(step, event.currentTarget.value, parsedAlias.arguments)}
+            >
+              {#if !parsedAlias.id && step.template}<option value=""
+                  >Unresolved: {step.template}</option
+                >{:else}<option value="">Select alias</option>{/if}
+              {#each aliases as alias (alias.id)}<option value={alias.id}>{alias.label}</option
+                >{/each}
+            </select></label
+          >
+          <label
+            >Arguments <input
+              value={parsedAlias.arguments}
+              oninput={(event) =>
+                updateAliasTemplate(step, parsedAlias.id, event.currentTarget.value)}
+            /></label
+          >
+        {:else if step.type === "run_alias"}
+          <label>Template <textarea bind:value={step.template} required></textarea></label>
+        {:else if step.type === "set_variable"}
+          <label>Variable name <input bind:value={step.name} required /></label>
+          <label>Template <textarea bind:value={step.template}></textarea></label>
+        {:else if step.type === "script"}
+          <label>Script <textarea bind:value={step.script} required></textarea></label>
+        {:else if step.type === "wait"}
+          <label
+            >Seconds <input
+              type="number"
+              min="0"
+              max="86400"
+              step="0.1"
+              bind:value={step.seconds}
+              required
+            /></label
+          >
+        {:else if step.type === "set_alias_enabled" || step.type === "set_trigger_enabled" || step.type === "set_timer_enabled"}
+          <label>
+            Mode
+            <select bind:value={step.mode}>
+              <option value="enable">Enable</option>
+              <option value="disable">Disable</option>
+              <option value="toggle">Toggle</option>
+            </select>
+          </label>
+          <label
+            >Target <select
+              value={step.targetId}
+              onchange={(event) => updateTarget(step, event.currentTarget.value)}
+            >
+              {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+                <option value="">Unresolved: {step.target || step.targetId}</option>
+              {:else}<option value="">Select target</option>{/if}
+              {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                  >{target.label}</option
+                >{/each}
+            </select></label
+          >
+        {:else if step.type === "control_timer"}
+          <label>
+            Mode
+            <select bind:value={step.mode}>
+              <option value="start">Start</option>
+              <option value="stop">Stop</option>
+              <option value="reset">Reset</option>
+              <option value="run">Run now</option>
+            </select>
+          </label>
+          <label
+            >Target <select
+              value={step.targetId}
+              onchange={(event) => updateTarget(step, event.currentTarget.value)}
+            >
+              {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+                <option value="">Unresolved: {step.target || step.targetId}</option>
+              {:else}<option value="">Select target</option>{/if}
+              {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                  >{target.label}</option
+                >{/each}
+            </select></label
+          >
+        {:else if step.type === "play_sound"}
+          <label
+            >Category <select
+              value={step.category}
+              onchange={(event) => updateSoundCategory(step, event.currentTarget.value)}
+              required
+            >
+              {#if step.category && !soundsFor(step.category).length}<option value={step.category}
+                  >Unresolved: {step.category}</option
+                >{/if}
+              {#each Array.from(new Set(sounds.map((item) => item.category))) as category (category)}<option
+                  value={category}>{categoryLabel(category)}</option
+                >{/each}
+            </select></label
+          >
+          <label
+            >Sound <select bind:value={step.sound} required>
+              {#if step.sound && !soundsFor(step.category).some((item) => item.sound === step.sound)}<option
+                  value={step.sound}>Unresolved: {step.sound}</option
+                >{/if}
+              {#each soundsFor(step.category) as sound (sound.sound)}<option value={sound.sound}
+                  >{sound.label}</option
+                >{/each}
+            </select></label
+          >
+          <label
+            >Volume ({Math.round(step.volume * 100)}%)
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              bind:value={step.volume}
+              required
+            /></label
+          >
+          {#if triggerMode}<button
+              type="button"
+              onclick={() => testSound(step.category, step.sound, step.volume)}>Test Sound</button
+            >{/if}
+        {:else if step.type === "call_function"}
+          <label
+            >Target <select
+              value={step.targetId}
+              onchange={(event) => updateTarget(step, event.currentTarget.value)}
+            >
+              {#if step.target && (!step.targetId || !targetOptions(step).some((item) => item.id === step.targetId))}
+                <option value="">Unresolved: {step.target || step.targetId}</option>
+              {:else}<option value="">Select target</option>{/if}
+              {#each targetOptions(step) as target (target.id)}<option value={target.id}
+                  >{target.label}</option
+                >{/each}
+            </select></label
+          >
+          <label>Template <textarea bind:value={step.template}></textarea></label>
+        {/if}
       </div>
+      {#if !triggerMode}
+        <div class="step-actions">
+          <button type="button" disabled={index === 0} onclick={() => move(index, -1)}
+            >Move step up</button
+          >
+          <button type="button" disabled={index === steps.length - 1} onclick={() => move(index, 1)}
+            >Move step down</button
+          >
+          <button type="button" onclick={() => remove(index)}>Remove step</button>
+        </div>
+      {/if}
     </section>
   {/each}
   <label
@@ -363,6 +401,56 @@
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
+  }
+
+  .step-payload {
+    display: contents;
+  }
+
+  .trigger-step {
+    padding: 0.5rem;
+  }
+
+  .trigger-step-header {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    min-width: 0;
+  }
+
+  .step-index {
+    min-width: 1rem;
+    color: var(--muted-color, #8b949e);
+    text-align: right;
+  }
+
+  .trigger-step-header .step-actions {
+    margin-left: auto;
+  }
+
+  .trigger-step-payload {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    min-width: 0;
+  }
+
+  .trigger-step-payload > label {
+    display: flex;
+    align-items: center;
+    flex: 1 1 12rem;
+    min-width: 0;
+    gap: 0.5rem;
+  }
+
+  .trigger-step-payload > label > :is(input, select, textarea) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  .trigger-step-payload > button {
+    flex: 0 1 auto;
   }
 
   section {

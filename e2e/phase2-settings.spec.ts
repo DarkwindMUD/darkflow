@@ -2801,6 +2801,112 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   );
 });
 
+test("Phase 2 compact Trigger steps keep headers, payloads, and controls reachable", async ({
+  page,
+}) => {
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers = [
+      {
+        id: "trigger-layout",
+        enabled: true,
+        pattern: "layout",
+        description: "Compact layout",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [
+          { type: "send_command", template: "look" },
+          {
+            type: "set_trigger_enabled",
+            mode: "toggle",
+            target: "danger",
+            targetId: "trigger-local",
+          },
+          { type: "wait", seconds: 1 },
+          { type: "run_alias", template: "quick north" },
+          { type: "call_function", target: "greet", targetId: "function-greet", template: "orc" },
+          { type: "script", script: "send score" },
+          { type: "play_sound", category: "notification", sound: "bell", volume: 0.5 },
+        ],
+      },
+    ];
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Compact layout" }).click();
+  const editor = triggers.getByRole("region", { name: "Edit triggers" });
+  const firstStep = editor.getByRole("region", { name: "Automation step 1" });
+  const header = firstStep.locator(".trigger-step-header");
+  const payload = firstStep.locator(".trigger-step-payload");
+
+  await expect(header).toHaveCount(1);
+  await expect(payload).toHaveCount(1);
+  await expect(firstStep.getByRole("button", { name: "Move step up" })).toBeDisabled();
+  await expect(firstStep.getByRole("button", { name: "Move step down" })).toBeEnabled();
+  await expect(firstStep.getByRole("button", { name: "Remove step" })).toBeEnabled();
+  await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveText("Up");
+  await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveText("Dn");
+  await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveText("X");
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 7" })
+      .getByRole("button", { name: "Move step down" }),
+  ).toBeDisabled();
+
+  if (page.viewportSize()!.width > 390) {
+    const [headerBox, payloadBox, typeBox, actionsBox, templateLabelBox, templateBox] =
+      await Promise.all([
+        header.boundingBox(),
+        payload.boundingBox(),
+        firstStep.getByLabel("Step type").boundingBox(),
+        firstStep.locator(".step-actions").boundingBox(),
+        firstStep.locator(".trigger-step-payload > label").first().boundingBox(),
+        firstStep.getByLabel("Template", { exact: true }).boundingBox(),
+      ]);
+    expect(headerBox).not.toBeNull();
+    expect(payloadBox).not.toBeNull();
+    expect(typeBox).not.toBeNull();
+    expect(actionsBox).not.toBeNull();
+    expect(templateLabelBox).not.toBeNull();
+    expect(templateBox).not.toBeNull();
+    expect(typeBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+    expect(typeBox!.y + typeBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height + 2);
+    expect(actionsBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+    expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(
+      headerBox!.y + headerBox!.height + 2,
+    );
+    expect(payloadBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+    expect(templateLabelBox!.y).toBeCloseTo(templateBox!.y, 0);
+    expect(templateLabelBox!.height).toBeCloseTo(templateBox!.height, 0);
+  }
+
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 6" })
+      .getByRole("textbox", { name: "Script" }),
+  ).toBeVisible();
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 7" })
+      .getByRole("button", { name: "Test Sound" }),
+  ).toBeVisible();
+  expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+  expect(
+    await editor
+      .locator('[aria-label^="Automation step "]')
+      .evaluateAll((steps) => steps.every((step) => step.scrollWidth <= step.clientWidth)),
+  ).toBe(true);
+});
+
 test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", async ({ page }) => {
   const endpoint = fixtures.endpoints.ws;
   await installAutomationDefinitions(page);

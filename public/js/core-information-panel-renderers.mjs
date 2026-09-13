@@ -389,6 +389,7 @@ export function avatarChargeMeter(vitals, now = Date.now()) {
   if (!vitals) return '';
   const charge = Number(vitals.avatar_charge);
   const max = Number(vitals.avatar_charge_max);
+  const reportedPct = Number(vitals.avatar_charge_pct);
   const elapsedMs = Math.max(0, now - (Number(vitals.receivedAt) || now));
   const activeAtSync = Number(vitals.avatar_active_remaining ?? vitals.avatar_active);
   const active = Math.max(0, Math.ceil(activeAtSync - elapsedMs / 1000));
@@ -403,15 +404,20 @@ export function avatarChargeMeter(vitals, now = Date.now()) {
       '<div class="avatar-meter-fill" style="width:' + pct + '%"></div>' +
       '<div class="avatar-meter-label">Wrathful Avatar ACTIVE ' + minutes + ':' + String(seconds).padStart(2, '0') + '</div></div>';
   }
-  if (Number.isFinite(charge) && max > 0) {
+  const hasRawCharge = Number.isFinite(charge) && max > 0;
+  if (hasRawCharge || Number.isFinite(reportedPct)) {
     const ratePct = Number(vitals.avatar_charge_rate_pct);
-    const gained = (elapsedMs / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100);
-    const predictedCharge = Math.max(0, Math.min(max, charge + gained));
-    const pct = Math.max(0, Math.min(100, (predictedCharge / max) * 100));
+    const gained = hasRawCharge
+      ? (elapsedMs / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100)
+      : 0;
+    const predictedCharge = hasRawCharge
+      ? Math.max(0, Math.min(max, charge + gained))
+      : Math.max(0, Math.min(100, reportedPct));
+    const pct = hasRawCharge ? (predictedCharge / max) * 100 : predictedCharge;
     const displayPct = Math.floor(pct);
     const fullClass = displayPct >= 100 ? ' full' : '';
     return '<div class="avatar-meter visible' + fullClass + patronClass + '" role="progressbar" aria-label="Wrathful Avatar charge"' +
-      ' aria-live="polite" aria-valuemin="0" aria-valuemax="' + max + '" aria-valuenow="' + Math.floor(predictedCharge) + '">' +
+      ' aria-live="polite" aria-valuemin="0" aria-valuemax="' + (hasRawCharge ? max : 100) + '" aria-valuenow="' + Math.floor(predictedCharge) + '">' +
       '<div class="avatar-meter-fill" style="width:' + pct + '%"></div>' +
       '<div class="avatar-meter-label">Wrathful Avatar ' + displayPct + '%</div></div>';
   }

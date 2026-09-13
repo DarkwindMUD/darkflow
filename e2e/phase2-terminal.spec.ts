@@ -499,6 +499,18 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     .toEqual({ atBottom: true, scrollable: true });
 
   const pause = page.getByRole("button", { name: "Paused", exact: true });
+  await output.evaluate((element) => (element.scrollTop = 0));
+  await expect(pause).toHaveAttribute("aria-pressed", "false");
+  endpoint.sendText(Array.from({ length: 40 }, (_, index) => `burst line ${index + 1}\n`).join(""));
+  await expect(output).toContainText("burst line 40");
+  await expect
+    .poll(() =>
+      output.evaluate(
+        (element) => element.scrollTop + element.clientHeight >= element.scrollHeight - 5,
+      ),
+    )
+    .toBe(true);
+
   await pause.click();
   await expect(pause).toHaveAttribute("aria-pressed", "true");
   const pausedScrollTop = await output.evaluate((element) => element.scrollTop);
@@ -506,7 +518,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(output).toContainText("received while paused");
   await expect.poll(() => output.evaluate((element) => element.scrollTop)).toBe(pausedScrollTop);
 
-  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await page.keyboard.press("Escape");
   await expect(pause).toHaveAttribute("aria-pressed", "false");
   await expect
     .poll(() =>
@@ -516,7 +528,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     )
     .toBe(true);
 
-  await output.evaluate((element) => (element.scrollTop = 0));
+  await output.hover();
+  await page.mouse.wheel(0, -10_000);
   await expect(pause).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Live", exact: true }).click();
 

@@ -331,6 +331,29 @@ test("navigation renders pending output, locks near 35 percent, and returns live
   harness.core.dispose();
 });
 
+test("pause scrollback detaches only for user scrolling", (t) => {
+  const harness = createHarness(t);
+  harness.core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\n");
+  harness.scheduler.flushFrames();
+
+  harness.output.scrollTop = 0;
+  harness.output.dispatch("scroll");
+  assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "false");
+
+  harness.output.dispatch("wheel");
+  harness.output.dispatch("scroll");
+  assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "true");
+
+  harness.core.returnToLive();
+  harness.output.scrollTop = 0;
+  harness.output.dispatch("scroll");
+  harness.core.appendOutput("seven\n");
+  harness.scheduler.flushFrames();
+  assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "false");
+  assert.equal(harness.output.scrollTop, harness.output.scrollHeight);
+  harness.core.dispose();
+});
+
 test("dispose cancels pending work, clears targets, and removes listeners", (t) => {
   const harness = createHarness(t);
   harness.core.configure({ screenReaderMode: true });

@@ -232,8 +232,13 @@ export function createTerminalOutputCore({
       if (!isAtBottom(output) && Date.now() <= userScrollIntentUntil) activateSplit();
       return;
     }
-    paused = !isAtBottom(output);
-    syncControls();
+    if (isAtBottom(output)) {
+      paused = false;
+      syncControls();
+    } else if (Date.now() <= userScrollIntentUntil) {
+      paused = true;
+      syncControls();
+    }
   };
   const onHistoryScroll = () => {
     if (!disposed && splitActive && isAtBottom(historyOutput)) deactivateSplit();

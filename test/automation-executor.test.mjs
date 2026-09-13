@@ -578,15 +578,26 @@ test('alias steps toggle triggers by targetId and report the trigger name', () =
     variables: {},
   });
   triggerManager.saveScope(SCOPE_KEY, {
-    triggers: [{
-      id: 'trigger-incoming',
-      enabled: true,
-      pattern: 'incoming *',
-      description: 'Incoming watcher',
-      group: '',
-      gag: false,
-      steps: [{ type: 'send_command', template: 'look' }],
-    }],
+    triggers: [
+      {
+        id: 'trigger-incoming-first',
+        enabled: true,
+        pattern: 'incoming *',
+        description: 'First incoming watcher',
+        group: '',
+        gag: false,
+        steps: [{ type: 'send_command', template: 'first' }],
+      },
+      {
+        id: 'trigger-incoming',
+        enabled: true,
+        pattern: 'incoming *',
+        description: 'Incoming watcher',
+        group: '',
+        gag: false,
+        steps: [{ type: 'send_command', template: 'look' }],
+      },
+    ],
   });
 
   // targetId survives normalization in both managers
@@ -600,6 +611,7 @@ test('alias steps toggle triggers by targetId and report the trigger name', () =
     sendCommand: io.sendCommand,
   });
 
+  assert.equal(triggerManager.findTriggerById('trigger-incoming-first', SCOPE_KEY).enabled, true);
   const trigger = triggerManager.findTriggerById('trigger-incoming', SCOPE_KEY);
   assert.equal(trigger.enabled, false);
   assert.match(io.messages.join('\n'), /Trigger "Incoming watcher" disabled\./);
@@ -611,7 +623,43 @@ test('alias steps toggle triggers by targetId and report the trigger name', () =
     appendMessage: io.appendMessage,
     sendCommand: io.sendCommand,
   });
+  assert.equal(triggerManager.findTriggerById('trigger-incoming-first', SCOPE_KEY).enabled, true);
   assert.equal(triggerManager.findTriggerById('trigger-incoming', SCOPE_KEY).enabled, true);
+});
+
+test('duplicate-pattern triggers both execute in declaration order', () => {
+  resetManagers();
+  triggerManager.saveScope(SCOPE_KEY, {
+    triggers: [
+      {
+        id: 'trigger-first-reaction',
+        enabled: true,
+        pattern: 'You killed %1.',
+        description: 'First reaction',
+        group: '',
+        gag: false,
+        steps: [{ type: 'send_command', template: 'first %1' }],
+      },
+      {
+        id: 'trigger-second-reaction',
+        enabled: true,
+        pattern: 'You killed %1.',
+        description: 'Second reaction',
+        group: '',
+        gag: false,
+        steps: [{ type: 'send_command', template: 'second %1' }],
+      },
+    ],
+  });
+
+  const result = triggerManager.evaluateLine('You killed goblin.', SCOPE_KEY);
+  assert.deepEqual(result.matches.map(({ trigger }) => trigger.id), [
+    'trigger-first-reaction',
+    'trigger-second-reaction',
+  ]);
+  const io = messagesAndSends();
+  executeTriggerMatches(result.matches, SCOPE_KEY, io);
+  assert.deepEqual(io.sent, ['first goblin', 'second goblin']);
 });
 
 test('targetId steps warn when the referenced item no longer exists', () => {

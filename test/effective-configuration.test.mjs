@@ -203,12 +203,177 @@ test("Effective configuration executes through Vite SSR", async (t) => {
 
   await t.test("identity keys match legacy normalization per kind", () => {
     assert.equal(identity.aliasIdentityKey({ trigger: "  Go North " }), "go north");
-    assert.equal(identity.triggerIdentityKey({ pattern: "  You see  " }), "You see");
+    assert.equal(
+      identity.triggerIdentityKey({ description: "  Boss   Alert  ", pattern: "ignored" }),
+      "name:boss alert",
+    );
+    assert.equal(
+      identity.triggerIdentityKey({ description: "   ", pattern: "  You see  " }),
+      "pattern:You see",
+    );
+    assert.notEqual(
+      identity.triggerIdentityKey({ description: "pattern:You see", pattern: "ignored" }),
+      identity.triggerIdentityKey({ description: "", pattern: "You see" }),
+    );
     assert.equal(identity.highlightIdentityKey({ patternSource: " ^You see " }), "^You see");
     assert.equal(identity.functionIdentityKey({ name: "  Heal  " }), "heal");
     assert.equal(identity.keyMappingIdentityKey({ code: "  F1  " }), "F1");
     assert.equal(identity.timerIdentityKey({ name: "  Tick  " }), "tick");
     assert.equal(identity.identityKeyFor("aliases", { trigger: "LOOK" }), "look");
+  });
+
+  await t.test("trigger resolution uses Name precedence without collapsing equal patterns", () => {
+    const graph = buildMinimalGraph(ids);
+    const { characterAId, aliasSetAId, aliasSetBId } = graph.ids;
+    graph.characterProfiles[characterAId].configSetRefs.aliases = [];
+    graph.characterProfiles[characterAId].configSetRefs.triggers = [aliasSetAId, aliasSetBId];
+    graph.configurationSets[aliasSetAId] = {
+      id: aliasSetAId,
+      kind: "triggers",
+      label: "Shared triggers A",
+      revision: 1,
+      definitions: [
+        {
+          id: "trigger-alert-a",
+          enabled: true,
+          pattern: "You killed %1",
+          description: "Boss alert",
+          group: "",
+          isRegex: false,
+          ignoreCase: false,
+          gag: false,
+          steps: [{ type: "send_command", template: "first" }],
+        },
+        {
+          id: "trigger-loot",
+          enabled: true,
+          pattern: "You killed %1",
+          description: "Loot alert",
+          group: "",
+          isRegex: false,
+          ignoreCase: false,
+          gag: false,
+          steps: [{ type: "send_command", template: "loot" }],
+        },
+      ],
+    };
+    graph.configurationSets[aliasSetBId] = {
+      id: aliasSetBId,
+      kind: "triggers",
+      label: "Shared triggers B",
+      revision: 4,
+      definitions: [
+        {
+          id: "trigger-alert-b",
+          enabled: true,
+          pattern: "A renamed pattern",
+          description: " boss   ALERT ",
+          group: "",
+          isRegex: false,
+          ignoreCase: false,
+          gag: false,
+          steps: [{ type: "send_command", template: "second" }],
+        },
+      ],
+    };
+    graph.characterProfiles[characterAId].localDefinitions.triggers = [
+      {
+        id: "trigger-alert-local",
+        enabled: true,
+        pattern: "Local pattern",
+        description: "BOSS ALERT",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "local" }],
+      },
+      {
+        id: "trigger-local-same-pattern",
+        enabled: true,
+        pattern: "You killed %1",
+        description: "Corpse cleanup",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "burn corpse" }],
+      },
+    ];
+
+    const resolved = resolve.resolveEffectiveConfiguration(graph, characterAId);
+    assert.equal(resolved.success, true);
+    assert.deepEqual(
+      resolved.data.triggers.map(({ definition }) => definition.id),
+      ["trigger-alert-local", "trigger-loot", "trigger-local-same-pattern"],
+    );
+    assert.equal(resolved.data.triggers[0].source.kind, "local");
+    assert.equal(resolved.data.triggers[1].source.configSetId, aliasSetAId);
+    assert.equal(resolved.data.triggers[2].source.kind, "local");
+  });
+
+  await t.test("trigger resolution preserves invalid same-owner legacy Name duplicates", () => {
+    const graph = buildMinimalGraph(ids);
+    const { characterAId } = graph.ids;
+    graph.characterProfiles[characterAId].configSetRefs.aliases = [];
+    graph.characterProfiles[characterAId].localDefinitions.triggers = [
+      {
+        id: "trigger-duplicate-a",
+        enabled: true,
+        pattern: "first pattern",
+        description: "Duplicate Name",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "first" }],
+      },
+      {
+        id: "trigger-duplicate-b",
+        enabled: true,
+        pattern: "second pattern",
+        description: " duplicate   name ",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "second" }],
+      },
+      {
+        id: "trigger-unnamed-a",
+        enabled: true,
+        pattern: "unnamed one",
+        description: "",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "third" }],
+      },
+      {
+        id: "trigger-unnamed-b",
+        enabled: true,
+        pattern: "unnamed two",
+        description: " ",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "fourth" }],
+      },
+    ];
+
+    const resolved = resolve.resolveEffectiveConfiguration(graph, characterAId);
+    assert.equal(resolved.success, true);
+    assert.deepEqual(
+      resolved.data.triggers.map(({ definition }) => definition.id),
+      [
+        "trigger-duplicate-a",
+        "trigger-duplicate-b",
+        "trigger-unnamed-a",
+        "trigger-unnamed-b",
+      ],
+    );
   });
 
   await t.test("built-in tier is empty and snapshots are deeply immutable", () => {

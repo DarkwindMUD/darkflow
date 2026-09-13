@@ -87,12 +87,12 @@ Each `ConfigurationSet` contains exactly one of six kinds. A character profile
 holds ordered references per kind plus optional profile-local entries of the
 same shape.
 
-Manager-specific identity fields preserved from the legacy managers:
+Manager-specific identity fields:
 
 | Kind        | Identity field  |
 | ----------- | --------------- |
 | aliases     | `trigger`       |
-| triggers    | `pattern`       |
+| triggers    | normalized `description` (Name), with namespaced `pattern` fallback when unnamed |
 | highlights  | `patternSource` |
 | functions   | `name`          |
 | keyMappings | `code`          |
@@ -114,7 +114,7 @@ flowchart LR
   CS --> Defs["definitions[]"]
 
   Defs --> A["AliasDefinition<br/>identity: trigger"]
-  Defs --> T["TriggerDefinition<br/>identity: pattern"]
+  Defs --> T["TriggerDefinition<br/>identity: Name<br/>unnamed fallback: pattern"]
   Defs --> H["HighlightDefinition<br/>identity: patternSource"]
   Defs --> F["FunctionDefinition<br/>identity: name"]
   Defs --> K["KeyMappingDefinition<br/>identity: code"]
@@ -136,8 +136,11 @@ flowchart TD
   Local --> Effective["Effective configuration snapshot<br/>(definitions only, no runtime state)"]
 ```
 
-Later definitions replace earlier ones with the same manager-specific identity
-within a kind.
+Later owners replace earlier definitions with the same manager-specific identity
+within a kind. Trigger Names are compared case-insensitively after whitespace
+normalization. Existing same-owner duplicate Trigger Names remain visible by ID
+until edited, and unnamed legacy triggers use a separate trimmed-pattern identity
+namespace.
 
 ## Source modules
 

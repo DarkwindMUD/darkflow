@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { AutomationStep } from "../model/configuration.ts";
 
-  type Target = { id: string; label: string };
+  type Target = { id: string; label: string; target: string };
   type Sound = { category: string; sound: string; label: string };
   let {
     steps = $bindable(),
@@ -99,7 +99,7 @@
   ): void {
     const target = targetOptions(step).find((item) => item.id === id);
     step.targetId = id;
-    step.target = target?.label ?? "";
+    step.target = target?.target ?? "";
   }
 
   function soundsFor(category: string) {
@@ -328,7 +328,9 @@
         expressions with capture groups as %1-%9. Templates support %0 for the full match, $name
         variables, and &#36;&#123;lower:%1&#125; or &#36;&#123;lower:$name&#125; for lowercase.
         Scripts support if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;,
-        set $name = value, run_alias, call, play_sound, and alias/timer controls.
+        set $name = value, run_alias, call, play_sound, and alias/timer controls. Picker-selected
+        trigger controls use stable IDs; pattern-only commands and scripts use the first matching
+        trigger.
       </p>
     {:else if timerMode}
       <p>

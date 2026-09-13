@@ -91,6 +91,7 @@ globalThis.localStorage = localStorage;
 
 const { dom } = await import("../public/js/state.js");
 const { aliasManager } = await import("../public/js/alias-manager.js");
+const { triggerManager } = await import("../public/js/trigger-manager.js");
 const { highlightManager } = await import("../public/js/highlight-manager.js");
 const { functionManager } = await import("../public/js/function-manager.js");
 const { settingsManager } = await import("../public/js/settings-manager.js");
@@ -110,6 +111,7 @@ function resetManagersForFallback(scopeKey = LEGACY_SCOPE_KEY) {
   dom.port = createLegacyDom().port;
   dom.protocolSelect = createLegacyDom().protocolSelect;
   aliasManager._data = { scopes: {} };
+  triggerManager._data = { scopes: {} };
   highlightManager._data = { scopes: {} };
   functionManager._data = { scopes: {} };
   settingsManager._settings = { ...settingsManager._defaults };
@@ -174,6 +176,13 @@ function installFakeBridge(overrides = {}) {
       bridge.localDefinitionsByKind[kind] = after;
       return after.length !== before.length;
     },
+    removeLocalDefinitionById(kind, id) {
+      calls.push(["removeLocalDefinitionById", kind, id]);
+      const before = bridge.localDefinitionsByKind[kind] || [];
+      const after = before.filter((item) => item.id !== id);
+      bridge.localDefinitionsByKind[kind] = after;
+      return after.length !== before.length;
+    },
     setLocalDefinitionEnabledByIdentity(kind, identityKey, enabled) {
       calls.push(["setLocalDefinitionEnabledByIdentity", kind, identityKey, enabled]);
       const list = structuredClone(bridge.localDefinitionsByKind[kind] || []);
@@ -184,6 +193,15 @@ function installFakeBridge(overrides = {}) {
             .toLowerCase();
         return itemKey === identityKey;
       });
+      if (!item) return false;
+      item.enabled = enabled !== false;
+      bridge.localDefinitionsByKind[kind] = list;
+      return true;
+    },
+    setLocalDefinitionEnabledById(kind, id, enabled) {
+      calls.push(["setLocalDefinitionEnabledById", kind, id, enabled]);
+      const list = structuredClone(bridge.localDefinitionsByKind[kind] || []);
+      const item = list.find((entry) => entry.id === id);
       if (!item) return false;
       item.enabled = enabled !== false;
       bridge.localDefinitionsByKind[kind] = list;
@@ -519,6 +537,7 @@ test("Effective configuration adapters execute through Vite SSR", async (t) => {
   const identity = await ssr.runner.import("/configuration/identity.ts");
   const resolve = await ssr.runner.import("/configuration/resolve.ts");
   const service = await ssr.runner.import("/configuration/service.ts");
+  const wiring = await ssr.runner.import("/app/session-bridge-wiring.ts");
   const schema = await ssr.runner.import("/storage/schema.ts");
   const repository = await ssr.runner.import("/storage/repository.ts");
   const ids = await ssr.runner.import("/model/ids.ts");
@@ -724,9 +743,24 @@ test("Effective configuration adapters execute through Vite SSR", async (t) => {
         bridge.replaceLocalDefinitions(kind, locals);
         return true;
       },
+      removeLocalDefinitionById(kind, id) {
+        const before = readLocalDefinitions(kind);
+        const locals = before.filter((item) => item.id !== id);
+        if (locals.length === before.length) return false;
+        bridge.replaceLocalDefinitions(kind, locals);
+        return true;
+      },
       setLocalDefinitionEnabledByIdentity(kind, identityKey, enabled) {
         const locals = structuredClone(readLocalDefinitions(kind));
         const item = locals.find((entry) => identity.identityKeyFor(kind, entry) === identityKey);
+        if (!item) return false;
+        item.enabled = enabled !== false;
+        bridge.replaceLocalDefinitions(kind, locals);
+        return true;
+      },
+      setLocalDefinitionEnabledById(kind, id, enabled) {
+        const locals = structuredClone(readLocalDefinitions(kind));
+        const item = locals.find((entry) => entry.id === id);
         if (!item) return false;
         item.enabled = enabled !== false;
         bridge.replaceLocalDefinitions(kind, locals);
@@ -815,6 +849,113 @@ test("Effective configuration adapters execute through Vite SSR", async (t) => {
       persisted.configurationSets[graph.ids.aliasSetId].definitions[0].id,
       "alias-shared",
       "the shared set itself is untouched",
+    );
+  });
+
+  await t.test("trigger bridge mutations use stable ids and leave shared-only targets unchanged", () => {
+    resetManagersForFallback();
+    dom.host = createThrowingDom().host;
+    dom.port = createThrowingDom().port;
+    dom.protocolSelect = createThrowingDom().protocolSelect;
+
+    const graph = buildGraph();
+    const localTriggers = [
+      {
+        id: "trigger-first",
+        enabled: true,
+        pattern: "You killed %1",
+        description: "First reaction",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "first" }],
+      },
+      {
+        id: "trigger-second",
+        enabled: true,
+        pattern: "You killed %1",
+        description: "Second reaction",
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        gag: false,
+        steps: [{ type: "send_command", template: "second" }],
+      },
+    ];
+    graph.characterProfiles[graph.ids.characterAId].localDefinitions.triggers = localTriggers;
+    const storage = createMemoryStorage();
+    repository.commit(storage, graph);
+    compat.installConfigurationCompatBridge(
+      wiring.buildConfigurationCompatBridge(storage, graph.ids.characterAId),
+    );
+
+    const upserted = triggerManager.upsertSimpleTrigger("You killed %1", "updated first");
+    assert.equal(upserted.error, null);
+    let persisted = JSON.parse(storage.getItem(schema.SESSION_CORE_STORAGE_KEY));
+    assert.deepEqual(
+      persisted.characterProfiles[graph.ids.characterAId].localDefinitions.triggers.map(
+        ({ id, steps }) => ({ id, template: steps[0].template }),
+      ),
+      [
+        { id: "trigger-first", template: "updated first" },
+        { id: "trigger-second", template: "second" },
+      ],
+    );
+
+    const toggled = triggerManager.toggleEnabledById("trigger-second");
+    assert.equal(toggled.enabled, false);
+    persisted = JSON.parse(storage.getItem(schema.SESSION_CORE_STORAGE_KEY));
+    assert.deepEqual(
+      persisted.characterProfiles[graph.ids.characterAId].localDefinitions.triggers.map(
+        ({ id, enabled }) => ({ id, enabled }),
+      ),
+      [
+        { id: "trigger-first", enabled: true },
+        { id: "trigger-second", enabled: false },
+      ],
+    );
+
+    assert.equal(triggerManager.removeTriggerByPattern("You killed %1"), true);
+    persisted = JSON.parse(storage.getItem(schema.SESSION_CORE_STORAGE_KEY));
+    assert.deepEqual(
+      persisted.characterProfiles[graph.ids.characterAId].localDefinitions.triggers.map(
+        ({ id }) => id,
+      ),
+      ["trigger-second"],
+    );
+
+    const sharedGraph = buildGraph();
+    sharedGraph.characterProfiles[sharedGraph.ids.characterAId].configSetRefs.aliases = [];
+    sharedGraph.characterProfiles[sharedGraph.ids.characterBId].configSetRefs.aliases = [];
+    sharedGraph.characterProfiles[sharedGraph.ids.characterAId].configSetRefs.triggers = [
+      sharedGraph.ids.aliasSetId,
+    ];
+    sharedGraph.configurationSets[sharedGraph.ids.aliasSetId] = {
+      id: sharedGraph.ids.aliasSetId,
+      kind: "triggers",
+      label: "Shared triggers",
+      revision: 1,
+      definitions: [localTriggers[0]],
+    };
+    const sharedStorage = createMemoryStorage();
+    repository.commit(sharedStorage, sharedGraph);
+    compat.installConfigurationCompatBridge(
+      wiring.buildConfigurationCompatBridge(sharedStorage, sharedGraph.ids.characterAId),
+    );
+
+    const sharedResult = triggerManager.toggleEnabledById("trigger-first");
+    assert.equal(sharedResult.enabled, true);
+    const sharedPersisted = JSON.parse(
+      sharedStorage.getItem(schema.SESSION_CORE_STORAGE_KEY),
+    );
+    assert.deepEqual(
+      sharedPersisted.characterProfiles[sharedGraph.ids.characterAId].localDefinitions.triggers,
+      [],
+    );
+    assert.equal(
+      sharedPersisted.configurationSets[sharedGraph.ids.aliasSetId].definitions[0].enabled,
+      true,
     );
   });
 

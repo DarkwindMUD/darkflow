@@ -368,7 +368,7 @@ test("Phase 2 settings use legacy labels and visible help copy", async ({ page }
   await expect(stepType).toContainText("Run script");
 
   await settingsTab(dialog, "Triggers");
-  await dialog.getByRole("button", { name: "Edit danger" }).click();
+  await dialog.getByRole("button", { name: "Edit Danger" }).click();
   editor = dialog.getByRole("region", { name: "Edit triggers" });
   await expect(editor.getByLabel("Gag line", { exact: true })).toBeVisible();
   await expect(
@@ -2170,7 +2170,7 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   await confirmDefinitionDelete(page, "temporary alias");
 
   const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
-  await triggers.getByRole("button", { name: "Edit danger" }).click();
+  await triggers.getByRole("button", { name: "Edit Danger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Template").fill("retreat");
   await editor.getByRole("button", { name: "Save triggers" }).click();
@@ -2181,14 +2181,15 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
     editor.getByRole("region", { name: "Automation step 1" }).getByLabel("Step type"),
   ).toHaveValue("send_command");
   await editor.getByLabel("Pattern").fill("temporary trigger");
+  await editor.getByLabel("Name (required)").fill("Temporary trigger");
   await editor.getByLabel("Template").fill("temporary");
   await editor.getByRole("button", { name: "Save triggers" }).click();
-  await triggers.getByRole("button", { name: "Edit temporary trigger" }).click();
+  await triggers.getByRole("button", { name: "Edit Temporary trigger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Enabled", { exact: true }).uncheck();
   await editor.getByRole("button", { name: "Save triggers" }).click();
-  await triggers.getByRole("button", { name: "Delete temporary trigger" }).click();
-  await confirmDefinitionDelete(page, "temporary trigger");
+  await triggers.getByRole("button", { name: "Delete Temporary trigger" }).click();
+  await confirmDefinitionDelete(page, "Temporary trigger");
 
   const timers = await settingsGroup(dialog, "Timers", "Timers");
   await timers.getByRole("button", { name: "Edit pulse" }).click();
@@ -2233,6 +2234,148 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 saves duplicate-pattern triggers and targets each stable id", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { triggers: Array<Record<string, unknown>> };
+    };
+    character.localDefinitions.triggers.push({
+      id: "trigger-legacy-unnamed",
+      enabled: true,
+      pattern: "legacy unnamed pattern",
+      description: "   ",
+      group: "",
+      isRegex: false,
+      ignoreCase: false,
+      gag: false,
+      steps: [{ type: "send_command", template: "legacy" }],
+    });
+    localStorage.setItem(key, JSON.stringify(graph));
+  });
+  await page.reload();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  let editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Pattern").fill("You killed %1");
+  await editor.getByLabel("Template").fill("burn %1 corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await expect(editor.getByLabel("Name (required)")).toBeFocused();
+  await editor.getByLabel("Name (required)").fill("Burn corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  await triggers.getByRole("button", { name: "New trigger" }).click();
+  editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await editor.getByLabel("Pattern").fill("You killed %1");
+  await editor.getByLabel("Name (required)").fill("Loot corpse");
+  await editor.getByLabel("Template").fill("get coins from corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await editor.getByLabel("Name (required)").fill(" burn   CORPSE ");
+  await expect(
+    editor.getByText("Trigger Name duplicates an existing trigger in this owner."),
+  ).toBeVisible();
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+  await expect(triggers.getByText("Trigger Name must be unique in this owner.")).toBeVisible();
+  await editor.getByLabel("Name (required)").fill("Loot corpse");
+  await editor.getByRole("button", { name: "Save triggers" }).click();
+
+  const triggerIds = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: {
+        triggers: Array<{ id: string; description: string }>;
+      };
+    };
+    return Object.fromEntries(
+      character.localDefinitions.triggers.map(({ id, description }) => [description, id]),
+    );
+  });
+
+  const aliases = await settingsGroup(dialog, "Aliases", "Aliases");
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Pattern", { exact: true }).fill("togburn");
+  await editor.getByLabel("Name (required)").fill("Toggle burn trigger");
+  const firstStep = editor.getByRole("region", { name: "Automation step 1" });
+  await firstStep.getByLabel("Step type").selectOption("set_trigger_enabled");
+  await expect(firstStep.getByLabel("Target")).toContainText("Burn corpse");
+  await expect(firstStep.getByLabel("Target")).toContainText("Loot corpse");
+  await expect(
+    firstStep.getByLabel("Target").locator('option[value="trigger-legacy-unnamed"]'),
+  ).toHaveText("legacy unnamed pattern");
+  await firstStep.getByLabel("Target").selectOption({ label: "Burn corpse" });
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  await aliases.getByRole("button", { name: "New alias" }).click();
+  editor = aliases.getByRole("region", { name: "Edit aliases" });
+  await editor.getByLabel("Pattern", { exact: true }).fill("togloot");
+  await editor.getByLabel("Name (required)").fill("Toggle loot trigger");
+  const secondStep = editor.getByRole("region", { name: "Automation step 1" });
+  await secondStep.getByLabel("Step type").selectOption("set_trigger_enabled");
+  await secondStep.getByLabel("Target").selectOption({ label: "Loot corpse" });
+  await editor.getByRole("button", { name: "Save aliases" }).click();
+
+  const savedTargets = await page.evaluate(() => {
+    const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: {
+        aliases: Array<{
+          trigger: string;
+          steps: Array<{ target: string; targetId: string }>;
+        }>;
+      };
+    };
+    return character.localDefinitions.aliases
+      .filter(({ trigger }) => trigger === "togburn" || trigger === "togloot")
+      .map(({ steps }) => steps[0]);
+  });
+  expect(savedTargets).toEqual([
+    {
+      type: "set_trigger_enabled",
+      mode: "toggle",
+      target: "You killed %1",
+      targetId: triggerIds["Burn corpse"],
+    },
+    {
+      type: "set_trigger_enabled",
+      mode: "toggle",
+      target: "You killed %1",
+      targetId: triggerIds["Loot corpse"],
+    },
+  ]);
+
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await page.reload();
+  await connect(page);
+  const input = page.getByLabel("Command input", { exact: true });
+  const commandsBefore = endpoint.commands.length;
+  await input.fill("togburn");
+  await input.press("Enter");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
+    'Alias: Trigger "Burn corpse" disabled.',
+  );
+  endpoint.sendText("You killed goblin\n");
+  await expect
+    .poll(() => endpoint.commands.slice(commandsBefore))
+    .toEqual(["get coins from corpse"]);
+
+  await input.fill("togloot");
+  await input.press("Enter");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
+    'Alias: Trigger "Loot corpse" disabled.',
+  );
+  endpoint.sendText("You killed orc\n");
+  await expect(page.getByLabel("Terminal output", { exact: true })).toContainText("You killed orc");
+  expect(endpoint.commands.slice(commandsBefore)).toEqual(["get coins from corpse"]);
 });
 
 test("Phase 2 highlights restore legacy discovery, validation, color authoring, and preview", async ({
@@ -2739,7 +2882,7 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
   await expect(triggers.getByText("No triggers match.")).toBeVisible();
   await filters.getByRole("button", { name: "Select all", exact: true }).click();
   await triggers.getByLabel("Search Triggers").fill("First warning");
-  const first = triggers.getByRole("button", { name: "Edit danger *" });
+  const first = triggers.getByRole("button", { name: "Edit First warning" });
   await expect(first.locator("strong")).toHaveText("First warning");
   await expect(first).toContainText("danger *");
   await triggers.getByLabel("Search Triggers").fill("");
@@ -2753,9 +2896,7 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
   await expect(editor.getByLabel("Regex")).not.toBeChecked();
   await expect(editor.getByLabel("Ignore case")).not.toBeChecked();
   await expect(editor.getByLabel("Gag line")).not.toBeChecked();
-  await expect(
-    editor.getByText("Name is recommended so this trigger is easy to find."),
-  ).toBeVisible();
+  await expect(editor.getByText("Trigger Name needs content.")).toBeVisible();
   await expect(editor.getByText("Pattern needs content.")).toBeVisible();
   await editor.getByLabel("Regex").check();
   await editor.getByLabel("Pattern").fill("[");
@@ -2767,13 +2908,13 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
   ).toBeVisible();
   await editor.getByRole("button", { name: "Cancel edit" }).click();
 
-  await triggers.getByRole("button", { name: "Edit legacy" }).click();
+  await triggers.getByRole("button", { name: "Edit Legacy run" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   const legacyStep = editor.getByRole("region", { name: "Automation step 1" });
   await expect(legacyStep.getByRole("combobox").nth(1)).toContainText(
     "Unresolved: missing legacy arguments",
   );
-  await triggers.getByRole("button", { name: "Edit danger *" }).click();
+  await triggers.getByRole("button", { name: "Edit First warning" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Add step type").selectOption("run_alias");
   await editor.getByRole("button", { name: "Add automation step" }).click();
@@ -2797,7 +2938,7 @@ test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", a
   ).toHaveLength(1);
   await editor.getByRole("button", { name: "Save triggers" }).click();
 
-  await triggers.getByRole("button", { name: "Edit danger *" }).click();
+  await triggers.getByRole("button", { name: "Edit First warning" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await expect(
     editor.getByRole("region", { name: "Automation step 2" }).getByLabel("Arguments"),
@@ -2891,7 +3032,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   await editor.getByRole("button", { name: "Save aliases" }).click();
 
   const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
-  await triggers.getByRole("button", { name: "Edit shared danger" }).click();
+  await triggers.getByRole("button", { name: "Edit Shared trigger" }).click();
   editor = triggers.getByRole("region", { name: "Edit triggers" });
   await editor.getByLabel("Template").fill("shared-trigger-after");
   await editor.getByRole("button", { name: "Save triggers" }).click();
@@ -2940,7 +3081,7 @@ test("Phase 2 publishes shared automation definitions with stale protection", as
   await page.getByRole("button", { name: "Settings", exact: true }).click();
   for (const [groupName, label] of [
     ["Aliases", "sharedalias"],
-    ["Triggers", "shared danger"],
+    ["Triggers", "Shared trigger"],
     ["Timers", "shared pulse"],
   ] as const) {
     const group = await settingsGroup(settingsDialog(page), groupName, groupName);

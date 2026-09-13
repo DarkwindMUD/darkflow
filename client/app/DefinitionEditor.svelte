@@ -182,7 +182,7 @@
   );
   const targetCatalogs = $derived({
     aliases: entriesFor("aliases", "trigger"),
-    triggers: entriesFor("triggers", "pattern"),
+    triggers: entriesFor("triggers", "description", "pattern"),
     timers: entriesFor("timers", "name"),
     functions: entriesFor("functions", "name"),
   });
@@ -361,7 +361,7 @@
     if ("code" in definition) return definition.label || definition.code;
     if ("patternSource" in definition) return definition.patternSource;
     if ("trigger" in definition) return definition.trigger;
-    if ("pattern" in definition) return definition.pattern;
+    if ("pattern" in definition) return definition.description.trim() || definition.pattern;
     return definition.name;
   }
 
@@ -427,7 +427,10 @@
         (item) => item.id !== definition.id && identityKeyForDefinition(kind, item) === identity,
       )
     ) {
-      status = `${title} must have unique identities.`;
+      status =
+        kind === "triggers"
+          ? "Trigger Name must be unique in this owner."
+          : `${title} must have unique identities.`;
       return;
     }
     const index = definitions.findIndex((item) => item.id === definition.id);
@@ -484,7 +487,7 @@
     const next = draftFor(selectedEntry.definition);
     next.id = crypto.randomUUID();
     if (kind === "aliases") next.trigger += " copy";
-    else if (kind === "triggers") next.pattern += " copy";
+    else if (kind === "triggers") next.description += " copy";
     else if (kind === "highlights") next.patternSource += " copy";
     else next.name += " copy";
     const definition = toDefinition(next);
@@ -609,7 +612,10 @@
         (item) => item.id !== definition.id && identityKeyForDefinition(kind, item) === identity,
       )
     ) {
-      status = `${title} must have unique identities.`;
+      status =
+        kind === "triggers"
+          ? "Trigger Name must be unique in this owner."
+          : `${title} must have unique identities.`;
       return;
     }
 
@@ -677,11 +683,20 @@
     else cancel();
   }
 
-  function entriesFor(targetKind: ConfigKind, field: "trigger" | "pattern" | "name") {
-    return snapshot.effectiveConfiguration[targetKind].map(({ definition }) => ({
-      id: definition.id,
-      label: String((definition as unknown as Record<string, unknown>)[field] || definition.id),
-    }));
+  function entriesFor(
+    targetKind: ConfigKind,
+    labelField: "trigger" | "pattern" | "description" | "name",
+    targetField = labelField,
+  ) {
+    return snapshot.effectiveConfiguration[targetKind].map(({ definition }) => {
+      const record = definition as unknown as Record<string, unknown>;
+      return {
+        id: definition.id,
+        label:
+          String(record[labelField] || "").trim() || String(record[targetField] || definition.id),
+        target: String(record[targetField] || ""),
+      };
+    });
   }
 
   function formatTimerDuration(durationMs: number): string {
@@ -809,7 +824,20 @@
 
   function warningsForAutomation(value: Draft): string[] {
     const warnings: string[] = [];
-    if (kind !== "timers" && !value.description.trim())
+    if (kind === "triggers") {
+      if (!value.description.trim()) warnings.push("Trigger Name needs content.");
+      else if (
+        source &&
+        targetDefinitions(source).some(
+          (definition) =>
+            definition.id !== value.id &&
+            "pattern" in definition &&
+            identityKeyForDefinition("triggers", definition as TriggerDefinition) ===
+              identityKeyForDefinition("triggers", toDefinition(value) as TriggerDefinition),
+        )
+      )
+        warnings.push("Trigger Name duplicates an existing trigger in this owner.");
+    } else if (kind === "aliases" && !value.description.trim())
       warnings.push(`Name is recommended so this ${noun} is easy to find.`);
     const pattern = kind === "triggers" ? value.pattern : value.trigger;
     if (kind === "timers") {
@@ -892,7 +920,7 @@
           !targets.some(
             (target) =>
               target.id === step.targetId ||
-              target.label.trim().toLowerCase() === step.target.trim().toLowerCase(),
+              target.target.trim().toLowerCase() === step.target.trim().toLowerCase(),
           )
         )
           warnings.push(`Step ${index + 1} target was not found.`);
@@ -1448,7 +1476,7 @@
               {/if}
               <label
                 >{kind === "aliases" || kind === "triggers" ? "Name (required)" : "Description"}
-                <input bind:value={draft.description} /></label
+                <input bind:value={draft.description} required={kind === "triggers"} /></label
               >
               <label>Group <input bind:value={draft.group} /></label>
               {#if kind !== "timers"}

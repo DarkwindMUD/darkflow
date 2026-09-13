@@ -131,6 +131,25 @@ export function buildConfigurationCompatBridge(
       this.replaceLocalDefinitions(kind, after);
       return true;
     },
+    removeLocalDefinitionById(kind: ConfigKind, id: string) {
+      const state = readState(storage);
+      if (!state.success || state.data === undefined) {
+        throw new Error("Phase 1 session graph is not present in storage.");
+      }
+      const character = state.data.characterProfiles[characterProfileId];
+      if (!character) {
+        throw new Error(
+          `Character profile ${characterProfileId} is not present in the application graph.`,
+        );
+      }
+      const before = character.localDefinitions[kind] as Array<{ id: string }>;
+      const after = before.filter((item) => item.id !== id);
+      if (after.length === before.length) {
+        return false;
+      }
+      this.replaceLocalDefinitions(kind, after);
+      return true;
+    },
     setLocalDefinitionEnabledByIdentity(kind: ConfigKind, identityKey: string, enabled: boolean) {
       const state = readState(storage);
       if (!state.success || state.data === undefined) {
@@ -145,6 +164,29 @@ export function buildConfigurationCompatBridge(
       const locals = structuredClone(character.localDefinitions[kind] as unknown[]);
       const item = locals.find((entry) => identityKeyForDefinition(kind, entry) === identityKey) as
         { enabled?: boolean } | undefined;
+      if (!item) {
+        return false;
+      }
+      item.enabled = enabled !== false;
+      this.replaceLocalDefinitions(kind, locals);
+      return true;
+    },
+    setLocalDefinitionEnabledById(kind: ConfigKind, id: string, enabled: boolean) {
+      const state = readState(storage);
+      if (!state.success || state.data === undefined) {
+        throw new Error("Phase 1 session graph is not present in storage.");
+      }
+      const character = state.data.characterProfiles[characterProfileId];
+      if (!character) {
+        throw new Error(
+          `Character profile ${characterProfileId} is not present in the application graph.`,
+        );
+      }
+      const locals = structuredClone(character.localDefinitions[kind] as unknown[]) as Array<{
+        id: string;
+        enabled?: boolean;
+      }>;
+      const item = locals.find((entry) => entry.id === id);
       if (!item) {
         return false;
       }

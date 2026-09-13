@@ -20,9 +20,10 @@ export function aliasIdentityKey(definition: AliasDefinition): string {
   return normalizeWhitespace(definition.trigger).toLowerCase();
 }
 
-/** Trigger identity: trim(pattern) only, case-sensitive — trigger-manager.js:283-285 */
+/** Trigger identity: normalized Name, with a namespaced pattern fallback for unnamed records. */
 export function triggerIdentityKey(definition: TriggerDefinition): string {
-  return String(definition.pattern ?? "").trim();
+  const name = normalizeWhitespace(definition.description).toLowerCase();
+  return name ? `name:${name}` : `pattern:${String(definition.pattern ?? "").trim()}`;
 }
 
 /** Highlight identity: trim(patternSource) only — highlight-manager.js:472 */

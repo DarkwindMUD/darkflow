@@ -13,7 +13,9 @@
  * @property {(kind: string, definitions: Object[]) => void} replaceLocalDefinitions
  * @property {(kind: string, definition: Object) => void} upsertLocalDefinitionByIdentity
  * @property {(kind: string, identityKey: string) => boolean} removeLocalDefinitionByIdentity
+ * @property {(kind: string, id: string) => boolean} removeLocalDefinitionById
  * @property {(kind: string, identityKey: string, enabled: boolean) => boolean} setLocalDefinitionEnabledByIdentity
+ * @property {(kind: string, id: string, enabled: boolean) => boolean} setLocalDefinitionEnabledById
  * @property {(listener: Function) => () => void} subscribe
  */
 
@@ -71,9 +73,19 @@ export function removeLocalDefinitionByIdentity(kind, identityKey) {
   return requireBridge().removeLocalDefinitionByIdentity(kind, identityKey);
 }
 
+/** Removes one local definition by stable id; returns whether a local entry was found and removed. */
+export function removeLocalDefinitionById(kind, id) {
+  return requireBridge().removeLocalDefinitionById(kind, id);
+}
+
 /** Sets the enabled flag on one local definition by identity key; returns whether a local entry was found and mutated. */
 export function setLocalDefinitionEnabledByIdentity(kind, identityKey, enabled) {
   return requireBridge().setLocalDefinitionEnabledByIdentity(kind, identityKey, enabled);
+}
+
+/** Sets the enabled flag on one local definition by stable id; returns whether it changed. */
+export function setLocalDefinitionEnabledById(kind, id, enabled) {
+  return requireBridge().setLocalDefinitionEnabledById(kind, id, enabled);
 }
 
 /** Registers a change listener on the installed bridge. */

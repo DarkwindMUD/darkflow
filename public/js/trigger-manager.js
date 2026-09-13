@@ -7,9 +7,9 @@ import {
   getActiveCharacterProfileId,
   getEffectiveDefinitions,
   isConfigurationCompatActive,
-  removeLocalDefinitionByIdentity,
+  removeLocalDefinitionById,
   replaceLocalDefinitions,
-  setLocalDefinitionEnabledByIdentity,
+  setLocalDefinitionEnabledById,
   upsertLocalDefinitionByIdentity,
 } from './session-compat/configuration.js';
 import {
@@ -388,15 +388,17 @@ export const triggerManager = {
   removeTriggerByPattern(pattern, scopeKey = this.getActiveScopeKey()) {
     const normalizedPattern = triggerIdentityKey(pattern);
     if (!normalizedPattern) return false;
+    const trigger = this.findTriggerByPattern(normalizedPattern, scopeKey);
+    if (!trigger) return false;
 
     if (isConfigurationCompatActive()) {
-      const removed = removeLocalDefinitionByIdentity('triggers', normalizedPattern);
+      const removed = removeLocalDefinitionById('triggers', trigger.id);
       if (removed) emitTriggerDataChanged({ scopeKey });
       return removed;
     }
 
     const scope = this._ensureScope(scopeKey);
-    const nextTriggers = scope.triggers.filter((trigger) => trigger.pattern !== normalizedPattern);
+    const nextTriggers = scope.triggers.filter((item) => item.id !== trigger.id);
     if (nextTriggers.length === scope.triggers.length) return false;
     scope.triggers = nextTriggers;
     this._save({ scopeKey });
@@ -408,7 +410,7 @@ export const triggerManager = {
     if (!trigger) return { target: null, enabled: null };
     if (isConfigurationCompatActive()) {
       const nextEnabled = enabled !== false;
-      const changed = setLocalDefinitionEnabledByIdentity('triggers', triggerIdentityKey(pattern), nextEnabled);
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
       if (changed) emitTriggerDataChanged({ scopeKey });
       return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
     }
@@ -432,7 +434,7 @@ export const triggerManager = {
     if (!trigger) return { target: null, enabled: null };
     if (isConfigurationCompatActive()) {
       const nextEnabled = enabled !== false;
-      const changed = setLocalDefinitionEnabledByIdentity('triggers', triggerIdentityKey(trigger.pattern), nextEnabled);
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
       if (changed) emitTriggerDataChanged({ scopeKey });
       return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
     }
@@ -446,7 +448,7 @@ export const triggerManager = {
     if (!trigger) return { target: null, enabled: null };
     if (isConfigurationCompatActive()) {
       const nextEnabled = trigger.enabled === false;
-      const changed = setLocalDefinitionEnabledByIdentity('triggers', triggerIdentityKey(trigger.pattern), nextEnabled);
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
       if (changed) emitTriggerDataChanged({ scopeKey });
       return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
     }
@@ -460,7 +462,7 @@ export const triggerManager = {
     if (!trigger) return { target: null, enabled: null };
     if (isConfigurationCompatActive()) {
       const nextEnabled = trigger.enabled === false;
-      const changed = setLocalDefinitionEnabledByIdentity('triggers', triggerIdentityKey(pattern), nextEnabled);
+      const changed = setLocalDefinitionEnabledById('triggers', trigger.id, nextEnabled);
       if (changed) emitTriggerDataChanged({ scopeKey });
       return { target: trigger, enabled: changed ? nextEnabled : trigger.enabled };
     }
@@ -483,13 +485,13 @@ export const triggerManager = {
       diagnostics.push('Name is required.');
     }
 
-    const duplicate = triggers.find((item) => (
+    const normalizedName = normalizeWhitespace(trigger.description).toLowerCase();
+    const duplicate = normalizedName && triggers.find((item) => (
       item.id !== trigger.id
-      && Boolean(item.isRegex) === Boolean(trigger.isRegex)
-      && item.pattern === trigger.pattern
+      && normalizeWhitespace(item.description).toLowerCase() === normalizedName
     ));
     if (duplicate) {
-      diagnostics.push('Pattern conflicts with another trigger in this scope.');
+      diagnostics.push('Name conflicts with another trigger in this scope.');
     }
 
     const compiled = compilePattern(trigger.pattern, {

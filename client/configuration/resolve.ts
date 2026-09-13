@@ -192,12 +192,20 @@ function resolveKind<TDefinition>(
   });
 
   for (const layer of layers) {
+    const keysSeenInLayer = new Set<string>();
     for (const definition of layer.definitions) {
       const key = identityKeyForDefinition(kind, definition);
       const effective: EffectiveDefinition<TDefinition> = {
         definition: cloneDefinition(definition),
         source: { ...layer.source },
       };
+
+      // Keep invalid legacy trigger Name duplicates from the same owner editable by ID.
+      if (kind === "triggers" && keysSeenInLayer.has(key)) {
+        entries.push(effective);
+        continue;
+      }
+      keysSeenInLayer.add(key);
 
       const existingIndex = indexByKey.get(key);
       if (existingIndex === undefined) {

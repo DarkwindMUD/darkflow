@@ -132,8 +132,9 @@ two things were wrong, neither of them in the angler itself:
   cast meter, catch and tension meters, and the fish and bar markers were
   positioned with `width`, `height`, and `bottom`, forcing a layout on
   every frame of a cast, bite, and fight: 12,510 layouts in a minute.
-  They now use `scaleX`, `scaleY`, and `translateY` in container-height
-  units (`cqh`) on a size-contained track; the same minute lays out 113
+  They now use `scaleX`, `scaleY`, and `translateY` (upstream landed the
+  same change in 2.0.0-spoob.6: the fish and bar are full-height layers
+  translated by a percentage of the track); the same minute lays out 113
   times. The fight snapshot is raw state and the `aria-valuenow` values
   are rounded so attribute writes happen when a whole number changes.
 

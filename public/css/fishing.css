@@ -202,6 +202,9 @@
   height: 100%;
   width: 100%;
   background: var(--df-warn, #ffb300);
+  transform: scaleX(1);
+  transform-origin: left center;
+  will-change: transform;
 }
 
 /* Bite reaction window */
@@ -359,27 +362,44 @@
 
 .fishing-bar {
   position: absolute;
+  top: 0;
+  bottom: 0;
   left: 4px;
   right: 4px;
-  height: 20%;
+  pointer-events: none;
+  will-change: transform;
+}
+.fishing-bar::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--fishing-bar-size, 20%);
+  box-sizing: border-box;
+  transform: translateY(-50%);
   border-radius: 6px;
   background: color-mix(in srgb, var(--df-ok, #4caf50) 45%, transparent);
   border: 1px solid var(--df-ok, #4caf50);
-  will-change: transform;
 }
 
 .fishing-fish {
   position: absolute;
+  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
   display: flex;
+  align-items: flex-start;
   justify-content: center;
   color: var(--df-text);
+  pointer-events: none;
   will-change: transform;
 }
 .fishing-fish img {
   width: 42px;
   height: 27px;
+  transform: translateY(-50%);
 }
 .fish-running .fishing-fish img {
   filter: drop-shadow(0 0 6px var(--df-warn, #ffb300));
@@ -417,9 +437,12 @@
 }
 .fishing-meter-fill {
   height: 100%;
-  width: 0%;
+  width: 100%;
   background: var(--df-accent);
+  transform: scaleX(0);
+  transform-origin: left center;
   transition: none;
+  will-change: transform;
 }
 .fishing-progress .fishing-meter-fill { background: var(--df-ok, #4caf50); }
 .fishing-tension .fishing-meter-fill { background: var(--df-accent); }
@@ -535,8 +558,11 @@
 }
 .fishing-power-fill {
   width: 100%;
-  height: 0%;
+  height: 100%;
   background: var(--df-accent);
+  transform: scaleY(0);
+  transform-origin: center bottom;
+  will-change: transform;
 }
 .fishing-power-fill.hot { background: var(--df-warn, #ffb300); }
 .fishing-cast-btn {

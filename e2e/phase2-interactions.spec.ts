@@ -544,6 +544,91 @@ test("fishing casts, hooks, renders catches and late art, cancels, and keeps End
   await expect(panel).toHaveCount(0);
 });
 
+test("fishing animation stays off the layout path", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "chromium", "Chromium performance metrics only");
+
+  const endpoint = await connect(page);
+  const session = "fish-layout";
+  endpoint.sendGmcp("Darkwind.Fishing.Open", {
+    session,
+    terrain: "lake",
+    skill: 250,
+    poleTier: 1,
+    baitTier: 2,
+    baited: 1,
+    sceneArtUrl: 0,
+  });
+
+  const panel = page.locator('.fishing-body[data-panel-id="fishing"]');
+  const powerFill = panel.locator(".fishing-power-fill");
+  await expect(powerFill).toHaveCount(1);
+  expect(await powerFill.evaluate((element) => element.style.height)).toBe("");
+  expect(await powerFill.evaluate((element) => element.style.transform)).toMatch(/^scaleY\(/);
+
+  await page.waitForTimeout(250);
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Performance.enable");
+  const idleBefore = await cdp.send("Performance.getMetrics");
+  await page.waitForTimeout(1_000);
+  const idleAfter = await cdp.send("Performance.getMetrics");
+  const metric = (metrics: typeof idleBefore, name: string) =>
+    metrics.metrics.find((entry) => entry.name === name)?.value ?? 0;
+  const idleLayouts = metric(idleAfter, "LayoutCount") - metric(idleBefore, "LayoutCount");
+
+  endpoint.sendGmcp("Darkwind.Fishing.Bite", { session, windowMs: 10_000, tease: "large" });
+  const biteFill = panel.locator(".fishing-bitebar-fill");
+  await expect(biteFill).toBeVisible();
+  expect(await biteFill.evaluate((element) => element.style.width)).toBe("");
+  expect(await biteFill.evaluate((element) => element.style.transform)).toMatch(/^scaleX\(/);
+
+  endpoint.sendGmcp("Darkwind.Fishing.Fight", {
+    session,
+    seed: 7,
+    params: {
+      strength: 0,
+      erratic: 0,
+      stamina: 100,
+      barSize: 20,
+      progressRate: 0,
+      drainRate: 0,
+      tensionRise: 0,
+      tensionDecay: 0,
+      minFightMs: 60_000,
+    },
+    fish: { tease: "large", rarityHint: "Common", artUrl: 0 },
+  });
+
+  const animated = panel.locator(
+    ".fishing-fish, .fishing-bar, .fishing-progress .fishing-meter-fill, .fishing-tension .fishing-meter-fill",
+  );
+  await expect(animated).toHaveCount(4);
+  expect(
+    await animated.evaluateAll((elements) =>
+      elements.map((element) => ({
+        bottom: element.style.bottom,
+        height: element.style.height,
+        width: element.style.width,
+        transform: element.style.transform,
+      })),
+    ),
+  ).toEqual([
+    { bottom: "", height: "", width: "", transform: expect.stringMatching(/^translateY\(/) },
+    { bottom: "", height: "", width: "", transform: expect.stringMatching(/^translateY\(/) },
+    { bottom: "", height: "", width: "", transform: expect.stringMatching(/^scaleX\(/) },
+    { bottom: "", height: "", width: "", transform: expect.stringMatching(/^scaleX\(/) },
+  ]);
+
+  await page.waitForTimeout(250);
+  const before = await cdp.send("Performance.getMetrics");
+  await page.waitForTimeout(1_000);
+  const after = await cdp.send("Performance.getMetrics");
+  const fightLayouts = metric(after, "LayoutCount") - metric(before, "LayoutCount");
+  expect(fightLayouts).toBeLessThanOrEqual(idleLayouts + 1);
+
+  endpoint.sendGmcp("Darkwind.Fishing.Escaped", { session, reason: "timeout" });
+  await expect(panel).toContainText("Too slow");
+});
+
 test("disconnect clears transient interaction surfaces", async ({ page }) => {
   const endpoint = await connect(page);
   endpoint.sendGmcp("Darkwind.Snoop.Open", {

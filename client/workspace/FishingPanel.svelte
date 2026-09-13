@@ -411,7 +411,7 @@
         aria-valuemin="0"
         aria-valuemax="100"
       >
-        <div class="fishing-bitebar-fill" style:width={`${bitePercent}%`}></div>
+        <div class="fishing-bitebar-fill" style:transform={`scaleX(${bitePercent / 100})`}></div>
       </div>
       <div class="fishing-bitehelp">
         <div class="fishing-bitehelp-kicker">Bite</div>
@@ -439,18 +439,13 @@
     {:else if phase === "fight" && fightState && fishing.fight}
       <div class="fishing-fightview">
         <div class="fishing-track">
-          <div
-            class="fishing-fish"
-            style:bottom={`${fightState.fishPos}%`}
-            style:transform="translateY(50%)"
-          >
+          <div class="fishing-fish" style:transform={`translateY(${100 - fightState.fishPos}%)`}>
             <img src={fightArt} alt="" draggable="false" />
           </div>
           <div
             class="fishing-bar"
-            style:bottom={`${fightState.barPos}%`}
-            style:height={`${fishing.fight.params.barSize}%`}
-            style:transform="translateY(50%)"
+            style:--fishing-bar-size={`${fishing.fight.params.barSize}%`}
+            style:transform={`translateY(${100 - fightState.barPos}%)`}
           ></div>
         </div>
         <div class="fishing-meters">
@@ -462,7 +457,10 @@
             aria-valuemin="0"
             aria-valuemax="100"
           >
-            <div class="fishing-meter-fill" style:width={`${fightState.progress}%`}></div>
+            <div
+              class="fishing-meter-fill"
+              style:transform={`scaleX(${fightState.progress / 100})`}
+            ></div>
             <span>Catch</span>
           </div>
           <div
@@ -477,7 +475,7 @@
               class:warn={fightState.tension > 60}
               class:hot={fightState.tension > 85}
               class="fishing-meter-fill"
-              style:width={`${fightState.tension}%`}
+              style:transform={`scaleX(${fightState.tension / 100})`}
             ></div>
             <span>Tension</span>
           </div>
@@ -541,7 +539,7 @@
           <div
             class:hot={castPower > 70}
             class="fishing-power-fill"
-            style:height={`${castPower}%`}
+            style:transform={`scaleY(${castPower / 100})`}
           ></div>
         </div>
         <button

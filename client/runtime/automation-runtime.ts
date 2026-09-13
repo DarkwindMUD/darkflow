@@ -133,17 +133,21 @@ export function createAutomationRuntimeState(
 ): AutomationRuntimeState {
   const userVariables = new Map(Object.entries(initialVariables));
   const gmcpVariables = new Map<string, string>();
-  // Frames waiting to be flattened, latest payload per package. Variables are
-  // read when an alias, trigger, or function runs and when the settings
-  // dialog lists them; between reads a busy fight can deliver hundreds of
-  // frames whose flattening nobody would have seen. Every frame also arrives
-  // here twice (the session's own handler and the legacy compat bridge), and
-  // keying by package collapses that duplicate to one entry.
-  const pendingGmcpFrames = new Map<string, { name: string; data: unknown }>();
+  // Frames waiting to be flattened, in arrival order. Variables are read
+  // when an alias, trigger, or function runs and when the settings dialog
+  // lists them; between reads a busy fight can deliver hundreds of frames
+  // whose flattening nobody would have seen. Every frame also arrives here
+  // twice (the session's own handler and the legacy compat bridge) with the
+  // same payload object, and that repeat collapses to one entry. Partial
+  // frames for one package are all kept, since each may carry keys the
+  // others do not, so a read sees exactly what eager flattening produced.
+  // The queue drains itself past a cap so an unread stretch cannot grow it
+  // without bound.
+  const PENDING_GMCP_FRAME_LIMIT = 256;
+  const pendingGmcpFrames: Array<{ name: string; data: unknown }> = [];
   const drainGmcpFrames = (): void => {
-    if (!pendingGmcpFrames.size) return;
-    const frames = Array.from(pendingGmcpFrames.values());
-    pendingGmcpFrames.clear();
+    if (!pendingGmcpFrames.length) return;
+    const frames = pendingGmcpFrames.splice(0);
     for (const frame of frames) flattenValue(gmcpVariables, frame.name, frame.data);
   };
   const timerRegistry = new Map<string, TimerRegistryEntry>();
@@ -227,13 +231,15 @@ export function createAutomationRuntimeState(
 
       if (!packageParts.length) return;
       const name = variableNameFor(packageParts);
-      // Re-insert so drain order follows the latest arrival of each package.
-      pendingGmcpFrames.delete(name);
-      pendingGmcpFrames.set(name, { name, data: data === undefined ? "" : data });
+      const payload = data === undefined ? "" : data;
+      const last = pendingGmcpFrames[pendingGmcpFrames.length - 1];
+      if (last && last.name === name && last.data === payload) return;
+      pendingGmcpFrames.push({ name, data: payload });
+      if (pendingGmcpFrames.length >= PENDING_GMCP_FRAME_LIMIT) drainGmcpFrames();
     },
 
     resetGmcpVariables(): void {
-      pendingGmcpFrames.clear();
+      pendingGmcpFrames.length = 0;
       gmcpVariables.clear();
     },
 

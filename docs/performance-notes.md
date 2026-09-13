@@ -71,12 +71,14 @@ different module instances, because imports from TypeScript get a `?import`
 copy while the legacy graph loads the plain URL, so the legacy copy flattened
 into a map only it could see.
 
-Both flatteners now queue the latest payload per package and flatten when
-the variables are read: when an alias, trigger, or function expands, or the
-settings dialog lists them. Duplicate deliveries of one frame collapse to a
+Both flatteners now queue frames in arrival order and flatten when the
+variables are read: when an alias, trigger, or function expands, or the
+settings dialog lists them. A repeat delivery of one payload collapses to a
 single queue entry, a fight's worth of frames nobody read costs nothing, and
-the wiring is unchanged. The one semantic difference: if a package arrives
-twice before a read, keys present only in the older payload are not kept.
+the wiring is unchanged. Partial frames for one package are all kept, since
+each may carry keys the others do not, so a read sees exactly what eager
+flattening produced. The queue drains itself at 256 entries, so an unread
+stretch cannot grow it without bound.
 
 ## The Scene and tab drift
 
@@ -108,6 +110,7 @@ square PNGs of about 2.7 MB, and the first composition of a new painting
 was the one long task (about 76 ms) in the run. Decoding is already
 off-thread; the remaining option is to downscale off-thread as well with
 `createImageBitmap` and its resize options before the first draw.
+
 ## The Auto-Angler and Connection Health
 
 Running the Auto-Angler lit up all three Connection Health axes at once.
@@ -139,6 +142,7 @@ human-shaped delays, and its steering costs a fraction of a millisecond
 per frame. What remains while it runs is the panel's CSS animation paint
 (the water strip animates `background-position`; two pulses animate
 `border-color` and `box-shadow`), which is bounded to those elements.
+
 ## Still open
 
 - `Char.Vitals` fans out to every information panel, the combat, audio,

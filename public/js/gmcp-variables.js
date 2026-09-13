@@ -8,13 +8,15 @@ import {
 
 const GMCP_VARIABLE_PREFIX = 'gmcp';
 const runtimeVariables = {};
-// Frames not yet flattened, latest payload per package; flattened on read.
-const pendingFrames = new Map();
+// Frames not yet flattened, in arrival order; flattened on read. A repeat
+// delivery of the same payload collapses to one entry, partial frames for one
+// package are all kept, and the queue drains itself past a cap.
+const PENDING_FRAME_LIMIT = 256;
+const pendingFrames = [];
 
 function drainPendingFrames() {
-  if (!pendingFrames.size) return;
-  const frames = Array.from(pendingFrames.values());
-  pendingFrames.clear();
+  if (!pendingFrames.length) return;
+  const frames = pendingFrames.splice(0);
   for (const frame of frames) flattenValue(frame.name, frame.data);
 }
 
@@ -103,8 +105,12 @@ export function registerGmcpVariables(packageName, data) {
 
     if (!packageParts.length) return;
     const name = variableNameFor(packageParts);
-    pendingFrames.delete(name);
-    pendingFrames.set(name, { name, data: data === undefined ? '' : data });
+    const payload = data === undefined ? '' : data;
+    const last = pendingFrames[pendingFrames.length - 1];
+    if (!last || last.name !== name || last.data !== payload) {
+      pendingFrames.push({ name, data: payload });
+      if (pendingFrames.length >= PENDING_FRAME_LIMIT) drainPendingFrames();
+    }
   }
 
   dispatchGmcpVariablesChanged({ packageName });
@@ -114,7 +120,7 @@ export function resetGmcpVariables() {
   if (isAutomationCompatActive()) {
     bridgeResetGmcpVariables();
   } else {
-    pendingFrames.clear();
+    pendingFrames.length = 0;
     Object.keys(runtimeVariables).forEach((key) => {
       delete runtimeVariables[key];
     });

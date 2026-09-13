@@ -264,11 +264,9 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   if ((page.viewportSize()?.width ?? 0) > 700) {
     await expect(output).toBeVisible();
     await expect(commandInput).toBeVisible();
-    const combatFrame = page
-      .locator('[data-floating-drag-handle][data-panel-id="enemy"]')
-      .locator("..");
-    await expect(combatFrame).toBeVisible();
-    await expect.poll(() => combatFrame.boundingBox()).toMatchObject({ width: 580, height: 465 });
+    // The Scene docks in the grid beside the terminal rather than floating
+    // over it, so the terminal keeps its place while a fight is on.
+    await expect(page.locator('[data-floating-drag-handle][data-panel-id="enemy"]')).toHaveCount(0);
   }
   await expect
     .poll(() =>

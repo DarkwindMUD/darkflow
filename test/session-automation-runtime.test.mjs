@@ -327,6 +327,13 @@ test("GMCP variable naming matches between bridge-active and fallback paths", as
 
   automationCompat.setGmcpVariable("Char.Vitals", { hp: 42, opponent: { name: "target" } });
   assert.deepEqual(automationCompat.getGmcpVariables(), fallbackVariables);
+
+  // Partial frames for one package all land, however many arrive before a read.
+  runtime.resetGmcpVariables();
+  for (let index = 0; index < 600; index++) {
+    runtime.setGmcpVariable("Test", { ["item" + index]: index });
+  }
+  assert.equal(Object.keys(runtime.getGmcpVariables()).length, 601);
 });
 
 test("bridge-active user variables stay in memory and never touch alias storage", () => {

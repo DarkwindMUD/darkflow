@@ -100,20 +100,28 @@ test('saved automation variables override matching GMCP variable names', () => {
   assert.equal(aliasManager.getAutomationVariables(scopeKey).gmcp_char_vitals_hp, 'manual');
 });
 
-test('GMCP frames are flattened on read, latest payload per package, and stay cumulative across reads', () => {
+test('GMCP frames are flattened on read, in arrival order, and stay cumulative across reads', () => {
   resetGmcpVariables();
   registerGmcpVariables('Char.Vitals', { hp: 10, stale: 1 });
   registerGmcpVariables('Char.Vitals', { hp: 20 });
   registerGmcpVariables('Room.Info', { num: 7 });
   const first = getGmcpVariables();
   assert.equal(first.gmcp_char_vitals_hp, '20', 'the newer payload wins before the first read');
-  assert.equal(first.gmcp_char_vitals_stale, undefined, 'keys only in an older unread payload are not kept');
+  assert.equal(first.gmcp_char_vitals_stale, '1', 'keys carried only by an earlier unread payload are kept');
   assert.equal(first.gmcp_room_info_num, '7');
   registerGmcpVariables('Char.Vitals', { sp: 5 });
   const second = getGmcpVariables();
   assert.equal(second.gmcp_char_vitals_hp, '20', 'variables flattened by an earlier read survive later frames');
   assert.equal(second.gmcp_char_vitals_sp, '5');
   assert.deepEqual(listGmcpVariables().map((entry) => entry.name).slice(0, 2), ['gmcp_char_vitals', 'gmcp_char_vitals_hp']);
+  const shared = { hp: 30 };
+  registerGmcpVariables('Char.Vitals', shared);
+  registerGmcpVariables('Char.Vitals', shared);
+  assert.equal(getGmcpVariables().gmcp_char_vitals_hp, '30', 'a repeat delivery of one payload is harmless');
+  resetGmcpVariables();
+  // Far more partial frames for one package than the drain cap, none read in between.
+  for (let index = 0; index < 1000; index++) registerGmcpVariables('Test', { ['item' + index]: index });
+  assert.equal(Object.keys(getGmcpVariables()).length, 1001, 'every partial frame lands');
   resetGmcpVariables();
   assert.deepEqual(getGmcpVariables(), {}, 'reset drops queued frames too');
 });

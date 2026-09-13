@@ -259,6 +259,42 @@ test("Phase 2 reports automatic and fixed terminal geometry through NAWS", async
   });
 });
 
+test("Phase 2 coalesces terminal geometry while resizing a docked map", async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name === "mobile-chromium", "desktop Dockview sizing only");
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  await page.getByRole("button", { name: "Panels", exact: true }).click();
+  await page.getByRole("checkbox", { name: "Map", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator('.map-panel[data-panel-id="map"]')).toBeVisible();
+  await page.waitForTimeout(250);
+
+  const beforeResize = endpoint.gmcpMessages.filter((message) =>
+    message.startsWith("Darkwind.Client.NAWS "),
+  ).length;
+  const sash = page
+    .locator(
+      ".dv-dockview .dv-split-view-container.dv-horizontal > .dv-sash-container > .dv-sash.dv-enabled",
+    )
+    .first();
+  const bounds = await sash.boundingBox();
+  expect(bounds).not.toBeNull();
+  await page.mouse.move(bounds!.x + bounds!.width / 2, bounds!.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(bounds!.x + 120, bounds!.y + 20, { steps: 12 });
+  await page.mouse.up();
+
+  await expect
+    .poll(
+      () =>
+        endpoint.gmcpMessages.filter((message) => message.startsWith("Darkwind.Client.NAWS "))
+          .length,
+    )
+    .toBe(beforeResize + 1);
+});
+
 async function installAutomationDefinitions(page: Page): Promise<void> {
   await page.goto("/phase2/");
   await expect

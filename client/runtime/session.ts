@@ -35,6 +35,8 @@ import type { TimerControlResult } from "../terminal/automation";
 import type { SessionGmcpDiagnostics } from "./gmcp-diagnostics";
 import type { TimerControlMode } from "../model/configuration";
 
+const TERMINAL_GEOMETRY_SETTLE_MS = 100;
+
 /** Read model exposing login state and effective configuration for tests and facades. */
 export interface SessionRuntimeSnapshot {
   isLoggedIntoCharacter: boolean;
@@ -189,6 +191,7 @@ export function createSession(parts: SessionParts): Session {
   let terminalProcessing: TerminalProcessing | null = null;
   let terminalProcessingPromise: Promise<void> | null = null;
   let terminalGeometry: { width: number; height: number } | null = null;
+  let cancelTerminalGeometrySend: (() => void) | undefined;
   const completionListeners = new Set<(result: CompletionResult) => void>();
 
   const completionHandler = (result: CompletionResult): void => {
@@ -240,6 +243,8 @@ export function createSession(parts: SessionParts): Session {
   });
 
   function sendConnectHandshake(reason: "login" | "reconnect"): void {
+    cancelTerminalGeometrySend?.();
+    cancelTerminalGeometrySend = undefined;
     gmcp.sendHandshake({ ...getClientInfo(), ...terminalGeometry });
     if (terminalGeometry) gmcp.sendTerminalGeometry(terminalGeometry);
     gmcp.sendSubscriptions({ reason, full: true });
@@ -247,6 +252,8 @@ export function createSession(parts: SessionParts): Session {
   }
 
   function sendHandshakeGuardResend(): void {
+    cancelTerminalGeometrySend?.();
+    cancelTerminalGeometrySend = undefined;
     gmcp.sendHandshake({ ...getClientInfo(), ...terminalGeometry });
     if (terminalGeometry) gmcp.sendTerminalGeometry(terminalGeometry);
     gmcp.sendSubscriptions({ full: true });
@@ -259,6 +266,8 @@ export function createSession(parts: SessionParts): Session {
       const payload = event.payload as TransportReconnectStatusPayload;
       reconnect = { ...payload };
       if (payload.status !== "connected") {
+        cancelTerminalGeometrySend?.();
+        cancelTerminalGeometrySend = undefined;
         automationRuntime.resetGmcpVariables();
         return;
       }
@@ -378,7 +387,14 @@ export function createSession(parts: SessionParts): Session {
       )
         return;
       terminalGeometry = { width, height };
-      if (transport.state === "connected") gmcp.sendTerminalGeometry(terminalGeometry);
+      if (transport.state !== "connected") return;
+      cancelTerminalGeometrySend?.();
+      cancelTerminalGeometrySend = scope.setTimeout(() => {
+        cancelTerminalGeometrySend = undefined;
+        if (transport.state === "connected" && terminalGeometry) {
+          gmcp.sendTerminalGeometry(terminalGeometry);
+        }
+      }, TERMINAL_GEOMETRY_SETTLE_MS);
     },
   };
 

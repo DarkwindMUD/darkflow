@@ -957,7 +957,7 @@ test("connect sends handshake packages with login then reconnect reason", async 
   assert.equal(packages[2]?.data?.reason, "reconnect");
 });
 
-test("terminal geometry updates NAWS immediately and is reused by reconnect handshakes", async (t) => {
+test("terminal geometry coalesces resize bursts and is reused by reconnect handshakes", async (t) => {
   const modules = await loadSessionRuntimeModules(t);
   t.mock.timers.enable({ apis: ["setTimeout", "setInterval", "Date"], now: 0 });
   FakeWebSocket.reset();
@@ -973,16 +973,27 @@ test("terminal geometry updates NAWS immediately and is reused by reconnect hand
 
   socket.clearSent();
   harness.session.terminal.updateGeometry(101, 31);
+  harness.session.terminal.updateGeometry(102, 32);
+  harness.session.terminal.updateGeometry(103, 33);
   packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
-  assert.deepEqual(packages, [{ packageName: "Darkwind.Client.NAWS", data: { width: 101, height: 31 } }]);
+  assert.deepEqual(packages, []);
+  harness.advance(99);
+  packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.equal(packages.some((item) => item.packageName === "Darkwind.Client.NAWS"), false);
+  harness.advance(1);
+  packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(
+    packages.filter((item) => item.packageName === "Darkwind.Client.NAWS"),
+    [{ packageName: "Darkwind.Client.NAWS", data: { width: 103, height: 33 } }],
+  );
 
   socket.close(1006, "lost");
   harness.advance(1000);
   const reconnectSocket = harness.latestSocket();
   reconnectSocket?.open();
   packages = decodeSentGmcpPackages(reconnectSocket.sentPayloads(), modules.decodeGmcpWireFrame);
-  assert.deepEqual(packages[0]?.data, { client: "Darkflow", version: "test", width: 101, height: 31 });
-  assert.deepEqual(packages.find((item) => item.packageName === "Darkwind.Client.NAWS")?.data, { width: 101, height: 31 });
+  assert.deepEqual(packages[0]?.data, { client: "Darkflow", version: "test", width: 103, height: 33 });
+  assert.deepEqual(packages.find((item) => item.packageName === "Darkwind.Client.NAWS")?.data, { width: 103, height: 33 });
 });
 
 test("handshake guard resends handshake packages", async (t) => {

@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
 
 let fixtures: TransportFixtureOwner;
@@ -2801,9 +2801,61 @@ test("Phase 2 aliases restore legacy discovery, authoring, and safe preview", as
   );
 });
 
-test("Phase 2 compact Trigger steps keep headers, payloads, and controls reachable", async ({
+test("Phase 2 compact Alias and Trigger steps keep headers, payloads, and controls reachable", async ({
   page,
 }) => {
+  async function expectCompactSendStep(editor: Locator): Promise<void> {
+    const firstStep = editor.getByRole("region", { name: "Automation step 1" });
+    const header = firstStep.locator(".compact-step-header");
+    const payload = firstStep.locator(".compact-step-payload");
+
+    await expect(header).toHaveCount(1);
+    await expect(payload).toHaveCount(1);
+    await expect(firstStep.getByRole("button", { name: "Move step up" })).toBeDisabled();
+    await expect(firstStep.getByRole("button", { name: "Remove step" })).toBeEnabled();
+    await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveText("Up");
+    await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveText("Dn");
+    await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveText("X");
+
+    if (page.viewportSize()!.width > 390) {
+      const [headerBox, payloadBox, typeBox, actionsBox, templateLabelBox, templateBox] =
+        await Promise.all([
+          header.boundingBox(),
+          payload.boundingBox(),
+          firstStep.getByLabel("Step type").boundingBox(),
+          firstStep.locator(".step-actions").boundingBox(),
+          firstStep.locator(".compact-step-payload > label").first().boundingBox(),
+          firstStep.getByLabel("Template", { exact: true }).boundingBox(),
+        ]);
+      expect(headerBox).not.toBeNull();
+      expect(payloadBox).not.toBeNull();
+      expect(typeBox).not.toBeNull();
+      expect(actionsBox).not.toBeNull();
+      expect(templateLabelBox).not.toBeNull();
+      expect(templateBox).not.toBeNull();
+      expect(typeBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+      expect(typeBox!.y + typeBox!.height).toBeLessThanOrEqual(
+        headerBox!.y + headerBox!.height + 2,
+      );
+      expect(actionsBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
+      expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(
+        headerBox!.y + headerBox!.height + 2,
+      );
+      expect(payloadBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
+      expect(templateLabelBox!.y).toBeCloseTo(templateBox!.y, 0);
+      expect(templateLabelBox!.height).toBeCloseTo(templateBox!.height, 0);
+    }
+
+    expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(
+      true,
+    );
+    expect(
+      await editor
+        .locator('[aria-label^="Automation step "]')
+        .evaluateAll((steps) => steps.every((step) => step.scrollWidth <= step.clientWidth)),
+    ).toBe(true);
+  }
+
   await installAutomationDefinitions(page);
   await page.evaluate(() => {
     const key = "darkflow-session-core-v1";
@@ -2844,50 +2896,17 @@ test("Phase 2 compact Trigger steps keep headers, payloads, and controls reachab
   const triggers = await settingsGroup(settingsDialog(page), "Triggers", "Triggers");
   await triggers.getByRole("button", { name: "Edit Compact layout" }).click();
   const editor = triggers.getByRole("region", { name: "Edit triggers" });
-  const firstStep = editor.getByRole("region", { name: "Automation step 1" });
-  const header = firstStep.locator(".trigger-step-header");
-  const payload = firstStep.locator(".trigger-step-payload");
-
-  await expect(header).toHaveCount(1);
-  await expect(payload).toHaveCount(1);
-  await expect(firstStep.getByRole("button", { name: "Move step up" })).toBeDisabled();
-  await expect(firstStep.getByRole("button", { name: "Move step down" })).toBeEnabled();
-  await expect(firstStep.getByRole("button", { name: "Remove step" })).toBeEnabled();
-  await expect(firstStep.getByRole("button", { name: "Move step up" })).toHaveText("Up");
-  await expect(firstStep.getByRole("button", { name: "Move step down" })).toHaveText("Dn");
-  await expect(firstStep.getByRole("button", { name: "Remove step" })).toHaveText("X");
+  await expectCompactSendStep(editor);
+  await expect(
+    editor
+      .getByRole("region", { name: "Automation step 1" })
+      .getByRole("button", { name: "Move step down" }),
+  ).toBeEnabled();
   await expect(
     editor
       .getByRole("region", { name: "Automation step 7" })
       .getByRole("button", { name: "Move step down" }),
   ).toBeDisabled();
-
-  if (page.viewportSize()!.width > 390) {
-    const [headerBox, payloadBox, typeBox, actionsBox, templateLabelBox, templateBox] =
-      await Promise.all([
-        header.boundingBox(),
-        payload.boundingBox(),
-        firstStep.getByLabel("Step type").boundingBox(),
-        firstStep.locator(".step-actions").boundingBox(),
-        firstStep.locator(".trigger-step-payload > label").first().boundingBox(),
-        firstStep.getByLabel("Template", { exact: true }).boundingBox(),
-      ]);
-    expect(headerBox).not.toBeNull();
-    expect(payloadBox).not.toBeNull();
-    expect(typeBox).not.toBeNull();
-    expect(actionsBox).not.toBeNull();
-    expect(templateLabelBox).not.toBeNull();
-    expect(templateBox).not.toBeNull();
-    expect(typeBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
-    expect(typeBox!.y + typeBox!.height).toBeLessThanOrEqual(headerBox!.y + headerBox!.height + 2);
-    expect(actionsBox!.y).toBeGreaterThanOrEqual(headerBox!.y - 2);
-    expect(actionsBox!.y + actionsBox!.height).toBeLessThanOrEqual(
-      headerBox!.y + headerBox!.height + 2,
-    );
-    expect(payloadBox!.y).toBeGreaterThanOrEqual(headerBox!.y + headerBox!.height - 2);
-    expect(templateLabelBox!.y).toBeCloseTo(templateBox!.y, 0);
-    expect(templateLabelBox!.height).toBeCloseTo(templateBox!.height, 0);
-  }
 
   await expect(
     editor
@@ -2899,12 +2918,13 @@ test("Phase 2 compact Trigger steps keep headers, payloads, and controls reachab
       .getByRole("region", { name: "Automation step 7" })
       .getByRole("button", { name: "Test Sound" }),
   ).toBeVisible();
-  expect(await editor.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
-  expect(
-    await editor
-      .locator('[aria-label^="Automation step "]')
-      .evaluateAll((steps) => steps.every((step) => step.scrollWidth <= step.clientWidth)),
-  ).toBe(true);
+
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  const aliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
+  await aliases.getByRole("button", { name: "Edit quick" }).click();
+  const aliasEditor = aliases.getByRole("region", { name: "Edit aliases" });
+  await expectCompactSendStep(aliasEditor);
+  await expect(aliasEditor.getByText(/Simple aliases match command words/)).toHaveCount(1);
 });
 
 test("Phase 2 triggers restore legacy discovery, authoring, and safe preview", async ({ page }) => {

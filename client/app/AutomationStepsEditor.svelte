@@ -25,6 +25,7 @@
     testSound?: (category: string, sound: string, volume: number) => boolean;
   } = $props();
   let addType = $state<AutomationStep["type"]>("send_command");
+  let compactMode = $derived(!timerMode);
 
   const stepTypes: Array<{ value: AutomationStep["type"]; label: string }> = [
     { value: "send_command", label: "Send command" },
@@ -142,12 +143,12 @@
 <fieldset>
   <legend>Steps</legend>
   {#each steps as step, index (index)}
-    <section aria-label={`Automation step ${index + 1}`} class:trigger-step={triggerMode}>
-      {#if triggerMode}
-        <div class="trigger-step-header">
+    <section aria-label={`Automation step ${index + 1}`} class:compact-step={compactMode}>
+      {#if compactMode}
+        <div class="compact-step-header">
           <span class="step-index">{index + 1}</span>
           <label>
-            <span class:sr-only={triggerMode}>Step type</span>
+            <span class="sr-only">Step type</span>
             <select
               value={step.type}
               onchange={(event) =>
@@ -163,17 +164,15 @@
               type="button"
               aria-label="Move step up"
               disabled={index === 0}
-              onclick={() => move(index, -1)}>{triggerMode ? "Up" : "Move step up"}</button
+              onclick={() => move(index, -1)}>Up</button
             >
             <button
               type="button"
               aria-label="Move step down"
               disabled={index === steps.length - 1}
-              onclick={() => move(index, 1)}>{triggerMode ? "Dn" : "Move step down"}</button
+              onclick={() => move(index, 1)}>Dn</button
             >
-            <button type="button" aria-label="Remove step" onclick={() => remove(index)}
-              >{triggerMode ? "X" : "Remove step"}</button
-            >
+            <button type="button" aria-label="Remove step" onclick={() => remove(index)}>X</button>
           </div>
         </div>
       {:else}
@@ -191,7 +190,7 @@
         </label>
       {/if}
 
-      <div class="step-payload" class:trigger-step-payload={triggerMode}>
+      <div class="step-payload" class:compact-step-payload={compactMode}>
         {#if step.type === "send_command" || step.type === "show_message"}
           <label>Template <textarea bind:value={step.template} required></textarea></label>
         {:else if step.type === "run_alias" && (triggerMode || timerMode)}
@@ -336,7 +335,7 @@
           <label>Template <textarea bind:value={step.template}></textarea></label>
         {/if}
       </div>
-      {#if !triggerMode}
+      {#if !compactMode}
         <div class="step-actions">
           <button type="button" disabled={index === 0} onclick={() => move(index, -1)}
             >Move step up</button
@@ -407,11 +406,11 @@
     display: contents;
   }
 
-  .trigger-step {
+  .compact-step {
     padding: 0.5rem;
   }
 
-  .trigger-step-header {
+  .compact-step-header {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
@@ -425,18 +424,18 @@
     text-align: right;
   }
 
-  .trigger-step-header .step-actions {
+  .compact-step-header .step-actions {
     margin-left: auto;
   }
 
-  .trigger-step-payload {
+  .compact-step-payload {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
     min-width: 0;
   }
 
-  .trigger-step-payload > label {
+  .compact-step-payload > label {
     display: flex;
     align-items: center;
     flex: 1 1 12rem;
@@ -444,12 +443,12 @@
     gap: 0.5rem;
   }
 
-  .trigger-step-payload > label > :is(input, select, textarea) {
+  .compact-step-payload > label > :is(input, select, textarea) {
     flex: 1 1 auto;
     min-width: 0;
   }
 
-  .trigger-step-payload > button {
+  .compact-step-payload > button {
     flex: 0 1 auto;
   }
 

@@ -273,6 +273,11 @@ test("map and room image reset across reconnect and remount after session dispos
       .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
       .at(-1),
   ).toContain('"roomImage":true');
+  expect(
+    endpoint.gmcpMessages
+      .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+      .at(-1),
+  ).toContain('"channelTerminalSuppression":false');
   await expect
     .poll(
       () =>
@@ -298,6 +303,11 @@ test("map and room image reset across reconnect and remount after session dispos
       .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
       .at(-1),
   ).toContain('"roomImage":true');
+  expect(
+    endpoint.gmcpMessages
+      .filter((message) => message.startsWith("Darkwind.Client.Subscriptions "))
+      .at(-1),
+  ).toContain('"channelTerminalSuppression":false');
   expect(endpoint.gmcpMessages).toContain("Darkwind.Client.RefreshMedia");
   endpoint.sendGmcp("Darkwind.MapData2.Current", currentRoom(101, "Atrium", 0));
   endpoint.sendGmcp("Room.Info", { num: 101, name: "Atrium", exits: {} });

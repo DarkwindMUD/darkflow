@@ -224,6 +224,7 @@ export function normalizeSubscriptionPayload(
     panels: payload.panels && typeof payload.panels === "object" ? { ...payload.panels } : {},
     features: {
       announcementsBadge: true,
+      channelTerminalSuppression: false,
       enemyAutoOpen: true,
       combatPane: false,
       visualEffects: false,
@@ -378,7 +379,6 @@ class SessionGmcpBusImpl implements SessionGmcpBus {
 
   sendSubscriptions(payload: Partial<GmcpSubscriptionPayload> = {}): boolean {
     const subscriptions = normalizeSubscriptionPayload({
-      ...this.#subscriptions,
       ...payload,
       panels: {
         ...this.#subscriptions.panels,

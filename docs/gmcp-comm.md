@@ -4,6 +4,12 @@ Darkflow advertises `Comm 1` and `Comm.Channel 1`. The package supplies the
 Chat panel, desktop mention notifications, channel filters, and the player
 roster used by the mention picker.
 
+`Darkwind.Client.Subscriptions.features.channelTerminalSuppression` mirrors the
+server-owned terminal-channel setting: `true` requests eligible messages only in
+Chat, while `false` keeps terminal copies. Full/login/reconnect frames receive
+the current server value; only the Settings action writes it. Missing legacy
+clients retain terminal text.
+
 ## Messages
 
 | Message                | Direction        | Purpose                                     |

@@ -62,6 +62,7 @@ announcement bell.
   "features": {
     "announcementsBadge": true,
     "announcementsList": false,
+    "channelTerminalSuppression": false,
     "combatPane": false,
     "visualEffects": false,
     "enemyAutoOpen": true,
@@ -210,6 +211,7 @@ and sent a fresh explicit `combatPane: true` for the current connection. See
 - The client always sends `vitals: true`. When the `buffs` panel is open, the client also forces `status: true`.
 - `Char.Status` is treated as sticky state: after the initial full status payload, subsequent delta payloads are merged into the cached status object instead of replacing it.
 - The client advertises standard `Comm.Channel 1`, stores `Comm.Channel.List` / `Comm.Channel.Players`, tracks `Comm.Channel.Start` / `Comm.Channel.End` scopes, renders `Comm.Channel.Text`, requests `Comm.Channel.Players` once character data confirms login, and exposes `Comm.Channel.Enable` through the GMCP helper.
+- `features.channelTerminalSuppression` mirrors the server-owned terminal-channel preference. `true`/`1` is the equivalent of `channels terminal off`; `false`/`0` keeps terminal output on. Full/login/reconnect frames receive the current value, while an explicit Settings action (`reason: "settings"`) updates it. Missing clients do not change the server setting and retain terminal text.
 - Standard GMCP package names are matched case-insensitively. The client normalizes common cross-MUD aliases before panel rendering, including `mhp`/`mana`/`mmana` vitals, root `Comm.Channel {chan, player, msg}` messages, and `Room.Info.terrain`.
 - Darkwind-only features remain under `Darkwind.*`; standard packages should carry broadly useful data and compatibility aliases only.
 - Sent automatically on:
@@ -302,7 +304,7 @@ PackageName
 Examples:
 
 ```text
-Darkwind.Client.Subscriptions {"reason":"panel-open","full":false,"panels":{"vitals":true,"status":true,"buffs":false,"omens":true},"features":{"announcementsBadge":true,"enemyAutoOpen":true,"windows":true,"ide":true,"completion":true,"giphy":true}}
+Darkwind.Client.Subscriptions {"reason":"panel-open","full":false,"panels":{"vitals":true,"status":true,"buffs":false,"omens":true},"features":{"announcementsBadge":true,"channelTerminalSuppression":false,"enemyAutoOpen":true,"windows":true,"ide":true,"completion":true,"giphy":true}}
 ```
 
 ```text

@@ -118,6 +118,9 @@ export interface Session {
   setConnectionEndpoint(endpoint: TransportEndpoint): void;
   retryConnection(): void;
   resyncGamePanels(): boolean;
+  getChannelTerminalSuppression(): boolean;
+  setChannelTerminalSuppression(enabled: boolean): boolean;
+  subscribeChannelTerminalSuppression(listener: (enabled: boolean) => void): Unsubscribe;
   subscribeConnection(listener: (snapshot: SessionConnectionSnapshot) => void): Unsubscribe;
   onDispose(listener: () => void): Unsubscribe;
 }
@@ -193,6 +196,24 @@ export function createSession(parts: SessionParts): Session {
   let terminalGeometry: { width: number; height: number } | null = null;
   let cancelTerminalGeometrySend: (() => void) | undefined;
   const completionListeners = new Set<(result: CompletionResult) => void>();
+  const channelTerminalSuppressionListeners = new Set<(enabled: boolean) => void>();
+  let channelTerminalSuppression = false;
+
+  const channelTerminalSuppressionHandler = (data: unknown): void => {
+    if (typeof data !== "object" || data === null || Array.isArray(data)) return;
+    const features = (data as { features?: unknown }).features;
+    if (typeof features !== "object" || features === null || Array.isArray(features)) return;
+    const value = (features as { channelTerminalSuppression?: unknown }).channelTerminalSuppression;
+    const enabled =
+      value === true || value === 1 ? true : value === false || value === 0 ? false : null;
+    if (enabled === null || enabled === channelTerminalSuppression) return;
+    channelTerminalSuppression = enabled;
+    for (const listener of [...channelTerminalSuppressionListeners]) listener(enabled);
+  };
+  gmcp.on("Darkwind.Client.Subscriptions", channelTerminalSuppressionHandler);
+  scope.own("listener", () =>
+    gmcp.off("Darkwind.Client.Subscriptions", channelTerminalSuppressionHandler),
+  );
 
   const completionHandler = (result: CompletionResult): void => {
     for (const listener of [...completionListeners]) {
@@ -308,6 +329,13 @@ export function createSession(parts: SessionParts): Session {
     terminalProcessing?.appendSystemMessage("GMCP handshake and full pane sync requested.");
     return true;
   };
+
+  const setChannelTerminalSuppression = (enabled: boolean): boolean =>
+    gmcp.sendSubscriptions({
+      reason: "settings",
+      full: false,
+      features: { channelTerminalSuppression: enabled },
+    });
 
   const terminal: SessionTerminal = {
     automation: automationRuntime,
@@ -499,6 +527,18 @@ export function createSession(parts: SessionParts): Session {
     },
 
     resyncGamePanels,
+
+    getChannelTerminalSuppression() {
+      return channelTerminalSuppression;
+    },
+
+    setChannelTerminalSuppression,
+
+    subscribeChannelTerminalSuppression(listener) {
+      listener(channelTerminalSuppression);
+      channelTerminalSuppressionListeners.add(listener);
+      return () => channelTerminalSuppressionListeners.delete(listener);
+    },
 
     subscribeConnection(listener) {
       listener(getConnectionSnapshot());

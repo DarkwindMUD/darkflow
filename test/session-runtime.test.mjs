@@ -345,6 +345,54 @@ test("Session exposes GMCP diagnostics without exposing its GMCP bus", async (t)
   assert.equal("gmcp" in harness.session.gmcpDiagnostics, false);
 });
 
+test("channel terminal preference follows the server echo and sends explicit settings", async (t) => {
+  const modules = await loadSessionRuntimeModules(t);
+  const graph = buildMinimalGraph(modules);
+  const harness = createSessionHarness(modules, t, graph, graph.characterAId);
+  const seen = [];
+  harness.session.subscribeChannelTerminalSuppression((enabled) => seen.push(enabled));
+
+  harness.gmcp.dispatch("Darkwind.Client.Subscriptions", {
+    features: { channelTerminalSuppression: 1 },
+  });
+  assert.equal(harness.session.getChannelTerminalSuppression(), true);
+  assert.deepEqual(seen, [false, true]);
+
+  harness.gmcp.dispatch("Darkwind.Client.Subscriptions", {
+    features: { channelTerminalSuppression: 0 },
+  });
+  assert.equal(harness.session.getChannelTerminalSuppression(), false);
+  assert.deepEqual(seen, [false, true, false]);
+
+  harness.session.connect();
+  const socket = harness.latestSocket();
+  socket?.open();
+  socket?.clearSent();
+  assert.equal(harness.session.setChannelTerminalSuppression(true), true);
+  const packages = decodeSentGmcpPackages(socket.sentPayloads(), modules.decodeGmcpWireFrame);
+  assert.deepEqual(packages.at(-1), {
+    packageName: "Darkwind.Client.Subscriptions",
+    data: {
+      reason: "settings",
+      full: false,
+      panels: {},
+      features: {
+        announcementsBadge: true,
+        channelTerminalSuppression: true,
+        enemyAutoOpen: true,
+        combatPane: false,
+        visualEffects: false,
+        tutorialPane: false,
+        windows: true,
+        ide: true,
+        completion: true,
+        giphy: true,
+        broadcast: true,
+      },
+    },
+  });
+});
+
 test("runtime state tracks login reason and vitals receipt", async (t) => {
   const modules = await loadSessionRuntimeModules(t);
   const graph = buildMinimalGraph(modules);

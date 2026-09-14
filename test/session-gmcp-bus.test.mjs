@@ -354,6 +354,11 @@ test("send helpers route through the injected sink only", async (t) => {
   assert.equal(spyA.calls.length, 1);
   assert.equal(spyB.calls.length, 1);
   assert.match(spyA.calls[0], /Darkwind\.Client\.Subscriptions/);
+  assert.equal(
+    JSON.parse(spyA.calls[0].slice("Darkwind.Client.Subscriptions ".length)).features
+      .channelTerminalSuppression,
+    false,
+  );
   assert.equal(spyB.calls[0], "Darkwind.Client.RefreshMedia");
 });
 
@@ -363,17 +368,26 @@ test("subscription panel updates merge and survive handshake restart", async (t)
   const spy = createSendSpy();
   const bus = createSessionGmcpBus(sessionId, spy.sink, diagnostics);
 
-  bus.sendSubscriptions({ panels: { charStatus: true } });
+  bus.sendSubscriptions({
+    reason: "settings",
+    full: true,
+    panels: { charStatus: true },
+    features: { channelTerminalSuppression: true },
+  });
   bus.sendSubscriptions({ panels: { map: true, roomImage: false } });
 
   const update = JSON.parse(spy.calls.at(-1).slice("Darkwind.Client.Subscriptions ".length));
+  assert.equal(update.reason, "visibility-sync");
+  assert.equal(update.full, false);
   assert.deepEqual(update.panels, { charStatus: true, map: true, roomImage: false });
+  assert.equal(update.features.channelTerminalSuppression, true);
 
   bus.restartHandshake({ reason: "reconnect", panels: { map: false } });
   const restart = JSON.parse(spy.calls.at(-2).slice("Darkwind.Client.Subscriptions ".length));
   assert.equal(restart.reason, "reconnect");
   assert.equal(restart.full, true);
   assert.deepEqual(restart.panels, { charStatus: true, map: false, roomImage: false });
+  assert.equal(restart.features.channelTerminalSuppression, true);
 });
 
 test("subscription panel updates survive a disconnect reset", async (t) => {
@@ -390,6 +404,7 @@ test("subscription panel updates survive a disconnect reset", async (t) => {
   assert.equal(reconnect.reason, "reconnect");
   assert.equal(reconnect.full, true);
   assert.deepEqual(reconnect.panels, { map: true, roomImage: true });
+  assert.equal(reconnect.features.channelTerminalSuppression, false);
 });
 
 test("world send helpers validate and emit exact package directions", async (t) => {

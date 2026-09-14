@@ -110,6 +110,8 @@
   let importing = $state(false);
   let originalConfiguration: CharacterConfigurationSnapshot | null = null;
   let baseline = "";
+  let channelTerminalSuppression = $state(untrack(() => session.getChannelTerminalSuppression()));
+  let savedChannelTerminalSuppression = untrack(() => session.getChannelTerminalSuppression());
   const GMCP_PAGE_SIZE = 200;
   const aliasUsage = $derived.by(() =>
     aliasManager.collectAliasUsageDetails({
@@ -161,6 +163,8 @@
     refreshGmcpVariables();
     invalidStoredSettings = !result.success;
     status = result.success ? "" : result.message;
+    channelTerminalSuppression = session.getChannelTerminalSuppression();
+    savedChannelTerminalSuppression = channelTerminalSuppression;
     baseline = settingsFingerprint();
   }
 
@@ -193,6 +197,7 @@
     const configuration = session.configuration.getSnapshot();
     return JSON.stringify({
       settings,
+      channelTerminalSuppression,
       theme,
       localDefinitions: configuration.localDefinitions,
       attachedConfigurationSets: configuration.attachedConfigurationSets,
@@ -371,6 +376,12 @@
     return () => observer.disconnect();
   });
   $effect(() => session.configuration.subscribe((next) => (configuration = next)));
+  $effect(() =>
+    session.subscribeChannelTerminalSuppression((enabled) => {
+      channelTerminalSuppression = enabled;
+      savedChannelTerminalSuppression = enabled;
+    }),
+  );
   onMount(() => {
     const refresh = () => {
       if (dialog?.open && selectedTab === "variables") refreshGmcpVariables();
@@ -390,6 +401,13 @@
     if (!settingsResult.success) {
       status = settingsResult.message;
       return;
+    }
+    if (channelTerminalSuppression !== savedChannelTerminalSuppression) {
+      if (!session.setChannelTerminalSuppression(channelTerminalSuppression)) {
+        status = "Terminal channel preference could not be saved while disconnected.";
+        return;
+      }
+      savedChannelTerminalSuppression = channelTerminalSuppression;
     }
     session.visualEffects.configure(settings);
     if (!settings.autoReconnect && connection.reconnect?.status === "scheduled")
@@ -1239,6 +1257,11 @@
                   : null)}
             /></label
           >
+          <SettingsCheckbox
+            bind:checked={channelTerminalSuppression}
+            label="Mute channel messages in the terminal"
+            help="Store this character preference in the game and show eligible channel messages only in Darkflow Chat. Unsupported clients and screen-reader mode keep terminal text."
+          />
           <SettingsCheckbox
             bind:checked={settings.screenReaderMode}
             label="Screen reader announcements"

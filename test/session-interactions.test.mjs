@@ -428,7 +428,7 @@ test("named interaction actions send exact outbound packages and payloads", asyn
     'Darkwind.Snoop.Command {"id":"snoop","mode":"target","command":"look"}',
     'Darkwind.Snoop.Stop {"id":"snoop"}',
     'Darkwind.Snoop.Closed {"id":"snoop"}',
-    'Darkwind.Client.Subscriptions {"reason":"modal-open","full":false,"panels":{},"features":{"announcementsBadge":true,"enemyAutoOpen":true,"combatPane":false,"visualEffects":false,"tutorialPane":false,"windows":true,"ide":true,"completion":true,"giphy":true,"broadcast":true,"announcementsList":true}}',
+    'Darkwind.Client.Subscriptions {"reason":"modal-open","full":false,"panels":{},"features":{"announcementsBadge":true,"channelTerminalSuppression":false,"enemyAutoOpen":true,"combatPane":false,"visualEffects":false,"tutorialPane":false,"windows":true,"ide":true,"completion":true,"giphy":true,"broadcast":true,"announcementsList":true}}',
     'Darkwind.Announcements.MarkRead {"id":42}',
     'Darkwind.Fishing.Cast {"session":"f-12ab34cd","power":72}',
     'Darkwind.Fishing.Hook {"session":"f-12ab34cd"}',

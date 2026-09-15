@@ -340,19 +340,26 @@ test("Phase 2 automation list rows option 1c", async ({ page }, testInfo) => {
 
   for (const [tab, label, title, token, meta] of [
     ["Aliases", "Edit fn", "Function", "fn", "Alpha · Local"],
-    ["Triggers", "Edit Danger", "Danger", "danger (gag)", "send command · Local"],
+    ["Triggers", "Edit Danger", "Danger", null, "send command · Local"],
     ["Timers", "Edit pulse", "pulse", "1m", "Ungrouped · once · 1 step · Local"],
     ["Functions", "Edit greet", "Greet", "greet", "Ungrouped · 1 action · Local"],
     ["Highlights", "Edit glow", "Glow", "glow", "red b black · Local"],
-  ]) {
+  ] as const) {
     await settingsTab(dialog, tab);
     const row = dialog.getByRole("button", { name: label, exact: true });
     await expect(row.locator(".row-copy")).toBeVisible();
     await expect(row.locator("strong")).toHaveText(title);
-    await expect(row.locator("code")).toHaveText(token);
+    if (token === null) await expect(row.locator("code")).toHaveCount(0);
+    else await expect(row.locator("code")).toHaveText(token);
     await expect(row.locator("small")).toContainText(meta);
     await expect(row.locator("xpath=..").getByRole("switch", { name: /Enable/ })).toBeVisible();
   }
+
+  await settingsTab(dialog, "Triggers");
+  await dialog.getByRole("button", { name: "Edit Danger", exact: true }).click();
+  await expect(
+    dialog.getByRole("region", { name: "Edit triggers" }).getByLabel("Pattern", { exact: true }),
+  ).toHaveValue("danger");
 
   await settingsTab(dialog, "Aliases");
   const alias = dialog.getByRole("button", { name: "Edit fn", exact: true });

@@ -1301,7 +1301,7 @@
                 <span class="row-copy"
                   ><strong title={row.title}>{row.title}</strong><small>{row.meta}</small></span
                 >
-                <code title={row.tokenTitle}>{row.token}</code>
+                {#if kind !== "triggers"}<code title={row.tokenTitle}>{row.token}</code>{/if}
               </button>
               {#if selectedEntry?.definition.id === row.id}
                 <div class="row-actions">

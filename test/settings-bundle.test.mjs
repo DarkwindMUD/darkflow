@@ -153,6 +153,7 @@ test("settings bundle exports the full graph but imports only active-character s
       enabled: false,
       volume: 0.4,
       categoryEnabled: { combat: false },
+      categoryVolume: { combat: 0.8 },
     }),
   });
   const exported = bundle.buildSettingsBundle(sourceStore, {
@@ -203,6 +204,7 @@ test("settings bundle exports the full graph but imports only active-character s
   );
   assert.deepEqual(imported.characterProfiles[targetIds.character].configSetRefs.aliases, []);
   assert.deepEqual(JSON.parse(store.getItem("darkwind-sound-settings")).categoryEnabled.combat, false);
+  assert.equal(JSON.parse(store.getItem("darkwind-sound-settings")).categoryVolume.combat, 0.8);
 });
 
 test("invalid and failed imports do not lose owner bytes", async (t) => {
@@ -243,6 +245,10 @@ test("invalid and failed imports do not lose owner bytes", async (t) => {
       { ...validBundle.data.clientSettings, panelPreferences: { status: { fontSize: 17 } } },
     ],
     ["sound", { ...validBundle.data.sound, volume: 2 }],
+    [
+      "sound",
+      { ...validBundle.data.sound, categoryVolume: { ...validBundle.data.sound.categoryVolume, combat: 2 } },
+    ],
   ]) {
     const invalid = structuredClone(validBundle);
     invalid.data[field] = value;

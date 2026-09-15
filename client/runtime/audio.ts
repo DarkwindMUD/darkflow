@@ -33,6 +33,7 @@ export interface SessionAudioSnapshot {
   readonly currentCategory: SessionAudioCategory | null;
   readonly activityKind: SessionAudioActivityKind;
   readonly categoryEnabled: Readonly<Record<SessionAudioCategory, boolean>>;
+  readonly categoryVolume: Readonly<Record<SessionAudioCategory, number>>;
 }
 
 export interface SessionAudio {
@@ -42,6 +43,7 @@ export interface SessionAudio {
   setEnabled(enabled: boolean): void;
   setVolume(volume: number): void;
   setCategoryEnabled(category: string, enabled: boolean): void;
+  setCategoryVolume(category: string, volume: number): void;
   playLocal(category: string, sound: string, volume?: number): boolean;
   loopLocal(category: string, sound: string, id: string, volume?: number): boolean;
   stopLocal(category: string, id?: string): boolean;
@@ -51,6 +53,7 @@ interface RetainedSoundSettings {
   enabled: boolean;
   volume: number;
   categoryEnabled: Record<string, boolean>;
+  categoryVolume: Record<string, number>;
   audioUnlocked: boolean;
   pendingCount: number;
 }
@@ -62,6 +65,7 @@ export interface RetainedSoundManager {
   setEnabled(enabled: boolean): void;
   setVolume(volume: number): void;
   setCategoryEnabled(category: string, enabled: boolean): void;
+  setCategoryVolume(category: string, volume: number): void;
   play(category: string, sound: string, volume?: number): void;
   loop(category: string, sound: string, id: string, volume?: number): void;
   stop(category: string, id?: string): void;
@@ -124,6 +128,12 @@ export function createSessionAudio(
         settings.categoryEnabled[category] !== false,
       ]),
     ) as Record<SessionAudioCategory, boolean>;
+    const categoryVolume = Object.fromEntries(
+      SESSION_AUDIO_CATEGORIES.map((category) => [
+        category,
+        settings.categoryVolume[category] ?? 0.5,
+      ]),
+    ) as Record<SessionAudioCategory, number>;
     return deepFreeze({
       connected,
       loggedIn,
@@ -135,6 +145,7 @@ export function createSessionAudio(
       currentCategory,
       activityKind,
       categoryEnabled,
+      categoryVolume,
     });
   };
 
@@ -351,6 +362,12 @@ export function createSessionAudio(
 
     setCategoryEnabled(category, enabled) {
       if (!disposed && categorySet.has(category)) manager.setCategoryEnabled(category, enabled);
+    },
+
+    setCategoryVolume(category, volume) {
+      if (!disposed && categorySet.has(category) && validVolume(volume)) {
+        manager.setCategoryVolume(category, volume);
+      }
     },
 
     playLocal(category, sound, volume) {

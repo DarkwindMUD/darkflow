@@ -52,6 +52,7 @@ class FakeSoundManager {
       audioUnlocked: unlocked,
       pendingCount: 0,
       categoryEnabled: Object.fromEntries(categories.map((category) => [category, true])),
+      categoryVolume: Object.fromEntries(categories.map((category) => [category, 0.5])),
     };
     this.calls = [];
     this.messages = [];
@@ -63,6 +64,7 @@ class FakeSoundManager {
     return {
       ...this.settings,
       categoryEnabled: { ...this.settings.categoryEnabled },
+      categoryVolume: { ...this.settings.categoryVolume },
     };
   }
 
@@ -97,6 +99,12 @@ class FakeSoundManager {
   setCategoryEnabled(category, enabled) {
     this.calls.push(["setCategoryEnabled", category, enabled]);
     this.settings.categoryEnabled[category] = enabled;
+    this.emit();
+  }
+
+  setCategoryVolume(category, volume) {
+    this.calls.push(["setCategoryVolume", category, volume]);
+    this.settings.categoryVolume[category] = volume;
     this.emit();
   }
 
@@ -188,21 +196,29 @@ test("audio snapshots stay frozen and mirror retained settings and locked queues
 
   assert.equal(audio.getSnapshot().loggedIn, false);
   assert.deepEqual(Object.keys(audio.getSnapshot().categoryEnabled), categories);
+  assert.deepEqual(Object.keys(audio.getSnapshot().categoryVolume), categories);
+  assert.equal(audio.getSnapshot().categoryVolume.fishing, 0.5);
   assert.equal(Object.isFrozen(audio.getSnapshot()), true);
   assert.equal(Object.isFrozen(audio.getSnapshot().categoryEnabled), true);
+  assert.equal(Object.isFrozen(audio.getSnapshot().categoryVolume), true);
 
   audio.setEnabled(false);
   audio.setVolume(0.25);
   audio.setCategoryEnabled("fishing", false);
+  audio.setCategoryVolume("fishing", 0.35);
+  audio.setCategoryVolume("unknown", 0.9);
+  audio.setCategoryVolume("fishing", 2);
   audio.setCategoryEnabled("unknown", false);
   assert.deepEqual(manager.calls, [
     ["setEnabled", false],
     ["setVolume", 0.25],
     ["setCategoryEnabled", "fishing", false],
+    ["setCategoryVolume", "fishing", 0.35],
   ]);
   assert.equal(audio.getSnapshot().enabled, false);
   assert.equal(audio.getSnapshot().volume, 0.25);
   assert.equal(audio.getSnapshot().categoryEnabled.fishing, false);
+  assert.equal(audio.getSnapshot().categoryVolume.fishing, 0.35);
 
   audio.setEnabled(true);
   connect(eventBus);

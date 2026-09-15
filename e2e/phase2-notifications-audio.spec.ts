@@ -196,10 +196,10 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   const audioRoot = page.locator("#audio-widget-root");
   const indicator = page.getByTitle("Audio controls");
   await expect(audioRoot).toBeVisible();
-  await expect(indicator).toBeDisabled();
+  await expect(indicator).toBeEnabled();
 
   endpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Sound 1"]);
-  await expect(indicator).toBeDisabled();
+  await expect(indicator).toBeEnabled();
 
   endpoint.sendGmcp("Char.Status", { name: "Nacho" });
   await expect(indicator).toBeEnabled();
@@ -245,7 +245,7 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await indicator.click();
   await expect(controls).toBeVisible();
 
-  const volume = controls.locator('input[type="range"]');
+  const volume = controls.getByRole("slider", { name: "Volume", exact: true });
   await volume.focus();
   await volume.press("Escape");
   await expect(controls).toBeHidden();
@@ -314,6 +314,10 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   await expect(controls.locator(".sound-widget-volume-value")).toHaveCount(0);
   const categoryButtons = controls.locator(".sound-widget-category");
   await expect(categoryButtons).toHaveCount(12);
+  const categorySliders = controls.locator(".sound-widget-category-volume");
+  await expect(categorySliders).toHaveCount(12);
+  for (const slider of await categorySliders.all()) await expect(slider).toHaveValue("50");
+  await expect(controls.locator(".sound-widget-category-percent")).toHaveCount(12);
   for (const [label, icon] of [
     ["Combat", "swords"],
     ["Spell", "wand"],
@@ -333,8 +337,60 @@ test("audio controls follow support, settings, activity, disposal, and remount",
     ).toBeVisible();
   }
   const musicCategory = controls.getByRole("button", { name: "Music" });
+  const musicControl = controls.getByRole("group", { name: "Music audio" });
+  const musicVolume = controls.getByRole("slider", { name: "Music volume" });
+  const musicPercent = musicControl.locator(".sound-widget-category-percent");
+  const musicLabel = musicControl.locator(".sound-widget-category-label");
+  const musicIcon = musicControl.locator(".sound-widget-category-icon");
+  await expect(musicPercent).toHaveText("50%");
+  const [percentBoxBefore, labelBox, iconBox, toggleBox] = await Promise.all([
+    musicPercent.boundingBox(),
+    musicLabel.boundingBox(),
+    musicIcon.boundingBox(),
+    musicCategory.boundingBox(),
+  ]);
+  expect(percentBoxBefore).not.toBeNull();
+  expect(labelBox).not.toBeNull();
+  expect(iconBox).not.toBeNull();
+  expect(toggleBox).not.toBeNull();
+  expect(
+    Math.abs(toggleBox!.x + toggleBox!.width - percentBoxBefore!.x - percentBoxBefore!.width - 8),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(labelBox!.y + labelBox!.height / 2 - (iconBox!.y + iconBox!.height / 2)),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(
+      percentBoxBefore!.y + percentBoxBefore!.height / 2 - (iconBox!.y + iconBox!.height / 2),
+    ),
+  ).toBeLessThan(1);
+  const percentRightBefore = percentBoxBefore!.x + percentBoxBefore!.width;
+  const [musicControlBox, musicVolumeBox] = await Promise.all([
+    musicControl.boundingBox(),
+    musicVolume.boundingBox(),
+  ]);
+  expect(musicControlBox).not.toBeNull();
+  expect(musicVolumeBox).not.toBeNull();
+  expect(Math.abs(musicControlBox!.width - musicVolumeBox!.width)).toBeLessThan(3);
+  await musicVolume.fill("65");
+  await expect(musicControl).toHaveCSS("--sound-category-fill", "65%");
+  await expect(musicPercent).toHaveText("65%");
+  await expect
+    .poll(() =>
+      musicPercent.evaluate((element) => {
+        const box = element.getBoundingClientRect();
+        return box.right;
+      }),
+    )
+    .toBe(percentRightBefore);
   await musicCategory.click();
   await expect(musicCategory).toHaveAttribute("aria-pressed", "false");
+  await expect(musicVolume).toBeDisabled();
+  await expect(musicVolume).toHaveValue("65");
+  await musicCategory.click();
+  await expect(musicVolume).toBeEnabled();
+  await expect(musicVolume).toHaveValue("65");
+  await musicCategory.click();
   const alertCategory = controls.getByRole("button", { name: "Alert" });
   await alertCategory.click();
   await expect(alertCategory).toHaveAttribute("aria-pressed", "false");
@@ -351,6 +407,7 @@ test("audio controls follow support, settings, activity, disposal, and remount",
       enabled: true,
       volume: 0.35,
       categoryEnabled: { alert: true, music: false },
+      categoryVolume: { music: 0.65 },
     });
 
   endpoint.sendGmcp("Darkwind.Sound", {
@@ -377,8 +434,16 @@ test("audio controls follow support, settings, activity, disposal, and remount",
 
   endpoint.sendGmcp("Core.Supports.Remove", ["Darkwind.Sound 1"]);
   await expect(audioRoot).toBeVisible();
-  await expect(indicator).toBeDisabled();
-  await expect(controls).toBeHidden();
+  await expect(indicator).toBeEnabled();
+  await expect(controls).toBeVisible();
+
+  await page.evaluate(() => {
+    (
+      window as unknown as { __darkflowPhase1Runtime: { session: { disconnect(): void } } }
+    ).__darkflowPhase1Runtime.session.disconnect();
+  });
+  await expect(indicator).toBeEnabled();
+  await expect(controls).toBeVisible();
 
   await page.evaluate(() => {
     (
@@ -391,9 +456,9 @@ test("audio controls follow support, settings, activity, disposal, and remount",
   const remountedEndpoint = await connect(page);
   await expect(page.locator("#audio-widget-root")).toHaveCount(1);
   await expect(page.locator("#audio-widget-root")).toBeVisible();
-  await expect(page.getByTitle("Audio controls")).toBeDisabled();
+  await expect(page.getByTitle("Audio controls")).toBeEnabled();
   remountedEndpoint.sendGmcp("Core.Supports.Add", ["Darkwind.Sound 1"]);
-  await expect(page.getByTitle("Audio controls")).toBeDisabled();
+  await expect(page.getByTitle("Audio controls")).toBeEnabled();
   remountedEndpoint.sendGmcp("Char.Status", { name: "Nacho" });
   await expect(page.getByTitle("Audio controls")).toBeEnabled();
   await expect(page.getByRole("button", { name: "Notifications", exact: true })).toHaveCount(1);

@@ -85,6 +85,7 @@ function canonicalJson(value: unknown): string {
 function normalizeSound(value: unknown): JsonObject {
   const source = isObject(value) ? value : {};
   const categories = isObject(source.categoryEnabled) ? source.categoryEnabled : {};
+  const categoryVolume = isObject(source.categoryVolume) ? source.categoryVolume : {};
   return {
     enabled: source.enabled !== false,
     volume:
@@ -93,6 +94,14 @@ function normalizeSound(value: unknown): JsonObject {
         : 0.7,
     categoryEnabled: Object.fromEntries(
       SOUND_CATEGORIES.map((category) => [category, categories[category] !== false]),
+    ),
+    categoryVolume: Object.fromEntries(
+      SOUND_CATEGORIES.map((category) => [
+        category,
+        typeof categoryVolume[category] === "number" && Number.isFinite(categoryVolume[category])
+          ? Math.max(0, Math.min(1, categoryVolume[category]))
+          : 0.5,
+      ]),
     ),
   };
 }
@@ -118,6 +127,20 @@ function validateSound(value: unknown): SettingsBundleResult<JsonObject> {
         typeof enabled !== "boolean"
       )
         return { success: false, message: `Sound category ${category} is invalid.` };
+    }
+  }
+  if ("categoryVolume" in value) {
+    if (!isObject(value.categoryVolume))
+      return { success: false, message: "Sound category volumes must be an object." };
+    for (const [category, volume] of Object.entries(value.categoryVolume)) {
+      if (
+        !SOUND_CATEGORIES.includes(category as (typeof SOUND_CATEGORIES)[number]) ||
+        typeof volume !== "number" ||
+        !Number.isFinite(volume) ||
+        volume < 0 ||
+        volume > 1
+      )
+        return { success: false, message: `Sound category volume ${category} is invalid.` };
     }
   }
   return { success: true, data: normalizeSound(value) };

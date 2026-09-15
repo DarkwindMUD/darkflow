@@ -30,6 +30,7 @@ class FakeAudioEngine {
     this.plays = [];
     this.stops = [];
     this.globalVolumes = [];
+    this.playbackVolumes = [];
     this.nextId = 1;
   }
 
@@ -72,6 +73,10 @@ class FakeAudioEngine {
     this.stops.push({ handle, id });
   }
 
+  setPlaybackVolume(handle, volume, id) {
+    this.playbackVolumes.push({ handle, volume, id });
+  }
+
   emit(playIndex, event, error) {
     const playback = this.plays[playIndex];
     const matching = playback.handle.listeners.filter((listener) => (
@@ -102,8 +107,8 @@ test('queues locked sounds and loops, then drains each once after unlock', async
   assert.equal(manager.getSettings().pendingCount, 0);
   assert.equal(engine.plays.length, 2);
   assert.deepEqual(engine.plays.map((playback) => playback.options), [
-    { volume: 0.5 },
-    { volume: 0.25, loop: true },
+    { volume: 0.25 },
+    { volume: 0.125, loop: true },
   ]);
 });
 
@@ -122,7 +127,7 @@ test('reuses one Howl while tracking overlapping playback IDs independently', ()
   assert.equal(manager.getDebugSnapshot().activeOneShots, 1);
   engine.emit(1, 'play');
   assert.equal(manager.getDebugSnapshot().lastPlayResult.ok, true);
-  assert.ok(Math.abs(manager.getDebugSnapshot().lastPlayResult.volume - 0.525) < Number.EPSILON);
+  assert.ok(Math.abs(manager.getDebugSnapshot().lastPlayResult.volume - 0.2625) < Number.EPSILON);
 });
 
 test('uses HTML5 streaming only for long-form music keys', () => {
@@ -144,8 +149,31 @@ test('controls phase 2 login music independently of ambient sounds', () => {
   assert.equal(engine.created[0].src, '/assets/sounds/darkwind-theme.mp3');
 
   manager.setCategoryEnabled('music', false);
-  assert.equal(engine.stops.length, 1);
+  assert.equal(engine.playbackVolumes.at(-1).volume, 0);
   assert.equal(manager.getSettings().categoryEnabled.music, false);
+  manager.setCategoryEnabled('music', true);
+  assert.equal(engine.playbackVolumes.at(-1).volume, 0.5);
+  assert.equal(engine.plays.length, 1);
+  assert.equal(manager.getSettings().categoryEnabled.music, true);
+});
+
+test('applies and persists independent category volumes without losing muted levels', () => {
+  const { engine, manager } = createManager({ unlocked: true });
+
+  manager.play('combat', 'hit');
+  manager.loop('ambient', 'rain', 'weather');
+  assert.deepEqual(engine.plays.map(({ options }) => options.volume), [0.5, 0.5]);
+
+  manager.setCategoryVolume('combat', 0.8);
+  manager.setCategoryVolume('ambient', 0.25);
+  assert.deepEqual(engine.playbackVolumes.map(({ volume }) => volume), [0.8, 0.25]);
+
+  manager.setCategoryEnabled('ambient', false);
+  manager.setCategoryEnabled('ambient', true);
+  assert.equal(manager.getSettings().categoryVolume.ambient, 0.25);
+  assert.deepEqual(engine.playbackVolumes.map(({ volume }) => volume), [0.8, 0.25, 0, 0.25]);
+  assert.equal(engine.plays.length, 2);
+  assert.equal(JSON.parse(storage.get('darkwind-sound-settings')).categoryVolume.ambient, 0.25);
 });
 
 test('replaces and stops loops by Darkflow semantic ID', () => {
@@ -224,6 +252,7 @@ test('applies master volume globally and preserves the stored settings schema', 
     enabled: true,
     volume: 0.4,
     categoryEnabled: manager.getSettings().categoryEnabled,
+    categoryVolume: manager.getSettings().categoryVolume,
   });
   const originalWarn = console.warn;
   console.warn = () => {};

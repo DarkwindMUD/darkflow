@@ -22,6 +22,7 @@ export function createSoundManagerStub() {
     audioUnlocked: true,
     pendingCount: 0,
     categoryEnabled: Object.fromEntries(categories.map((category) => [category, true])),
+    categoryVolume: Object.fromEntries(categories.map((category) => [category, 0.5])),
   };
   let resetCount = 0;
   const emit = () => {
@@ -33,7 +34,11 @@ export function createSoundManagerStub() {
     get resetCount() {
       return resetCount;
     },
-    getSettings: () => ({ ...settings, categoryEnabled: { ...settings.categoryEnabled } }),
+    getSettings: () => ({
+      ...settings,
+      categoryEnabled: { ...settings.categoryEnabled },
+      categoryVolume: { ...settings.categoryVolume },
+    }),
     onChange(listener) {
       listeners.add(listener);
       return () => listeners.delete(listener);
@@ -53,6 +58,10 @@ export function createSoundManagerStub() {
     },
     setCategoryEnabled(category, enabled) {
       settings.categoryEnabled[category] = !!enabled;
+      emit();
+    },
+    setCategoryVolume(category, volume) {
+      settings.categoryVolume[category] = volume;
       emit();
     },
     play(category, sound, volume) {

@@ -191,6 +191,7 @@
       enabled: audio.enabled,
       volume: audio.volume,
       categoryEnabled: { ...audio.categoryEnabled },
+      categoryVolume: { ...audio.categoryVolume },
     };
   }
   function settingsFingerprint(): string {
@@ -292,11 +293,14 @@
       enabled: boolean;
       volume: number;
       categoryEnabled: Record<string, boolean>;
+      categoryVolume: Record<string, number>;
     };
     session.audio.setEnabled(importedSound.enabled);
     session.audio.setVolume(importedSound.volume);
     for (const [category, enabled] of Object.entries(importedSound.categoryEnabled))
       session.audio.setCategoryEnabled(category, enabled);
+    for (const [category, volume] of Object.entries(importedSound.categoryVolume))
+      session.audio.setCategoryVolume(category, volume);
     session.visualEffects.configure(loadClientSettings(localStorage).settings);
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     window.dispatchEvent(new Event("darkflow:settings-import-applied"));
@@ -1041,22 +1045,47 @@
           <div class="sound-widget-categories settings-sound-categories">
             {#each AUDIO_CATEGORIES as category (category.id)}
               {@const CategoryIcon = category.icon}
-              <button
+              {@const categoryPercent = Math.round(audio.categoryVolume[category.id] * 100)}
+              <div
                 class="sound-widget-category"
                 class:enabled={audio.categoryEnabled[category.id]}
                 class:disabled={!audio.categoryEnabled[category.id]}
-                type="button"
-                title={category.label}
-                aria-pressed={audio.categoryEnabled[category.id]}
-                onclick={() =>
-                  session.audio.setCategoryEnabled(
-                    category.id,
-                    !audio.categoryEnabled[category.id],
-                  )}
+                style:--sound-category-fill={`${categoryPercent}%`}
+                role="group"
+                aria-label={`${category.label} audio`}
               >
-                <span class="sound-widget-category-icon"><CategoryIcon size={16} /></span>
-                <span class="sound-widget-category-label">{category.label}</span>
-              </button>
+                <button
+                  class="sound-widget-category-toggle"
+                  type="button"
+                  title={`${audio.categoryEnabled[category.id] ? "Mute" : "Unmute"} ${category.label}`}
+                  aria-label={category.label}
+                  aria-pressed={audio.categoryEnabled[category.id]}
+                  onclick={() =>
+                    session.audio.setCategoryEnabled(
+                      category.id,
+                      !audio.categoryEnabled[category.id],
+                    )}
+                >
+                  <span class="sound-widget-category-icon"><CategoryIcon size={16} /></span>
+                  <span class="sound-widget-category-label">{category.label}</span>
+                  <span class="sound-widget-category-percent">{categoryPercent}%</span>
+                </button>
+                <input
+                  class="sound-widget-category-volume"
+                  type="range"
+                  min="0"
+                  max="100"
+                  value={categoryPercent}
+                  disabled={!audio.categoryEnabled[category.id]}
+                  aria-label={`${category.label} volume`}
+                  title={`${category.label} volume: ${categoryPercent}%`}
+                  oninput={(event) =>
+                    session.audio.setCategoryVolume(
+                      category.id,
+                      Number(event.currentTarget.value) / 100,
+                    )}
+                />
+              </div>
             {/each}
           </div>
         </div>

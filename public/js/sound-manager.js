@@ -53,6 +53,9 @@ const DEFAULT_CATEGORY_ENABLED = {
   ui: true,
   music: true,
 };
+const DEFAULT_CATEGORY_VOLUME = Object.fromEntries(
+  Object.keys(DEFAULT_CATEGORY_ENABLED).map((category) => [category, 0.5])
+);
 
 export const SOUND_MAP = {
   'combat/hit': '/assets/sounds/combat-hit.mp3',
@@ -200,6 +203,9 @@ export class SoundManager {
   }
 
   _normalizeSettings(settings) {
+    const categoryVolume = settings.categoryVolume && typeof settings.categoryVolume === 'object'
+      ? settings.categoryVolume
+      : {};
     return {
       enabled: settings.enabled !== false,
       volume: clampVolume(settings.volume, DEFAULT_VOLUME),
@@ -209,6 +215,12 @@ export class SoundManager {
           ? settings.categoryEnabled
           : {}),
       },
+      categoryVolume: Object.fromEntries(
+        Object.keys(DEFAULT_CATEGORY_VOLUME).map((category) => [
+          category,
+          clampVolume(categoryVolume[category], DEFAULT_CATEGORY_VOLUME[category]),
+        ])
+      ),
     };
   }
 
@@ -302,7 +314,38 @@ export class SoundManager {
   }
 
   _shouldPlay(category) {
-    return this.settings.enabled && this.settings.categoryEnabled[category];
+    return this.settings.enabled
+      && this.settings.categoryEnabled[category]
+      && this.settings.categoryVolume[category] > 0;
+  }
+
+  _sourceVolume(category, volume) {
+    return clampVolume(volume === undefined ? 1 : volume, 1)
+      * this.settings.categoryVolume[category];
+  }
+
+  _updateCategoryPlaybackVolume(category) {
+    const categoryVolume = this.settings.categoryEnabled[category]
+      ? this.settings.categoryVolume[category]
+      : 0;
+    for (const token of this.oneShotSounds) {
+      if (token.category === category) {
+        this.audioEngine.setPlaybackVolume(
+          token.handle,
+          token.sourceVolume * categoryVolume,
+          token.playbackId
+        );
+      }
+    }
+    for (const token of this.loopingSounds.values()) {
+      if (token.category === category) {
+        this.audioEngine.setPlaybackVolume(
+          token.handle,
+          token.sourceVolume * categoryVolume,
+          token.playbackId
+        );
+      }
+    }
   }
 
   isSuppressed(category) {
@@ -334,7 +377,7 @@ export class SoundManager {
       this._warnSuppressed('category disabled', category, sound);
       return;
     }
-    if (this.settings.volume <= 0 || volume === 0) {
+    if (this.settings.volume <= 0 || volume === 0 || this.settings.categoryVolume[category] <= 0) {
       this._warnSuppressed('volume is zero', category, sound);
       return;
     }
@@ -349,7 +392,9 @@ export class SoundManager {
     }
     const handle = this._getSound(category, sound);
     const sourceVolume = clampVolume(volume === undefined ? 1 : volume, 1);
-    const playbackId = this.audioEngine.play(handle, { volume: sourceVolume });
+    const playbackId = this.audioEngine.play(handle, {
+      volume: this._sourceVolume(category, sourceVolume),
+    });
     if (playbackId === null) {
       this._recordPlaybackFailure(category, sound, handle, sourceVolume, 'HowlerPlayError', 'No playback ID returned');
       return;
@@ -361,6 +406,8 @@ export class SoundManager {
     const token = {
       handle,
       playbackId,
+      category,
+      sourceVolume,
       listeners: [],
     };
     const cleanup = () => this._cleanupOneShot(token);
@@ -370,7 +417,7 @@ export class SoundManager {
         category,
         sound,
         src: handle.src,
-        volume: clampVolume(sourceVolume * this.settings.volume, 1),
+        volume: clampVolume(this._sourceVolume(category, sourceVolume) * this.settings.volume, 1),
         at: new Date().toISOString(),
       };
     };
@@ -403,7 +450,7 @@ export class SoundManager {
       category,
       sound,
       src: handle.src,
-      volume: clampVolume(sourceVolume * this.settings.volume, 1),
+      volume: clampVolume(this._sourceVolume(category, sourceVolume) * this.settings.volume, 1),
       at: new Date().toISOString(),
     };
   }
@@ -421,7 +468,7 @@ export class SoundManager {
       category,
       sound,
       src: handle.src,
-      volume: clampVolume(sourceVolume * this.settings.volume, 1),
+      volume: clampVolume(this._sourceVolume(category, sourceVolume) * this.settings.volume, 1),
       errorName,
       errorMessage: error && error.message ? error.message : String(error || ''),
       at: new Date().toISOString(),
@@ -442,10 +489,13 @@ export class SoundManager {
     this.stopById(id, false);
     const handle = this._getSound(category, sound);
     const sourceVolume = clampVolume(volume === undefined ? 1 : volume, 1);
-    const playbackId = this.audioEngine.play(handle, { volume: sourceVolume, loop: true });
+    const playbackId = this.audioEngine.play(handle, {
+      volume: this._sourceVolume(category, sourceVolume),
+      loop: true,
+    });
     if (playbackId === null) return;
 
-    const token = { handle, playbackId, listeners: [] };
+    const token = { handle, playbackId, category, sourceVolume, listeners: [] };
     const onLoadError = (_failedId, error) => {
       this._removeLoopToken(id, token, false);
       console.warn('Failed to load loop ' + category + '/' + sound, error);
@@ -526,7 +576,7 @@ export class SoundManager {
 
   _resumeLoops() {
     for (const [id, metadata] of this.loopMetadata.entries()) {
-      if (this.settings.categoryEnabled[metadata.category]) {
+      if (!this.loopingSounds.has(id) && this._shouldPlay(metadata.category)) {
         this.loop(metadata.category, metadata.sound, id, metadata.volume);
       }
     }
@@ -557,6 +607,7 @@ export class SoundManager {
       enabled: this.settings.enabled,
       volume: this.settings.volume,
       categoryEnabled: { ...this.settings.categoryEnabled },
+      categoryVolume: { ...this.settings.categoryVolume },
       audioUnlocked: this.audioUnlocked,
       pendingCount: this.pendingSounds.length + this.pendingLoops.length,
     };
@@ -613,8 +664,19 @@ export class SoundManager {
   setCategoryEnabled(category, enabled) {
     if (!this._isCategory(category)) return;
     this.settings.categoryEnabled[category] = !!enabled;
-    if (!enabled) this.stopCategory(category, false);
-    else if (this.settings.enabled) this._resumeLoops();
+    this._updateCategoryPlaybackVolume(category);
+    if (enabled && this.settings.enabled) this._resumeLoops();
+    this._saveSettings();
+  }
+
+  setCategoryVolume(category, volume) {
+    if (!this._isCategory(category)) return;
+    const previous = this.settings.categoryVolume[category];
+    this.settings.categoryVolume[category] = clampVolume(volume, 0.5);
+    this._updateCategoryPlaybackVolume(category);
+    if (previous === 0 && this.settings.categoryVolume[category] > 0 && this.settings.enabled) {
+      this._resumeLoops();
+    }
     this._saveSettings();
   }
 

@@ -503,9 +503,11 @@ test("Phase 2 settings use legacy labels and visible help copy", async ({ page }
   ).toBeVisible();
   await expect(dialog.locator("#settings-panel-audio .sound-widget-category")).toHaveCount(12);
   const combatAudio = dialog.getByRole("button", { name: "Combat", exact: true });
-  await expect(combatAudio).toHaveClass(/sound-widget-category/);
+  await expect(combatAudio).toHaveClass(/sound-widget-category-toggle/);
   await expect(combatAudio).toHaveAttribute("aria-pressed", /true|false/);
   await expect(combatAudio.locator(".lucide-swords")).toBeVisible();
+  await expect(combatAudio.locator(".sound-widget-category-percent")).toHaveText("50%");
+  await expect(dialog.getByRole("slider", { name: "Combat volume" })).toHaveValue("50");
   await expect(dialog.getByText("Allow game-triggered combat sounds.")).toHaveCount(0);
 
   await settingsTab(dialog, "Aliases");
@@ -1623,6 +1625,7 @@ test("Phase 3 imports settings without replacing the active session or profile s
     "aria-pressed",
     "false",
   );
+  await expect(dialog.getByRole("slider", { name: "Combat volume" })).toHaveValue("50");
   await settingsTab(dialog, "Appearance");
   await dialog.getByLabel("Theme", { exact: true }).selectOption("nord");
   await settingsTab(dialog, "Controls");

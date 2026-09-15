@@ -42,11 +42,6 @@
     let active = true;
     const unsubscribe = session.audio.subscribe((next) => {
       if (!active) return;
-      if (!next.supported) {
-        unlockRequest += 1;
-        unlockPending = false;
-        expanded = false;
-      }
       snapshot = next;
     });
     return () => {
@@ -74,7 +69,7 @@
     await session.audio.unlock();
     if (request !== unlockRequest) return;
     unlockPending = false;
-    if (snapshot.supported) expanded = true;
+    expanded = true;
   }
 
   function handleEscape(event: KeyboardEvent): void {
@@ -112,7 +107,6 @@
         bind:this={indicator}
         class="sound-widget-indicator"
         type="button"
-        disabled={!snapshot.supported || !snapshot.loggedIn}
         aria-expanded={expanded}
         aria-controls={expandedId}
         aria-label={`Audio controls: ${indicatorLabel}`}
@@ -158,19 +152,47 @@
       <div class="sound-widget-categories">
         {#each AUDIO_CATEGORIES as category (category.id)}
           {@const CategoryIcon = category.icon}
-          <button
+          {@const categoryPercent = Math.round(snapshot.categoryVolume[category.id] * 100)}
+          <div
             class="sound-widget-category"
             class:enabled={snapshot.categoryEnabled[category.id]}
             class:disabled={!snapshot.categoryEnabled[category.id]}
-            type="button"
-            title={category.label}
-            aria-pressed={snapshot.categoryEnabled[category.id]}
-            onclick={() =>
-              session.audio.setCategoryEnabled(category.id, !snapshot.categoryEnabled[category.id])}
+            style:--sound-category-fill={`${categoryPercent}%`}
+            role="group"
+            aria-label={`${category.label} audio`}
           >
-            <span class="sound-widget-category-icon"><CategoryIcon size={16} /></span>
-            <span class="sound-widget-category-label">{category.label}</span>
-          </button>
+            <button
+              class="sound-widget-category-toggle"
+              type="button"
+              title={`${snapshot.categoryEnabled[category.id] ? "Mute" : "Unmute"} ${category.label}`}
+              aria-label={category.label}
+              aria-pressed={snapshot.categoryEnabled[category.id]}
+              onclick={() =>
+                session.audio.setCategoryEnabled(
+                  category.id,
+                  !snapshot.categoryEnabled[category.id],
+                )}
+            >
+              <span class="sound-widget-category-icon"><CategoryIcon size={16} /></span>
+              <span class="sound-widget-category-label">{category.label}</span>
+              <span class="sound-widget-category-percent">{categoryPercent}%</span>
+            </button>
+            <input
+              class="sound-widget-category-volume"
+              type="range"
+              min="0"
+              max="100"
+              value={categoryPercent}
+              disabled={!snapshot.categoryEnabled[category.id]}
+              aria-label={`${category.label} volume`}
+              title={`${category.label} volume: ${categoryPercent}%`}
+              oninput={(event) =>
+                session.audio.setCategoryVolume(
+                  category.id,
+                  Number(event.currentTarget.value) / 100,
+                )}
+            />
+          </div>
         {/each}
       </div>
     </div>
@@ -193,11 +215,6 @@
     width: 26px;
     height: 26px;
     padding: 0;
-  }
-
-  .sound-widget-indicator:disabled {
-    cursor: not-allowed;
-    opacity: 0.5;
   }
 
   .sound-widget-volume {

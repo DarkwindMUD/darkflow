@@ -655,6 +655,17 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(page.getByTestId("connection-status")).toHaveText("Connected");
   endpoint.sendText("delivered after reconnect\n");
   await expect(output).toContainText("delivered after reconnect");
+  endpoint.sendGmcp("Char.Vitals", {
+    hp: 100,
+    maxhp: 100,
+    avatar_charge_pct: 25,
+  });
+  await expect(page.locator(".terminal-output-shell > .avatar-meter")).toBeVisible();
+  await expect
+    .poll(() =>
+      output.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight),
+    )
+    .toBeLessThanOrEqual(1);
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
 
   await page.getByRole("button", { name: "Clear", exact: true }).click({ force: true });

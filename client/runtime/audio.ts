@@ -71,12 +71,10 @@ export interface RetainedSoundManager {
 
 const SOUND_PACKAGE = "Darkwind.Sound";
 const ONE_SHOT_ACTIVITY_MS = 2_000;
-const AUTH_TRANSITION_GRACE_MS = 100;
 const AUTH_WINDOW_IDS = new Set(["login", "newchar", "charselect"]);
 const LOGIN_THEME = {
   category: "music" as const,
   sound: "darkwind-theme",
-  id: "darkwind-login-theme",
   volume: 0.5,
 };
 const categorySet = new Set<string>(SESSION_AUDIO_CATEGORIES);
@@ -111,9 +109,7 @@ export function createSessionAudio(
   let currentCategory: SessionAudioCategory | null = null;
   let activityKind: SessionAudioActivityKind = null;
   let cancelActivityTimer: Disposer | null = null;
-  let cancelAuthStop: Disposer | null = null;
-  let authActive = false;
-  let loginThemeRequested = false;
+  let loginThemePlayed = false;
   let resetForDisconnect = false;
   let suppressManagerPublish = false;
   let disposed = false;
@@ -235,57 +231,21 @@ export function createSessionAudio(
     return true;
   };
 
-  const cancelAuthGrace = (): void => {
-    cancelAuthStop?.();
-    cancelAuthStop = null;
-  };
-
-  const stopLoginTheme = (): void => {
-    cancelAuthGrace();
-    if (!loginThemeRequested) return;
-    loginThemeRequested = false;
-    stop(LOGIN_THEME.category, LOGIN_THEME.id);
-  };
-
   const reconcileAuthWindows = (): void => {
+    const settings = manager.getSettings();
+    if (
+      loginThemePlayed ||
+      !connected ||
+      !settings.enabled ||
+      settings.categoryEnabled.music === false
+    )
+      return;
     const active = Object.values(interactions.getSnapshot().windows).some(
       (window) => window.type === "modal" && AUTH_WINDOW_IDS.has(window.sourceId),
     );
-    const changed = active !== authActive;
-    authActive = active;
-    if (manager.getSettings().categoryEnabled.music === false) {
-      cancelAuthGrace();
-      stopLoginTheme();
-      return;
+    if (active) {
+      loginThemePlayed = play(LOGIN_THEME.category, LOGIN_THEME.sound, LOGIN_THEME.volume);
     }
-    if (!changed) {
-      if (active && !loginThemeRequested && connected) {
-        loginThemeRequested = loop(
-          LOGIN_THEME.category,
-          LOGIN_THEME.sound,
-          LOGIN_THEME.id,
-          LOGIN_THEME.volume,
-        );
-      }
-      return;
-    }
-    cancelAuthGrace();
-    if (authActive) {
-      if (connected && !loginThemeRequested) {
-        loginThemeRequested = loop(
-          LOGIN_THEME.category,
-          LOGIN_THEME.sound,
-          LOGIN_THEME.id,
-          LOGIN_THEME.volume,
-        );
-      }
-      return;
-    }
-    if (!loginThemeRequested) return;
-    cancelAuthStop = scope.setTimeout(() => {
-      cancelAuthStop = null;
-      if (!authActive) stopLoginTheme();
-    }, AUTH_TRANSITION_GRACE_MS);
   };
 
   const soundHandler = (data: unknown): void => {
@@ -302,8 +262,6 @@ export function createSessionAudio(
 
   const characterAttachedHandler = (): void => {
     loggedIn = true;
-    authActive = false;
-    stopLoginTheme();
     publish();
   };
   for (const packageName of ["Char.Vitals", "Char.Status", "Darkwind.Session.Recovered"]) {
@@ -351,8 +309,7 @@ export function createSessionAudio(
       connected = false;
       loggedIn = false;
       supported = false;
-      cancelAuthGrace();
-      loginThemeRequested = false;
+      loginThemePlayed = false;
       clearActivity();
       if (!resetForDisconnect) {
         resetForDisconnect = true;
@@ -363,8 +320,7 @@ export function createSessionAudio(
   );
 
   scope.own("teardown", () => {
-    cancelAuthGrace();
-    loginThemeRequested = false;
+    loginThemePlayed = false;
     disposed = true;
     clearActivity();
     runManagerAction(() => manager.resetSessionPlayback());

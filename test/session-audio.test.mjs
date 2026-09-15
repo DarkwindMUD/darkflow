@@ -326,7 +326,7 @@ test("local audio requires a connection except for cleanup and accepts fishing",
   scope.dispose();
 });
 
-test("login theme follows auth modal transitions and the close grace", async (t) => {
+test("login theme plays once and continues after auth modal transitions", async (t) => {
   const modules = await loadModules(t);
   const { eventBus, interactions, manager, scope } = createAudio(modules);
   connect(eventBus);
@@ -338,71 +338,81 @@ test("login theme follows auth modal transitions and the close grace", async (t)
     newchar: authWindow("newchar"),
   });
   assert.deepEqual(manager.calls, [
-    ["loop", "music", "darkwind-theme", "darkwind-login-theme", 0.5],
+    ["play", "music", "darkwind-theme", 0.5],
   ]);
 
   interactions.setWindows({});
   interactions.setWindows({ charselect: authWindow("charselect") });
-  await new Promise((resolve) => setTimeout(resolve, 120));
   assert.equal(manager.calls.length, 1);
 
   interactions.setWindows({});
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  assert.deepEqual(manager.calls.at(-1), ["stop", "music", "darkwind-login-theme"]);
+  assert.equal(manager.calls.length, 1);
   scope.dispose();
 });
 
-test("music preference stops and resumes the active login theme", async (t) => {
+test("audio preferences gate the one-shot login theme", async (t) => {
   const modules = await loadModules(t);
   const { audio, eventBus, interactions, manager, scope } = createAudio(modules);
   connect(eventBus);
-  interactions.setWindows({ login: { type: "modal", sourceId: "login" } });
-  assert.equal(audio.getSnapshot().currentCategory, "music");
-
+  audio.setEnabled(false);
   audio.setCategoryEnabled("music", false);
-  assert.deepEqual(manager.calls.slice(-2), [
-    ["setCategoryEnabled", "music", false],
-    ["stop", "music", "darkwind-login-theme"],
-  ]);
+  interactions.setWindows({ login: { type: "modal", sourceId: "login" } });
   assert.equal(audio.getSnapshot().currentCategory, null);
 
   audio.setCategoryEnabled("music", true);
+  assert.equal(manager.calls.some(([type]) => type === "play"), false);
+
+  audio.setEnabled(true);
   assert.deepEqual(manager.calls.slice(-2), [
-    ["setCategoryEnabled", "music", true],
-    ["loop", "music", "darkwind-theme", "darkwind-login-theme", 0.5],
+    ["setEnabled", true],
+    ["play", "music", "darkwind-theme", 0.5],
   ]);
-  assert.equal(audio.getSnapshot().currentCategory, "music");
+  assert.equal(audio.getSnapshot().activityKind, "play");
+
+  audio.setCategoryEnabled("music", false);
+  audio.setCategoryEnabled("music", true);
+  assert.equal(
+    manager.calls.filter(([type, category]) => type === "play" && category === "music").length,
+    1,
+  );
   scope.dispose();
 });
 
-test("character attachment stops login audio immediately and disposal cancels grace", async (t) => {
+test("character attachment lets login audio finish naturally", async (t) => {
   const modules = await loadModules(t);
-  const { bus, eventBus, interactions, manager, scope } = createAudio(modules);
+  const { audio, bus, eventBus, interactions, manager, scope } = createAudio(modules);
   const authWindow = { type: "modal", sourceId: "login" };
   connect(eventBus);
 
   interactions.setWindows({ login: authWindow });
   bus.dispatch("Char.Vitals", { hp: 1, maxhp: 1 });
-  assert.deepEqual(manager.calls.at(-1), ["stop", "music", "darkwind-login-theme"]);
+  assert.equal(audio.getSnapshot().loggedIn, true);
+  assert.deepEqual(manager.calls, [["play", "music", "darkwind-theme", 0.5]]);
 
   interactions.setWindows({});
   interactions.setWindows({ login: authWindow });
   bus.dispatch("Char.Status", { name: "Nacho" });
-  assert.deepEqual(manager.calls.at(-1), ["stop", "music", "darkwind-login-theme"]);
+  assert.equal(manager.calls.length, 1);
 
   interactions.setWindows({});
   interactions.setWindows({ login: authWindow });
   bus.dispatch("Darkwind.Session.Recovered", { mode: "linkdead" });
-  assert.deepEqual(manager.calls.at(-1), ["stop", "music", "darkwind-login-theme"]);
+  assert.equal(manager.calls.length, 1);
 
-  interactions.setWindows({});
-  interactions.setWindows({ login: authWindow });
-  interactions.setWindows({});
-  const callCount = manager.calls.length;
   scope.dispose();
-  await new Promise((resolve) => setTimeout(resolve, 120));
-  assert.equal(manager.calls.length, callCount);
   assert.equal(interactions.listeners.size, 0);
+});
+
+test("early character status does not suppress the later login theme", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, eventBus, interactions, manager, scope } = createAudio(modules);
+  connect(eventBus);
+
+  bus.dispatch("Char.Status", { name: "Nacho" });
+  interactions.setWindows({ login: { type: "modal", sourceId: "login" } });
+
+  assert.deepEqual(manager.calls, [["play", "music", "darkwind-theme", 0.5]]);
+  scope.dispose();
 });
 
 test("disconnect and disposal reset once per lifecycle and isolate sessions", async (t) => {

@@ -114,6 +114,7 @@
     const updateGeometry = () => {
       geometryFrame = 0;
       if (!output) return;
+      terminal.refreshLayout();
       const activeOutput =
         output.parentElement?.classList.contains("split-active") && liveOutput
           ? liveOutput

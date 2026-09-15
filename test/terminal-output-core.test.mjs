@@ -343,6 +343,10 @@ test("pause scrollback detaches only for user scrolling", (t) => {
   harness.output.dispatch("wheel");
   harness.output.dispatch("scroll");
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "true");
+  const pausedScrollTop = harness.output.scrollTop;
+  harness.output.clientHeight = 80;
+  harness.core.refreshLayout();
+  assert.equal(harness.output.scrollTop, pausedScrollTop);
 
   harness.core.returnToLive();
   harness.output.scrollTop = 0;

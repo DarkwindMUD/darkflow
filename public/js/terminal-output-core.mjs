@@ -49,6 +49,11 @@ export function createTerminalOutputCore({
   const isAtBottom = (element) =>
     element.scrollTop + element.clientHeight >= element.scrollHeight - BOTTOM_THRESHOLD;
   const isSplitMode = () => behavior === 'split' && historyOutput && liveOutput;
+  const refreshLayout = () => {
+    if (disposed) return;
+    if (splitActive && liveOutput) liveOutput.scrollTop = liveOutput.scrollHeight;
+    else if (!paused) output.scrollTop = output.scrollHeight;
+  };
   const clampSplitRatio = (value) => {
     const ratio = Number(value);
     return Number.isFinite(ratio) ? Math.max(0.2, Math.min(0.8, ratio)) : 0.6;
@@ -78,8 +83,7 @@ export function createTerminalOutputCore({
       host.append(fragment);
     }
     pendingLines.clear();
-    if (splitActive && liveOutput) liveOutput.scrollTop = liveOutput.scrollHeight;
-    else if (!paused) output.scrollTop = output.scrollHeight;
+    refreshLayout();
   };
   const scheduleRender = () => {
     if (animationFrame || disposed) return;
@@ -328,6 +332,7 @@ export function createTerminalOutputCore({
       target.scrollTop = Math.max(0, lineTop - Math.round(target.clientHeight * 0.35));
       return true;
     },
+    refreshLayout,
     returnToLive,
     scrollByPage,
     snapshot: () => ({ buffer: targetOutput.textContent ?? '', scrollTop: targetOutput.scrollTop }),

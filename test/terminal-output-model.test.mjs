@@ -68,6 +68,21 @@ test("hydrates remounted subscribers silently and never reuses IDs after clear",
   assert.ok(firstEvents.some((event) => event.type === "announce"));
 });
 
+test("does not mutate records already emitted while assembling a line", () => {
+  const events = [];
+  const model = createTerminalOutputModel();
+  model.subscribe((event) => events.push(event));
+
+  model.appendOutput("partial");
+  const firstRecord = events.find((event) => event.type === "upsert").record;
+  const partialRecord = events.at(-2).record;
+  model.appendOutput(" extended\n");
+
+  assert.equal(firstRecord.text, "");
+  assert.equal(partialRecord.fragments[0].text, "partial");
+  assert.equal(model.snapshot()[0].text, "partial extended");
+});
+
 test("stream reset drops only partial state and preserves completed history", () => {
   const model = createTerminalOutputModel();
   model.appendOutput("kept\n\x1b[31mpartial");
@@ -118,6 +133,22 @@ test("keeps the active partial record within the selected limit", () => {
   ]);
 });
 
+test("keeps partial output when reducing the record limit", () => {
+  const model = createTerminalOutputModel({ recordLimit: 3 });
+  model.appendOutput("one\ntwo\nprompt");
+  model.setRecordLimit(1);
+
+  assert.deepEqual(model.snapshot().map(({ id, text, complete }) => ({ id, text, complete })), [
+    { id: 3, text: "", complete: false },
+  ]);
+  assert.equal(model.snapshot()[0].fragments[0].text, "prompt");
+
+  model.appendOutput(" done\n");
+  assert.deepEqual(model.snapshot().map(({ id, text, complete }) => ({ id, text, complete })), [
+    { id: 3, text: "prompt done", complete: true },
+  ]);
+});
+
 test("completes a protected source record after nested output prunes earlier history", () => {
   let model;
   model = createTerminalOutputModel({
@@ -133,4 +164,26 @@ test("completes a protected source record after nested output prunes earlier his
     { id: 2, text: "outer", cssClass: "" },
     { id: 3, text: "nested", cssClass: "system-line" },
   ]);
+});
+
+test("does not resurrect nested, gagged, or cleared records at a tiny limit", () => {
+  let model;
+  model = createTerminalOutputModel({
+    recordLimit: 1,
+    processLine(text, fragments) {
+      if (text === "outer") model.appendSystemMessage("nested");
+      if (text === "gag") return { fragments: [], gag: true };
+      if (text === "clear") model.clear();
+      return { fragments, gag: false };
+    },
+  });
+
+  model.appendOutput("outer\n");
+  assert.deepEqual(model.snapshot().map(({ text }) => text), ["outer"]);
+
+  model.appendOutput("gag\n");
+  assert.deepEqual(model.snapshot(), []);
+
+  model.appendOutput("clear\n");
+  assert.deepEqual(model.snapshot(), []);
 });

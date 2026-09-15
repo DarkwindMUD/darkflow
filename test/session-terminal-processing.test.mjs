@@ -124,6 +124,25 @@ test("processing survives zero views and hydrates remounts without replay", asyn
   assert.deepEqual(harness.outputLines.map(({ text }) => text), ["complete", "prompt finished"]);
 });
 
+test("processing hydrates ordered records silently after retention turns over", async (t) => {
+  const { createTerminalProcessing } = await loadModule(t);
+  const harness = createHarness(createTerminalProcessing);
+  harness.processing.setOutputRecordLimit(2);
+  harness.deliver("one\ntwo\nthree\nprompt");
+
+  const events = [];
+  harness.processing.subscribe((event) => events.push(event));
+
+  assert.equal(events.length, 1);
+  assert.equal(events[0].type, "reset");
+  assert.deepEqual(events[0].records.map(({ id, text, complete }) => ({ id, text, complete })), [
+    { id: 3, text: "three", complete: true },
+    { id: 4, text: "", complete: false },
+  ]);
+  assert.equal(events[0].records[1].fragments[0].text, "prompt");
+  assert.deepEqual(harness.outputLines.map(({ text }) => text), ["one", "two", "three"]);
+});
+
 test("reconnect resets partial stream only and disposal stops delivery", async (t) => {
   const { createTerminalProcessing } = await loadModule(t);
   const harness = createHarness(createTerminalProcessing);

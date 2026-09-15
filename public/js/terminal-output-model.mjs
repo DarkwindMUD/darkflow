@@ -6,10 +6,9 @@ import { createAnsiState, parseAnsi } from './ansi.js';
  */
 export function createTerminalOutputModel({ processLine, onOutputLine, onClear, recordLimit = 10000 } = {}) {
   const listeners = new Set();
-  const records = [];
+  const records = new Map();
   let parserState = createAnsiState();
   let activeRecord = null;
-  let activeIndex = -1;
   let activeText = '';
   let activeFragments = [];
   let nextLineId = 1;
@@ -23,7 +22,7 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
   const updateActiveRecord = (changes = {}) => {
     if (!activeRecord) return;
     activeRecord = { ...activeRecord, fragments: [...activeFragments], ...changes };
-    records[activeIndex] = activeRecord;
+    records.set(activeRecord.id, activeRecord);
     emit({ type: 'upsert', record: activeRecord });
   };
   const createRecord = (cssClass) => {
@@ -35,19 +34,21 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
       complete: false,
       text: '',
     };
-    records.push(activeRecord);
-    activeIndex = records.length - 1;
+    records.set(activeRecord.id, activeRecord);
     emit({ type: 'upsert', record: activeRecord });
   };
   const pruneRecords = (target = maxRecords) => {
-    while (records.length > target) {
-      const index = records.findIndex(
-        (record) => record !== activeRecord && !processingRecordIds.has(record.id),
-      );
-      if (index < 0) return;
-      const [removed] = records.splice(index, 1);
-      if (activeIndex > index) activeIndex -= 1;
-      emit({ type: 'remove', id: removed.id });
+    while (records.size > target) {
+      let removedId = null;
+      for (const [id, record] of records) {
+        if (record !== activeRecord && !processingRecordIds.has(id)) {
+          removedId = id;
+          break;
+        }
+      }
+      if (removedId === null) return;
+      records.delete(removedId);
+      emit({ type: 'remove', id: removedId });
     }
   };
   const completeLine = () => {
@@ -60,7 +61,6 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
 
     // Detach assembly state before automation; automation may append recursively.
     activeRecord = null;
-    activeIndex = -1;
     activeText = '';
     activeFragments = [];
     if (!record) return;
@@ -70,11 +70,9 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
       ? processLine(text, fragments)
       : { fragments, gag: false };
     processingRecordIds.delete(record.id);
-    const recordIndex = records.findIndex((candidate) => candidate.id === record.id);
-    if (recordIndex < 0) return;
+    if (!records.has(record.id)) return;
     if (result.gag) {
-      records.splice(recordIndex, 1);
-      if (activeIndex > recordIndex) activeIndex -= 1;
+      records.delete(record.id);
       emit({ type: 'remove', id: record.id });
       return;
     }
@@ -85,7 +83,7 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
       fragments: result.fragments,
       text: result.fragments.map((fragment) => fragment.text).join(''),
     };
-    records[recordIndex] = completed;
+    records.set(record.id, completed);
     emit({ type: 'upsert', record: completed });
     pruneRecords();
     if (typeof onOutputLine === 'function') {
@@ -110,11 +108,10 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
   const resetStream = () => {
     if (disposed) return;
     if (activeRecord) {
-      records.splice(activeIndex, 1);
+      records.delete(activeRecord.id);
       emit({ type: 'remove', id: activeRecord.id });
     }
     activeRecord = null;
-    activeIndex = -1;
     activeText = '';
     activeFragments = [];
     parserState = createAnsiState();
@@ -125,9 +122,8 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
     appendSystemMessage: (text) => appendOutput(text.endsWith('\n') ? text : text + '\n', 'system-line'),
     clear() {
       if (disposed) return;
-      records.length = 0;
+      records.clear();
       activeRecord = null;
-      activeIndex = -1;
       activeText = '';
       activeFragments = [];
       parserState = createAnsiState();
@@ -140,19 +136,18 @@ export function createTerminalOutputModel({ processLine, onOutputLine, onClear, 
       maxRecords = limit;
       pruneRecords();
     },
-    snapshot: () => [...records],
+    snapshot: () => [...records.values()],
     subscribe(listener) {
       if (disposed) return () => {};
       listeners.add(listener);
-      listener({ type: 'reset', records: [...records] });
+      listener({ type: 'reset', records: [...records.values()] });
       return () => listeners.delete(listener);
     },
     dispose() {
       if (disposed) return;
       disposed = true;
-      records.length = 0;
+      records.clear();
       activeRecord = null;
-      activeIndex = -1;
       activeText = '';
       activeFragments = [];
       parserState = createAnsiState();

@@ -179,11 +179,25 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
     talker: "bob",
     text: "Bob: A private message.",
   });
+  endpoint.sendGmcp("Comm.Channel", {
+    channel: "events",
+    text: "[Events] Lottery: Tickets are now on sale.",
+  });
+  endpoint.sendGmcp("Comm.Channel", {
+    channel: "lunar",
+    text: "[LUNAR ANNOUNCE] A new Lunar Mage has arrived.",
+  });
   await expect(chat).toContainText("Gossip");
   await expect(chat).toContainText("2 online");
   await expect(chat).toContainText("[gossip] Alice: Hello there.");
-  await expect(chat.locator(".chat-entry")).toHaveCount(2);
+  await expect(chat.locator(".chat-entry")).toHaveCount(4);
   await expect(chat).toContainText("A private message.");
+  await expect(chat.locator(".chat-entry").nth(2)).toHaveText(
+    "[events] Lottery: Tickets are now on sale.",
+  );
+  await expect(chat.locator(".chat-entry").nth(3)).toHaveText(
+    "[lunar] [LUNAR ANNOUNCE] A new Lunar Mage has arrived.",
+  );
 
   for (let index = 0; index < 40; index += 1) {
     endpoint.sendGmcp("Comm.Channel", {
@@ -193,7 +207,7 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
     });
   }
   const chatLog = chat.getByRole("log", { name: "Chat messages" });
-  await expect(chat.locator(".chat-entry")).toHaveCount(42);
+  await expect(chat.locator(".chat-entry")).toHaveCount(44);
   await expect
     .poll(() =>
       chatLog.evaluate((element) => ({

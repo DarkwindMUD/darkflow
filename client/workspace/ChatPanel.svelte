@@ -36,9 +36,13 @@
   }
 
   function messageText(message: SessionChannelMessage): string {
-    const text = parseAnsiText(message.text)
+    const rawText = parseAnsiText(message.text)
       .map((fragment: { text: string }) => fragment.text)
       .join("");
+    const channelPrefix = `[${message.channel}]`;
+    const text = rawText.toLowerCase().startsWith(channelPrefix.toLowerCase())
+      ? rawText.slice(channelPrefix.length).trimStart()
+      : rawText;
     if (!message.talker) return text;
     const talker = message.talker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     return text.replace(

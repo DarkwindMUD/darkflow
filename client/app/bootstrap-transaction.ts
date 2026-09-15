@@ -19,7 +19,7 @@ import {
 import { migrateLegacyData } from "../storage/legacy-migration";
 import { readState, type StorageLike } from "../storage/repository";
 import type { CharacterProfileId, ServerProfileId } from "../model/ids";
-import type { TransportState } from "../transport/types";
+import type { TransportEndpoint, TransportState } from "../transport/types";
 import { loadClientSettings } from "./client-settings";
 
 /** Temporary Phase 1 bootstrap diagnostic exposed until later cutover steps finish. */
@@ -49,6 +49,7 @@ export interface ShellBootstrap {
   gameName: string;
   themeKey: string;
   clientVersion: string;
+  fixedEndpoint: TransportEndpoint | null;
   shouldAutoConnect: boolean;
   zorkOnly: boolean;
 }
@@ -229,6 +230,15 @@ function isZorkOnlyLaunch(params: URLSearchParams, launchUrl: string): boolean {
   );
 }
 
+function isDarkwindHosted(launchUrl: string): boolean {
+  try {
+    const hostname = new URL(launchUrl).hostname.toLowerCase();
+    return hostname === "darkwind.ai" || hostname.endsWith(".darkwind.ai");
+  } catch {
+    return false;
+  }
+}
+
 /** Runs the idempotent Phase 1 boot transaction for tests and browser bootstrap. */
 export async function runBootTransaction(
   deps: BootTransactionDeps,
@@ -296,6 +306,11 @@ export async function runBootTransaction(
     }
     const serverProfileId = characterProfile.serverProfileId;
     const zorkOnly = isZorkOnlyLaunch(deps.urlSearchParams, deps.launchUrl);
+    const fixedEndpoint: TransportEndpoint | null = zorkOnly
+      ? { host: "darkwind.ai", port: "4244", protocol: "telnet" }
+      : isDarkwindHosted(deps.launchUrl)
+        ? { host: "darkwind.ai", port: "4242", protocol: "wss" }
+        : null;
 
     const [{ state, dom }, connectionModule, gmcpVariables, { soundManager }] = await Promise.all([
       deps.importModule<{
@@ -411,7 +426,9 @@ export async function runBootTransaction(
         gameName: config.gameName,
         themeKey: applicationState.defaults.themeKey,
         clientVersion: state.clientVersion || "unknown",
-        shouldAutoConnect: zorkOnly || Boolean(deps.urlSearchParams.get("host") || config.host),
+        fixedEndpoint,
+        shouldAutoConnect:
+          fixedEndpoint !== null || Boolean(deps.urlSearchParams.get("host") || config.host),
         zorkOnly,
       },
       clientLoaded: false,

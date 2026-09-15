@@ -492,7 +492,29 @@ test("Green PR 2 returns shell bootstrap values without runtime handles", async 
   assert.deepEqual(result.record.shell, {
     gameName: "Example",
     themeKey: "dracula",
+    clientVersion: "test",
+    fixedEndpoint: null,
     shouldAutoConnect: true,
     zorkOnly: false,
   });
+});
+
+test("Darkwind-hosted shells use the fixed production connection", async (t) => {
+  const modules = await loadBootstrapModules(t);
+  const fixture = loadFixture("single-scope");
+  const storage = createMemoryStorage();
+  populateLegacyStorage(storage, modules, fixture);
+  const harness = createBootHarness(t, modules, {
+    storage,
+    launchUrl: "https://play.darkwind.ai/",
+  });
+
+  const result = await harness.runTransaction();
+
+  assert.deepEqual(result.record.shell.fixedEndpoint, {
+    host: "darkwind.ai",
+    port: "4242",
+    protocol: "wss",
+  });
+  assert.equal(result.record.shell.shouldAutoConnect, true);
 });

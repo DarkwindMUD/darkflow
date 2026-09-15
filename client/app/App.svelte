@@ -428,7 +428,7 @@
     </h1>
 
     <form class="connection-form" aria-label="Connection" onsubmit={connect}>
-      {#if !shell.zorkOnly}
+      {#if !shell.fixedEndpoint}
         <input
           id="host"
           aria-label="Host"
@@ -465,7 +465,7 @@
       <button
         type="submit"
         hidden
-        disabled={snapshot.state !== "disconnected" || (!shell.zorkOnly && !host.trim())}
+        disabled={snapshot.state !== "disconnected" || (!shell.fixedEndpoint && !host.trim())}
         >Connect</button
       >
       <button
@@ -476,7 +476,7 @@
         class:disconnected={snapshot.state === "disconnected" &&
           snapshot.reconnect?.status !== "scheduled"}
         type="button"
-        disabled={!shell.zorkOnly && snapshot.state === "disconnected" && !host.trim()}
+        disabled={!shell.fixedEndpoint && snapshot.state === "disconnected" && !host.trim()}
         title={snapshot.state === "connecting"
           ? "Cancel connection attempt"
           : snapshot.reconnect?.status === "scheduled"

@@ -47,11 +47,9 @@ function resolvePhase2Endpoint(
   config: ConfigJson,
   params: URLSearchParams,
   storage: Storage,
-  zorkOnly: boolean,
+  fixedEndpoint: TransportEndpoint | null,
 ): TransportEndpoint {
-  if (zorkOnly) {
-    return { host: "darkwind.ai", port: "4244", protocol: "telnet" };
-  }
+  if (fixedEndpoint) return fixedEndpoint;
 
   let protocol = params.get("type");
   if (!protocol && params.has("wss")) protocol = params.get("wss") !== "0" ? "wss" : "ws";
@@ -119,7 +117,7 @@ try {
         config,
         urlSearchParams,
         globalThis.localStorage,
-        record.shell.zorkOnly,
+        record.shell.fixedEndpoint,
       );
       const root = mount(App, {
         target,

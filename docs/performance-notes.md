@@ -18,9 +18,11 @@ what matter.
 2. **The terminal kept three DOM copies of every line.** The history and live
    copies for the split scrollback were maintained even under the default
    pause behaviour, and every streaming line was rebuilt once per ANSI
-   fragment into all three. The copies now exist only while the split
-   behaviour is on, and line content is painted once per frame from a dirty
-   set. Steady-state DOM size fell by about two thirds.
+   fragment into all three. This branch first cut that to one DOM tree with a
+   once-per-frame dirty-set paint; upstream 2.0.0-spoob.8 then replaced the
+   terminal renderer with a virtualized pane that mounts only the visible
+   lines, which supersedes that change, so the client now carries upstream's
+   renderer here rather than ours.
 3. **The Scene loop read layout every frame.** The stage's tick read the
    pane's client size, forcing the terminal's pending layout early. The size
    is cached by the resize observer and the tick trusts it.

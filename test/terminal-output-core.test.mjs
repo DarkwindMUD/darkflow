@@ -51,12 +51,13 @@ class FakeElement {
     this.attributes = new Map();
     this.listeners = new Map();
     this.classList = new FakeClassList(this);
-    this.style = { setProperty() {} };
+    this.style = { height: "", setProperty() {} };
     this.scrollTop = 0;
     this.clientHeight = 100;
     this.clientWidth = 100;
     this.offsetWidth = 100;
     this.title = "";
+    this.measureCount = 0;
   }
 
   get className() {
@@ -71,20 +72,45 @@ class FakeElement {
     return this.children.map((child) => child.textContent ?? "").join("");
   }
 
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+
   set textContent(value) {
     this.replaceChildren(value ? new FakeTextNode(String(value)) : undefined);
   }
 
   get scrollHeight() {
-    return this.children.length * 20;
+    return this.children.reduce((height, child) => {
+      const explicitHeight = Number.parseFloat(child.style?.height);
+      if (Number.isFinite(explicitHeight)) return height + explicitHeight;
+      return height + (child.classList?.contains("terminal-output-viewport") ? child.scrollHeight : 20);
+    }, 0);
   }
 
   get offsetTop() {
-    return Math.max(0, (this.parentElement?.children.indexOf(this) ?? 0) * 20);
+    const siblings = this.parentElement?.children ?? [];
+    return siblings.slice(0, siblings.indexOf(this)).reduce((height, child) => {
+      const explicitHeight = Number.parseFloat(child.style?.height);
+      if (Number.isFinite(explicitHeight)) return height + explicitHeight;
+      return height + (child.classList?.contains("terminal-output-viewport") ? child.scrollHeight : 20);
+    }, 0);
   }
 
   getBoundingClientRect() {
-    return { top: this.offsetTop - (this.parentElement?.scrollTop ?? 0), height: 200, right: 100 };
+    if (this.classList.contains("output-line")) this.measureCount += 1;
+    let top = this.offsetTop;
+    let parent = this.parentElement;
+    while (parent) {
+      top += parent.offsetTop;
+      if (!parent.parentElement) top -= parent.scrollTop;
+      parent = parent.parentElement;
+    }
+    return {
+      top,
+      height: this.classList.contains("output-line") ? 20 : 200,
+      right: 100,
+    };
   }
 
   append(...nodes) {
@@ -102,6 +128,15 @@ class FakeElement {
 
   appendChild(node) {
     this.append(node);
+    return node;
+  }
+
+  insertBefore(node, reference) {
+    if (!reference) return this.appendChild(node);
+    const index = this.children.indexOf(reference);
+    node.remove?.();
+    node.parentElement = this;
+    this.children.splice(index, 0, node);
     return node;
   }
 
@@ -142,6 +177,12 @@ class FakeElement {
   }
 
   focus() {}
+}
+
+function outputLines(element) {
+  return element.children.flatMap((child) =>
+    child.classList?.contains("output-line") ? [child] : outputLines(child),
+  );
 }
 
 function installDom(t) {
@@ -256,7 +297,7 @@ test("completed non-gagged lines receive stable IDs and rendered text", (t) => {
   harness.core.appendOutput("partial");
   harness.scheduler.flushFrames();
   assert.equal(harness.lines.length, 0);
-  assert.equal(harness.output.children[0].dataset.lineId, undefined);
+  assert.equal(outputLines(harness.output)[0].dataset.lineId, undefined);
 
   harness.core.appendOutput("\ntransform\ngag\nlast\n");
   harness.scheduler.flushFrames();
@@ -266,10 +307,10 @@ test("completed non-gagged lines receive stable IDs and rendered text", (t) => {
     { id: 4, text: "last" },
   ]);
   assert.deepEqual(
-    harness.output.children.map((line) => line.dataset.lineId).filter(Boolean),
+    outputLines(harness.output).map((line) => line.dataset.lineId).filter(Boolean),
     ["1", "2", "4"],
   );
-  assert.equal(harness.output.children[1].textContent, "rendered");
+  assert.equal(outputLines(harness.output)[1].textContent, "rendered");
   harness.core.dispose();
 });
 
@@ -281,7 +322,7 @@ test("clear invalidates IDs without reusing them and reports clear", (t) => {
 
   harness.core.clear();
   assert.equal(harness.core.isLineAvailable(1), false);
-  assert.equal(harness.output.children.length, 0);
+  assert.equal(outputLines(harness.output).length, 0);
   assert.equal(harness.clears, 1);
 
   harness.core.appendOutput("replacement\n");
@@ -312,20 +353,20 @@ test("screen reader announcements are opt-in and clear immediately when disabled
 test("navigation renders pending output, locks near 35 percent, and returns live", (t) => {
   const harness = createHarness(t);
   harness.core.appendOutput(`${Array.from({ length: 10 }, (_, index) => `line ${index + 1}`).join("\n")}\n`);
-  assert.equal(harness.output.children.length, 0);
+  assert.equal(outputLines(harness.output).length, 0);
 
   assert.equal(harness.core.navigateToLine(9), true);
-  assert.equal(harness.output.children.length, 10);
-  assert.equal(harness.output.children[8].classList.contains("output-line-mention-target"), true);
+  assert.equal(outputLines(harness.output).length, 10);
+  assert.equal(outputLines(harness.output)[8].classList.contains("output-line-mention-target"), true);
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "true");
   assert.equal(harness.output.scrollTop, 125);
   harness.output.dispatch("scroll");
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "true");
 
   assert.equal(harness.core.returnToLive(), true);
-  assert.equal(harness.output.children[8].classList.contains("output-line-mention-target"), false);
+  assert.equal(outputLines(harness.output)[8].classList.contains("output-line-mention-target"), false);
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "false");
-  assert.equal(harness.output.scrollTop, harness.output.scrollHeight);
+  assert.equal(harness.output.scrollTop, harness.output.scrollHeight - harness.output.clientHeight);
   assert.equal(harness.core.returnToLive(), false);
   assert.equal(harness.core.navigateToLine(999), false);
   harness.core.dispose();
@@ -354,7 +395,49 @@ test("pause scrollback detaches only for user scrolling", (t) => {
   harness.core.appendOutput("seven\n");
   harness.scheduler.flushFrames();
   assert.equal(harness.pauseButton.getAttribute("aria-pressed"), "false");
-  assert.equal(harness.output.scrollTop, harness.output.scrollHeight);
+  assert.equal(harness.output.scrollTop, harness.output.scrollHeight - harness.output.clientHeight);
+  harness.core.dispose();
+});
+
+test("coalesces repeated record updates and keeps unchanged visible nodes", (t) => {
+  const harness = createHarness(t);
+  harness.core.appendOutput("partial");
+  harness.core.appendOutput(" output\nsecond\n");
+  assert.equal(harness.scheduler.frames.size, 1);
+  harness.scheduler.flushFrames();
+  const first = outputLines(harness.output)[0];
+  assert.equal(first.textContent, "partial output");
+  const firstMeasurements = first.measureCount;
+
+  harness.core.appendOutput("third\n");
+  harness.scheduler.flushFrames();
+  assert.equal(outputLines(harness.output)[0], first);
+  assert.equal(first.measureCount, firstMeasurements);
+  assert.deepEqual(outputLines(harness.output).map((line) => line.textContent), [
+    "partial output",
+    "second",
+    "third",
+  ]);
+  harness.core.dispose();
+});
+
+test("refreshLayout remeasures visible rows and restores a reading anchor", (t) => {
+  const harness = createHarness(t);
+  harness.core.appendOutput("one\ntwo\nthree\nfour\nfive\nsix\nseven\neight\n");
+  harness.scheduler.flushFrames();
+  harness.output.scrollTop = 20;
+  harness.output.dispatch("wheel");
+  harness.output.dispatch("scroll");
+  const rows = outputLines(harness.output);
+  const measurements = rows.map((line) => line.measureCount);
+
+  harness.core.refreshLayout();
+  harness.scheduler.flushFrames();
+  assert.equal(harness.output.scrollTop, 20);
+  assert.deepEqual(
+    outputLines(harness.output).map((line) => line.measureCount),
+    measurements.map((count) => count + 1),
+  );
   harness.core.dispose();
 });
 
@@ -365,33 +448,31 @@ test("dispose cancels pending work, clears targets, and removes listeners", (t) 
   assert.equal(harness.scheduler.frames.size, 1);
   assert.equal(harness.scheduler.timers.size, 1);
   assert.equal(harness.core.navigateToLine(1), true);
-  assert.equal(harness.output.children[0].classList.contains("output-line-mention-target"), true);
+  assert.equal(outputLines(harness.output)[0].classList.contains("output-line-mention-target"), true);
 
   harness.core.appendOutput("second\n");
   harness.core.dispose();
   assert.equal(harness.scheduler.frames.size, 0);
   assert.equal(harness.scheduler.timers.size, 0);
-  assert.equal(harness.output.children.length, 0);
+  assert.equal(outputLines(harness.output).length, 0);
   assert.equal(harness.core.isLineAvailable(1), false);
   assert.equal(harness.core.navigateToLine(1), false);
   assert.equal(harness.pauseButton.listeners.size, 0);
   assert.equal(harness.liveButton.listeners.size, 0);
   assert.equal(harness.clearButton.listeners.size, 0);
   harness.scheduler.flushFrames();
-  assert.equal(harness.output.children.length, 0);
+  assert.equal(outputLines(harness.output).length, 0);
 });
 
-test("split scrollback renders one record stream into history and live panes", (t) => {
+test("split scrollback keeps main mounted and mounts bounded history", (t) => {
   const scheduler = installDom(t);
   const shell = new FakeElement("section");
   const output = new FakeElement("div");
   const historyOutput = new FakeElement("div");
-  const liveOutput = new FakeElement("div");
   const core = createTerminalOutputCore({
     shell,
     output,
     historyOutput,
-    liveOutput,
     pauseButton: new FakeElement("button"),
     liveButton: new FakeElement("button"),
     clearButton: new FakeElement("button"),
@@ -408,10 +489,9 @@ test("split scrollback renders one record stream into history and live panes", (
   output.dispatch("scroll");
 
   assert.equal(shell.classList.contains("split-active"), true);
-  assert.equal(historyOutput.children.length, 6);
-  assert.equal(liveOutput.children.length, 6);
-  assert.equal(historyOutput.scrollHeight - historyOutput.scrollTop - historyOutput.clientHeight, 10);
-  assert.equal(liveOutput.scrollTop, liveOutput.scrollHeight);
+  assert.equal(outputLines(output).length, 6);
+  assert.equal(outputLines(historyOutput).length, 6);
+  assert.equal(historyOutput.scrollTop, 10);
 
   historyOutput.scrollTop = historyOutput.scrollHeight;
   historyOutput.dispatch("scroll");
@@ -431,7 +511,6 @@ test("split scrollback requires current wheel or scrollbar intent", (t) => {
     shell,
     output,
     historyOutput: new FakeElement("div"),
-    liveOutput: new FakeElement("div"),
     pauseButton: new FakeElement("button"),
     liveButton: new FakeElement("button"),
     clearButton: new FakeElement("button"),
@@ -464,12 +543,10 @@ test("keyboard paging marks split-scroll intent and targets active history", (t)
   const shell = new FakeElement("section");
   const output = new FakeElement("div");
   const historyOutput = new FakeElement("div");
-  const liveOutput = new FakeElement("div");
   const core = createTerminalOutputCore({
     shell,
     output,
     historyOutput,
-    liveOutput,
     pauseButton: new FakeElement("button"),
     liveButton: new FakeElement("button"),
     clearButton: new FakeElement("button"),
@@ -498,7 +575,6 @@ test("split divider clamps and persists its ratio", (t) => {
     shell,
     output: new FakeElement("div"),
     historyOutput: new FakeElement("div"),
-    liveOutput: new FakeElement("div"),
     divider,
     pauseButton: new FakeElement("button"),
     liveButton: new FakeElement("button"),
@@ -515,7 +591,7 @@ test("split divider clamps and persists its ratio", (t) => {
   assert.equal(scheduler.windowListeners.size, 0);
 });
 
-test("hydrates large retained histories without spreading the line collection", (t) => {
+test("bounds mounted rows for large retained histories", (t) => {
   const scheduler = installDom(t);
   const model = createTerminalOutputModel({ recordLimit: 200_000 });
   model.appendOutput(`${Array.from({ length: 150_000 }, (_, index) => `line ${index}`).join("\n")}\n`);
@@ -533,7 +609,9 @@ test("hydrates large retained histories without spreading the line collection", 
   });
 
   scheduler.flushFrames();
-  assert.equal(output.children.length, 150_000);
-  assert.equal(output.children.at(-1).textContent, "line 149999");
+  assert.ok(outputLines(output).length <= 90);
+  assert.equal(core.isLineAvailable(150_000), true);
+  assert.equal(core.navigateToLine(150_000), true);
+  assert.equal(outputLines(output).at(-1).textContent, "line 149999");
   core.dispose();
 });

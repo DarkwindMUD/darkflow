@@ -574,7 +574,6 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(output.locator(".ansi-fg-red")).toContainText("phase two ANSI");
   await expect(page.getByTestId("terminal-announcer")).toBeEmpty();
 
-  const beforeLayout = await output.textContent();
   // A rail-local reorder is the layout edit here. Rails are their own root now,
   // so dragging Avatar onto the terminal tab is a separate transfer feature; the
   // point of this step is that a persisted layout edit leaves the island intact.
@@ -584,7 +583,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace saved");
   await page.setViewportSize({ width: 1_100, height: 720 });
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
-  expect(await output.textContent()).toBe(beforeLayout);
+  await expect(output).toContainText("phase two ANSI");
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();
   await expect(input).toBeFocused();
@@ -601,6 +600,9 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await page.mouse.up();
   await expect(input).not.toBeFocused();
   expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("phase two ANSI");
+  endpoint.sendText("selection survives append\n");
+  await expect(output).toContainText("selection survives append");
+  expect(await page.evaluate(() => window.getSelection()?.toString())).toContain("phase two ANSI");
   await page.evaluate(() => window.getSelection()?.removeAllRanges());
 
   const terminalHandle = page.locator('[data-panel-drag-handle][data-panel-id="terminal"]');
@@ -614,7 +616,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   const floatingHandle = page.locator('[data-floating-drag-handle][data-panel-id="terminal"]');
   await expect(floatingHandle).toBeVisible();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
-  expect(await output.textContent()).toBe(beforeLayout);
+  await expect(output).toContainText("phase two ANSI");
 
   const floatingFrame = floatingHandle.locator("..");
   const beforeResize = await floatingFrame.boundingBox();
@@ -637,7 +639,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     .poll(async () => (await floatingFrame.boundingBox())?.width ?? 0)
     .toBeLessThan(beforeResize!.width);
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
-  expect(await output.textContent()).toBe(beforeLayout);
+  await expect(output).toContainText("phase two ANSI");
 
   // Dock back through the pane control. This used to drag onto the Avatar tab,
   // which is a rail card now rather than a Dockview drop target -- and the
@@ -648,7 +650,7 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await output.click();
   await expect(input).toBeFocused();
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
-  expect(await output.textContent()).toBe(beforeLayout);
+  await expect(output).toContainText("phase two ANSI");
 
   endpoint.dropConnections();
   await expect(page.locator("#connect-btn")).toHaveText(/Retrying in \d+s/);
@@ -668,8 +670,8 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
     .toBeLessThanOrEqual(1);
   expect(await output.getAttribute("data-terminal-identity")).toBe(identity);
 
-  await page.getByRole("button", { name: "Clear", exact: true }).click({ force: true });
-  await expect(output).toBeEmpty();
+  await page.locator('.terminal-output-shell [data-action="clear"]').click({ force: true });
+  await expect(output).not.toContainText("delivered after reconnect");
   await page.locator('[data-panel-drag-handle][data-panel-id="terminal"]').first().click();
   await output.click();
   await expect(input).toBeFocused();
@@ -822,10 +824,8 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await input.focus();
   await input.press("PageUp");
   await expect(page.getByLabel("Scrollback history", { exact: true })).toBeVisible();
-  await expect(page.getByLabel("Live output", { exact: true })).toBeVisible();
-  await expect(output).toBeHidden();
+  await expect(output).toBeVisible();
   const historyOutput = page.getByLabel("Scrollback history", { exact: true });
-  const liveOutput = page.getByLabel("Live output", { exact: true });
   await expect
     .poll(() => historyOutput.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
@@ -833,7 +833,7 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await historyOutput.click();
   await expect(input).toBeFocused();
   await input.evaluate((element) => element.blur());
-  await liveOutput.click();
+  await output.click();
   await expect(input).toBeFocused();
   const divider = page.getByRole("separator", { name: "Resize terminal history" });
   await input.evaluate((element) => element.blur());
@@ -877,6 +877,47 @@ test("Phase 2 applies emoji and split scrollback settings to the mounted termina
   await input.fill("say :smile:");
   await expect(picker).toBeHidden();
   await expect(input).toHaveValue("say :smile:");
+});
+
+test("Phase 2 preserves a wrapped split-history anchor after resize", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await connect(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Settings" });
+  await dialog.getByRole("tab", { name: "Terminal", exact: true }).click();
+  await dialog.getByLabel("Scrollback mode").selectOption("split");
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+
+  endpoint.sendText(
+    Array.from(
+      { length: 100 },
+      (_, index) => `wrapped ${index} ${"terminal history ".repeat(12)}\n`,
+    ).join(""),
+  );
+  const output = page.getByLabel("Terminal output", { exact: true });
+  await expect(output).toContainText("wrapped 99");
+  await output.evaluate((element) => {
+    element.dispatchEvent(new WheelEvent("wheel"));
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event("scroll"));
+  });
+  const history = page.getByLabel("Scrollback history", { exact: true });
+  await expect(history).toBeVisible();
+  const anchor = async () =>
+    history.evaluate((host) => {
+      const rect = host.getBoundingClientRect();
+      const line = [...host.querySelectorAll<HTMLElement>(".output-line")].find(
+        (candidate) => candidate.getBoundingClientRect().bottom > rect.top,
+      )!;
+      return {
+        id: line.dataset.lineId,
+        offset: line.getBoundingClientRect().top - rect.top,
+      };
+    });
+  const before = await anchor();
+  await page.setViewportSize({ width: 1_100, height: 720 });
+  await expect.poll(anchor).toEqual(before);
 });
 
 test("Phase 2 processes output without Terminal and hydrates remount silently", async ({

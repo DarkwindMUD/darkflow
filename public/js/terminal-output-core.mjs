@@ -1,43 +1,30 @@
 import { styleToElement } from './ansi.js';
+import { OUTPUT_OVERSCAN_LINES } from './constants.js';
 import { createTerminalOutputModel } from './terminal-output-model.mjs';
 
 const SCREEN_READER_DELAY_MS = 180;
 const BOTTOM_THRESHOLD = 5;
 const USER_SCROLL_INTENT_MS = 900;
+const ESTIMATED_LINE_HEIGHT = 20;
 
-/** One DOM-owned renderer for a terminal output model. */
+/** One DOM-owned, viewport-rendered terminal output model. */
 export function createTerminalOutputCore({
-  shell,
-  output,
-  historyOutput,
-  liveOutput,
-  divider,
-  pauseButton,
-  liveButton,
-  clearButton,
-  announcer,
-  subscribeOutput,
-  clearOutput,
-  processLine,
-  onOutputLine,
-  onClear,
+  shell, output, historyOutput, divider, pauseButton, liveButton, clearButton,
+  announcer, subscribeOutput, clearOutput, processLine, onOutputLine, onClear,
   onSplitRatioChange,
 }) {
   const ownedModel = subscribeOutput
     ? null
     : createTerminalOutputModel({ processLine, onOutputLine, onClear });
   const model = ownedModel ?? { subscribe: subscribeOutput, clear: clearOutput };
-  const pendingLines = new Map();
-  const lineElements = new Map();
-  const historyLineElements = new Map();
-  const liveLineElements = new Map();
+  const records = new Map();
+  const dirtyIds = new Set();
   let animationFrame = 0;
   let announceTimer = 0;
   let disposed = false;
   let paused = false;
   let navigationLocked = false;
   let targetLine = null;
-  let targetOutput = output;
   let announceText = '';
   let screenReaderMode = false;
   let behavior = 'pause';
@@ -46,14 +33,27 @@ export function createTerminalOutputCore({
   let userScrollIntentUntil = 0;
   let dividerPointerId = null;
 
+  const createPane = (host) => {
+    if (!host) return null;
+    const pane = {
+      host,
+      top: document.createElement('div'),
+      viewport: document.createElement('div'),
+      bottom: document.createElement('div'),
+      nodes: new Map(), heights: new Map(), rendered: [], prefix: [0], anchor: null,
+      layoutInvalidated: true,
+    };
+    pane.top.className = 'terminal-output-spacer';
+    pane.viewport.className = 'terminal-output-viewport';
+    pane.bottom.className = 'terminal-output-spacer';
+    host.replaceChildren(pane.top, pane.viewport, pane.bottom);
+    return pane;
+  };
+  const mainPane = createPane(output);
+  const historyPane = createPane(historyOutput);
   const isAtBottom = (element) =>
     element.scrollTop + element.clientHeight >= element.scrollHeight - BOTTOM_THRESHOLD;
-  const isSplitMode = () => behavior === 'split' && historyOutput && liveOutput;
-  const refreshLayout = () => {
-    if (disposed) return;
-    if (splitActive && liveOutput) liveOutput.scrollTop = liveOutput.scrollHeight;
-    else if (!paused) output.scrollTop = output.scrollHeight;
-  };
+  const isSplitMode = () => behavior === 'split' && historyPane;
   const clampSplitRatio = (value) => {
     const ratio = Number(value);
     return Number.isFinite(ratio) ? Math.max(0.2, Math.min(0.8, ratio)) : 0.6;
@@ -66,30 +66,11 @@ export function createTerminalOutputCore({
     pauseButton.title = paused ? 'Resume live terminal' : 'Pause live terminal';
     liveButton.title = splitActive ? 'Return to live terminal' : 'Live terminal';
   };
-  const queueLine = (host, line) => {
-    const lines = pendingLines.get(host) ?? [];
-    if (!pendingLines.has(host)) pendingLines.set(host, lines);
-    if (!lines.includes(line)) lines.push(line);
-  };
-  const renderPending = () => {
-    if (animationFrame) {
-      cancelAnimationFrame(animationFrame);
-      animationFrame = 0;
-    }
-    for (const [host, lines] of pendingLines) {
-      if (!lines.length) continue;
-      const fragment = document.createDocumentFragment();
-      for (const line of lines.splice(0)) fragment.append(line);
-      host.append(fragment);
-    }
-    pendingLines.clear();
-    refreshLayout();
-  };
   const scheduleRender = () => {
     if (animationFrame || disposed) return;
     animationFrame = requestAnimationFrame(() => {
       animationFrame = 0;
-      renderPending();
+      render();
     });
   };
   const announce = (text) => {
@@ -113,45 +94,134 @@ export function createTerminalOutputCore({
       link.rel = 'noopener noreferrer';
       link.append(rendered);
       line.append(link);
-    } else {
-      line.append(rendered);
-    }
+    } else line.append(rendered);
   };
-  const renderRecordInto = (record, elements, host) => {
-    let line = elements.get(record.id);
-    if (!line) {
-      line = document.createElement('div');
-      elements.set(record.id, line);
-      queueLine(host, line);
-    }
+  const patchLine = (line, record) => {
     line.className = `output-line${record.cssClass ? ` ${record.cssClass}` : ''}`;
     if (record.complete) line.dataset.lineId = String(record.id);
     else delete line.dataset.lineId;
     line.replaceChildren();
     for (const fragment of record.fragments) appendFragment(line, fragment);
   };
-  const renderRecord = (record) => {
-    renderRecordInto(record, lineElements, output);
-    if (historyOutput) renderRecordInto(record, historyLineElements, historyOutput);
-    if (liveOutput) renderRecordInto(record, liveLineElements, liveOutput);
+  const captureAnchor = (pane) => {
+    if (!pane || !pane.rendered.length || isAtBottom(pane.host)) return null;
+    const top = pane.host.scrollTop;
+    let index = 0;
+    while (index + 1 < pane.prefix.length && pane.prefix[index + 1] <= top) index += 1;
+    return { id: pane.rendered[index], offset: top - pane.prefix[index] };
   };
-  const removeRecord = (id) => {
-    for (const elements of [lineElements, historyLineElements, liveLineElements]) {
-      const line = elements.get(id);
-      for (const lines of pendingLines.values()) {
-        const index = lines.indexOf(line);
-        if (index >= 0) lines.splice(index, 1);
-      }
-      line?.remove();
-      elements.delete(id);
+  const captureReadingAnchors = () => {
+    for (const pane of [mainPane, historyPane]) {
+      if (pane && !pane.anchor) pane.anchor = captureAnchor(pane);
     }
   };
+  const prefixFor = (pane, ordered) => {
+    const prefix = new Array(ordered.length + 1);
+    prefix[0] = 0;
+    for (let index = 0; index < ordered.length; index += 1) {
+      prefix[index + 1] = prefix[index] + (pane.heights.get(ordered[index].id) ?? ESTIMATED_LINE_HEIGHT);
+    }
+    return prefix;
+  };
+  const findIndex = (prefix, offset) => {
+    let low = 0;
+    let high = prefix.length - 1;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (prefix[mid + 1] <= offset) low = mid + 1;
+      else high = mid;
+    }
+    return Math.min(low, Math.max(0, prefix.length - 2));
+  };
+  const releasePane = (pane) => {
+    if (!pane) return;
+    pane.nodes.clear();
+    pane.heights.clear();
+    pane.rendered = [];
+    pane.prefix = [0];
+    pane.anchor = null;
+    pane.layoutInvalidated = true;
+    pane.host.replaceChildren();
+  };
+  const ensurePane = (pane) => {
+    if (pane.host.firstChild === pane.top) return;
+    pane.host.replaceChildren(pane.top, pane.viewport, pane.bottom);
+  };
+  const renderPane = (pane, ordered, stickToBottom) => {
+    if (!pane) return;
+    ensurePane(pane);
+    const previousAnchor = pane.anchor;
+    pane.anchor = null;
+    let prefix = prefixFor(pane, ordered);
+    const viewportHeight = pane.host.clientHeight || 0;
+    const scrollTop = stickToBottom
+      ? Math.max(0, prefix[prefix.length - 1] - viewportHeight)
+      : pane.host.scrollTop;
+    const visibleStart = findIndex(prefix, scrollTop);
+    let visibleEnd = findIndex(prefix, scrollTop + viewportHeight) + 1;
+    if (!ordered.length) visibleEnd = 0;
+    const start = Math.max(0, visibleStart - OUTPUT_OVERSCAN_LINES);
+    const end = Math.min(ordered.length, visibleEnd + OUTPUT_OVERSCAN_LINES);
+    const ids = new Set();
+    const nodes = [];
+    for (let index = start; index < end; index += 1) {
+      const record = ordered[index];
+      ids.add(record.id);
+      let line = pane.nodes.get(record.id);
+      if (!line) {
+        line = document.createElement('div');
+        pane.nodes.set(record.id, line);
+        patchLine(line, record);
+      } else if (dirtyIds.has(record.id)) patchLine(line, record);
+      nodes.push(line);
+    }
+    for (const [id, line] of pane.nodes) {
+      if (!ids.has(id)) {
+        line.remove();
+        pane.nodes.delete(id);
+      }
+    }
+    pane.top.style.height = `${prefix[start]}px`;
+    pane.bottom.style.height = `${Math.max(0, prefix[prefix.length - 1] - prefix[end])}px`;
+    for (let index = 0; index < nodes.length; index += 1) {
+      const current = pane.viewport.children[index];
+      if (current !== nodes[index]) pane.viewport.insertBefore(nodes[index], current ?? null);
+    }
+    let heightsChanged = false;
+    for (let index = 0; index < nodes.length; index += 1) {
+      const id = ordered[start + index].id;
+      if (!pane.layoutInvalidated && !dirtyIds.has(id) && pane.heights.has(id)) continue;
+      const measured = Math.ceil(nodes[index].getBoundingClientRect().height);
+      if (measured > 0 && pane.heights.get(id) !== measured) {
+        pane.heights.set(id, measured);
+        heightsChanged = true;
+      }
+    }
+    pane.layoutInvalidated = false;
+    if (heightsChanged) {
+      prefix = prefixFor(pane, ordered);
+      pane.top.style.height = `${prefix[start]}px`;
+      pane.bottom.style.height = `${Math.max(0, prefix[prefix.length - 1] - prefix[end])}px`;
+    }
+    pane.rendered = ordered.map((record) => record.id);
+    pane.prefix = prefix;
+    const anchorIndex = previousAnchor ? pane.rendered.indexOf(previousAnchor.id) : -1;
+    if (stickToBottom) pane.host.scrollTop = Math.max(0, prefix[prefix.length - 1] - viewportHeight);
+    else if (anchorIndex >= 0) pane.host.scrollTop = Math.max(0, prefix[anchorIndex] + previousAnchor.offset);
+  };
+  const render = () => {
+    if (disposed) return;
+    const ordered = [...records.values()];
+    renderPane(mainPane, ordered, splitActive || !paused);
+    if (splitActive) renderPane(historyPane, ordered, false);
+    else releasePane(historyPane);
+    dirtyIds.clear();
+  };
   const clearDom = () => {
-    pendingLines.clear();
-    lineElements.clear();
-    historyLineElements.clear();
-    liveLineElements.clear();
-    for (const host of [output, historyOutput, liveOutput]) host?.replaceChildren();
+    records.clear();
+    dirtyIds.clear();
+    releasePane(mainPane);
+    releasePane(historyPane);
     announcer.textContent = '';
     announceText = '';
     navigationLocked = false;
@@ -161,44 +231,42 @@ export function createTerminalOutputCore({
   const handleModelEvent = (event) => {
     if (disposed) return;
     if (event.type === 'reset') {
-      clearDom();
-      for (const record of event.records) renderRecord(record);
+      records.clear();
+      for (const record of event.records) records.set(record.id, record);
+      dirtyIds.clear();
+      event.records.forEach((record) => dirtyIds.add(record.id));
       scheduleRender();
     } else if (event.type === 'upsert') {
-      renderRecord(event.record);
+      captureReadingAnchors();
+      records.set(event.record.id, event.record);
+      dirtyIds.add(event.record.id);
       scheduleRender();
     } else if (event.type === 'remove') {
-      removeRecord(event.id);
-    } else if (event.type === 'clear') {
-      clearDom();
-    } else if (event.type === 'announce') {
-      announce(event.text);
-    }
+      captureReadingAnchors();
+      records.delete(event.id);
+      dirtyIds.delete(event.id);
+      scheduleRender();
+    } else if (event.type === 'clear') clearDom();
+    else if (event.type === 'announce') announce(event.text);
   };
   const unsubscribe = model.subscribe(handleModelEvent);
-  const clear = () => {
-    if (!disposed) model.clear();
-  };
+  const clear = () => { if (!disposed) model.clear(); };
   const deactivateSplit = () => {
     if (!splitActive) return;
     splitActive = false;
     userScrollIntentUntil = 0;
     syncControls();
-    renderPending();
-    output.scrollTop = output.scrollHeight;
+    releasePane(historyPane);
+    renderPane(mainPane, [...records.values()], true);
   };
   const activateSplit = () => {
     if (splitActive || !isSplitMode()) return;
-    const distanceFromBottom = output.scrollHeight - output.scrollTop - output.clientHeight;
+    const anchor = captureAnchor(mainPane);
     splitActive = true;
     paused = false;
+    historyPane.anchor = anchor;
     syncControls();
-    renderPending();
-    historyOutput.scrollTop = Math.max(
-      0,
-      historyOutput.scrollHeight - historyOutput.clientHeight - distanceFromBottom,
-    );
-    liveOutput.scrollTop = liveOutput.scrollHeight;
+    render();
   };
   const returnToLive = () => {
     if (disposed) return false;
@@ -213,50 +281,46 @@ export function createTerminalOutputCore({
     paused = false;
     userScrollIntentUntil = 0;
     syncControls();
-    renderPending();
-    output.scrollTop = output.scrollHeight;
+    renderPane(mainPane, [...records.values()], true);
     return changed;
   };
+  const markUserScrollIntent = () => { userScrollIntentUntil = Date.now() + USER_SCROLL_INTENT_MS; };
   const scrollByPage = (direction) => {
     if (disposed) return;
     markUserScrollIntent();
     const target = splitActive ? historyOutput : output;
     target.scrollTop += target.clientHeight * direction;
+    if (splitActive) onHistoryScroll();
+    else onScroll();
   };
   const pause = () => {
     if (splitActive) deactivateSplit();
-    else {
-      paused = true;
-      syncControls();
-    }
+    else { paused = true; syncControls(); }
   };
   const onScroll = () => {
-    if (disposed || navigationLocked || splitActive) return;
+    if (disposed || navigationLocked) return;
+    if (splitActive) { renderPane(mainPane, [...records.values()], true); return; }
     if (isSplitMode()) {
       if (!isAtBottom(output) && Date.now() <= userScrollIntentUntil) activateSplit();
+      else scheduleRender();
       return;
     }
-    if (isAtBottom(output)) {
-      paused = false;
-      syncControls();
-    } else if (Date.now() <= userScrollIntentUntil) {
-      paused = true;
-      syncControls();
-    }
+    if (isAtBottom(output)) { paused = false; syncControls(); }
+    else if (Date.now() <= userScrollIntentUntil) { paused = true; syncControls(); }
+    mainPane.anchor = captureAnchor(mainPane);
+    scheduleRender();
   };
   const onHistoryScroll = () => {
-    if (!disposed && splitActive && isAtBottom(historyOutput)) deactivateSplit();
-  };
-  const markUserScrollIntent = () => {
-    userScrollIntentUntil = Date.now() + USER_SCROLL_INTENT_MS;
+    if (!disposed && splitActive) {
+      if (isAtBottom(historyOutput)) deactivateSplit();
+      else { historyPane.anchor = captureAnchor(historyPane); scheduleRender(); }
+    }
   };
   const markScrollbarPointerIntent = (event) => {
     const target = event.currentTarget;
     const rect = target.getBoundingClientRect();
     const scrollbarWidth = Math.max(0, target.offsetWidth - target.clientWidth);
-    if (event.clientX >= rect.right - Math.max(16, scrollbarWidth + 4)) {
-      markUserScrollIntent();
-    }
+    if (event.clientX >= rect.right - Math.max(16, scrollbarWidth + 4)) markUserScrollIntent();
   };
   const onPauseClick = () => (paused || splitActive ? returnToLive() : pause());
   const onDividerDown = (event) => {
@@ -270,6 +334,7 @@ export function createTerminalOutputCore({
     if (rect.height <= 10) return;
     splitRatio = clampSplitRatio((event.clientY - rect.top) / (rect.height - 10));
     syncControls();
+    scheduleRender();
   };
   const onDividerEnd = (event) => {
     if (event.pointerId !== dividerPointerId) return;
@@ -286,6 +351,8 @@ export function createTerminalOutputCore({
   output.addEventListener('touchstart', markUserScrollIntent, { passive: true });
   output.addEventListener('pointerdown', markScrollbarPointerIntent);
   historyOutput?.addEventListener('scroll', onHistoryScroll);
+  historyOutput?.addEventListener('wheel', markUserScrollIntent, { passive: true });
+  historyOutput?.addEventListener('touchstart', markUserScrollIntent, { passive: true });
   if (divider) {
     divider.addEventListener('pointerdown', onDividerDown);
     window.addEventListener('pointermove', onDividerMove);
@@ -310,32 +377,44 @@ export function createTerminalOutputCore({
       }
       if (!isSplitMode()) deactivateSplit();
       syncControls();
+      scheduleRender();
     },
     focus: () => output.focus({ preventScroll: true }),
-    isLineAvailable: (id) => Number.isSafeInteger(id) && lineElements.has(id),
+    isLineAvailable: (id) => Number.isSafeInteger(id) && records.has(id),
     navigateToLine: (id) => {
-      if (disposed || !Number.isSafeInteger(id)) return false;
-      const elements = splitActive ? historyLineElements : lineElements;
+      if (disposed || !Number.isSafeInteger(id) || !records.has(id)) return false;
+      const pane = splitActive ? historyPane : mainPane;
       const target = splitActive ? historyOutput : output;
-      const line = elements.get(id);
-      if (!line || line.dataset.lineId === undefined) return false;
-      renderPending();
+      const ordered = [...records.values()];
+      const index = ordered.findIndex((record) => record.id === id);
+      const prefix = prefixFor(pane, ordered);
+      target.scrollTop = Math.max(0, prefix[index] - Math.round(target.clientHeight * 0.35));
+      renderPane(pane, ordered, false);
       targetLine?.classList.remove('output-line-mention-target');
-      targetLine = line;
-      targetOutput = target;
+      targetLine = pane.nodes.get(id);
+      if (!targetLine) return false;
       targetLine.classList.add('output-line-mention-target');
       navigationLocked = true;
       paused = !splitActive;
       syncControls();
       const lineTop =
-        line.getBoundingClientRect().top - target.getBoundingClientRect().top + target.scrollTop;
+        targetLine.getBoundingClientRect().top - target.getBoundingClientRect().top + target.scrollTop;
       target.scrollTop = Math.max(0, lineTop - Math.round(target.clientHeight * 0.35));
+      scheduleRender();
       return true;
     },
-    refreshLayout,
+    refreshLayout: () => {
+      captureReadingAnchors();
+      for (const pane of [mainPane, splitActive ? historyPane : null]) {
+        if (!pane) continue;
+        pane.heights.clear();
+        pane.layoutInvalidated = true;
+      }
+      scheduleRender();
+    },
     returnToLive,
     scrollByPage,
-    snapshot: () => ({ buffer: targetOutput.textContent ?? '', scrollTop: targetOutput.scrollTop }),
+    snapshot: () => ({ buffer: output.textContent ?? '', scrollTop: output.scrollTop }),
     dispose: () => {
       if (disposed) return;
       disposed = true;
@@ -349,8 +428,9 @@ export function createTerminalOutputCore({
       output.removeEventListener('wheel', markUserScrollIntent);
       output.removeEventListener('touchstart', markUserScrollIntent);
       output.removeEventListener('pointerdown', markScrollbarPointerIntent);
-      userScrollIntentUntil = 0;
       historyOutput?.removeEventListener('scroll', onHistoryScroll);
+      historyOutput?.removeEventListener('wheel', markUserScrollIntent);
+      historyOutput?.removeEventListener('touchstart', markUserScrollIntent);
       if (divider) {
         divider.removeEventListener('pointerdown', onDividerDown);
         window.removeEventListener('pointermove', onDividerMove);

@@ -16,6 +16,7 @@ export interface TerminalIsland {
 }
 
 export interface TerminalIslandObservation {
+  /** Text currently mounted in the terminal viewport, not retained scrollback. */
   buffer: string;
   connected: boolean;
   focused: boolean;

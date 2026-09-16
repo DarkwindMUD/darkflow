@@ -102,7 +102,7 @@ test("mentions notify only for rendered lines and navigate through the terminal"
   const target = output.locator(".output-line-mention-target");
   await expect(target).toContainText("rendered hello @Nacho");
   const targetRatio = await target.evaluate((line) => {
-    const output = line.parentElement!;
+    const output = line.closest<HTMLElement>(".terminal-output")!;
     return (
       (line.getBoundingClientRect().top - output.getBoundingClientRect().top) / output.clientHeight
     );

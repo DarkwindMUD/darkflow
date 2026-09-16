@@ -33,7 +33,6 @@
   let host = $state<HTMLElement>();
   let output = $state<HTMLElement>();
   let historyOutput = $state<HTMLElement>();
-  let liveOutput = $state<HTMLElement>();
   let divider = $state<HTMLElement>();
   let commandInput = $state<HTMLInputElement>();
   let sendButton = $state<HTMLButtonElement>();
@@ -85,7 +84,6 @@
       shell: output.parentElement!,
       output,
       historyOutput,
-      liveOutput,
       divider,
       pauseButton: output.parentElement!.querySelector<HTMLButtonElement>("[data-action=pause]")!,
       liveButton: output.parentElement!.querySelector<HTMLButtonElement>("[data-action=live]")!,
@@ -115,16 +113,12 @@
       geometryFrame = 0;
       if (!output) return;
       terminal.refreshLayout();
-      const activeOutput =
-        output.parentElement?.classList.contains("split-active") && liveOutput
-          ? liveOutput
-          : output;
-      const rect = activeOutput.getBoundingClientRect();
-      const style = getComputedStyle(activeOutput);
+      const rect = output.getBoundingClientRect();
+      const style = getComputedStyle(output);
       const probe = document.createElement("span");
-      probe.style.cssText = "position:absolute;visibility:hidden;white-space:pre";
+      probe.style.cssText = `position:absolute;visibility:hidden;white-space:pre;font:${style.font}`;
       probe.textContent = "MMMMMMMMMM";
-      activeOutput.append(probe);
+      document.body.append(probe);
       characterWidth = probe.getBoundingClientRect().width / 10;
       lineHeight = probe.getBoundingClientRect().height;
       probe.remove();
@@ -154,7 +148,6 @@
     const geometryObserver = new ResizeObserver(scheduleGeometry);
     geometryObserver.observe(output);
     geometryObserver.observe(output.parentElement!);
-    if (liveOutput) geometryObserver.observe(liveOutput);
     applyTerminalSettings();
     scheduleGeometry();
     const refreshTerminalSettings = () => {
@@ -216,12 +209,6 @@
         <button data-action="pause" type="button" aria-pressed="false">Paused</button>
         <button data-action="clear" type="button">Clear</button>
       </div>
-      <div
-        bind:this={output}
-        class="terminal-output"
-        aria-label="Terminal output"
-        tabindex="-1"
-      ></div>
       <div class="terminal-output-split">
         <div
           bind:this={historyOutput}
@@ -236,13 +223,13 @@
           aria-label="Resize terminal history"
           aria-orientation="horizontal"
         ></div>
-        <div
-          bind:this={liveOutput}
-          class="terminal-output terminal-live-output"
-          aria-label="Live output"
-          tabindex="-1"
-        ></div>
       </div>
+      <div
+        bind:this={output}
+        class="terminal-output"
+        aria-label="Terminal output"
+        tabindex="-1"
+      ></div>
       <!-- The shared renderer only interpolates numeric and allow-listed values. -->
       <!-- eslint-disable-next-line svelte/no-at-html-tags -->
       {@html avatarMeterHtml}
@@ -312,24 +299,16 @@
 
   .terminal-output-split {
     display: none;
-    flex: 1;
     flex-direction: column;
     min-height: 0;
   }
 
-  :global(.terminal-output-shell.split-active > .terminal-output) {
-    display: none;
-  }
-
   :global(.terminal-output-shell.split-active) .terminal-output-split {
     display: flex;
-  }
-
-  .terminal-history-output {
     flex: 0 0 calc(var(--output-split-ratio, 60%) - 5px);
   }
 
-  .terminal-live-output {
+  .terminal-history-output {
     flex: 1 1 0;
   }
 

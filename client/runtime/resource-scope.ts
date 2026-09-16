@@ -196,6 +196,8 @@ class ResourceScopeImpl implements ResourceScope {
       }
       this.#diagnostics.trackRelease(entry.kind);
     }
+
+    this.#entries.length = 0;
   }
 
   #register(kind: ResourceKind, disposer: () => void): Disposer {
@@ -213,6 +215,10 @@ class ResourceScopeImpl implements ResourceScope {
       }
 
       entry.released = true;
+      const index = this.#entries.indexOf(entry);
+      if (index >= 0) {
+        this.#entries.splice(index, 1);
+      }
       try {
         disposer();
       } catch {

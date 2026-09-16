@@ -109,6 +109,8 @@ const SCALE_BY_RACE = Object.freeze({
   'swamp-troll': 1.2,
   yugoloth: 1.18,
   dragon: 1.25,
+  arthok: 1.3,
+  ursavar: 1.12,
 });
 
 export const WEAPONS = Object.freeze(['blade', 'rapier', 'knife', 'axe', 'blunt', 'polearm', 'staff', 'bow', 'claws']);

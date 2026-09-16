@@ -26,6 +26,8 @@ test('figures resolve weapon from guild, scale from race, and beast form for NPC
   assert.equal(resolveFigure({}, 'player').weapon, 'blade');
   assert.ok(resolveFigure({ race: 'Pixie' }, 'player').scale < 1);
   assert.ok(resolveFigure({ race: 'Ice Ogre' }, 'player').scale > 1);
+  assert.ok(resolveFigure({ race: 'Arthok' }, 'player').scale > resolveFigure({ race: 'Ice Ogre' }, 'player').scale);
+  assert.ok(resolveFigure({ race: 'Ursavar' }, 'player').scale > 1);
   assert.equal(resolveFigure({ race: 'Darkwinder' }, 'player').scale, 1);
   assert.equal(resolveFigure({}, 'player').facing, 1);
 

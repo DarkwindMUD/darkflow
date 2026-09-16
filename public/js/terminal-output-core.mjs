@@ -206,7 +206,7 @@ export function createTerminalOutputCore({
     pane.rendered = ordered.map((record) => record.id);
     pane.prefix = prefix;
     const anchorIndex = previousAnchor ? pane.rendered.indexOf(previousAnchor.id) : -1;
-    if (stickToBottom) pane.host.scrollTop = Math.max(0, prefix[prefix.length - 1] - viewportHeight);
+    if (stickToBottom) pane.host.scrollTop = Math.max(0, pane.host.scrollHeight - pane.host.clientHeight);
     else if (anchorIndex >= 0) pane.host.scrollTop = Math.max(0, prefix[anchorIndex] + previousAnchor.offset);
   };
   const render = () => {

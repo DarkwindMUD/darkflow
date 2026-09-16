@@ -687,6 +687,30 @@ test("Phase 2 renders one session terminal output island", async ({ page }) => {
   await expect(page.locator("[data-terminal-identity]")).toHaveCount(0);
 });
 
+test("Phase 2 live terminal follows short output above the Avatar meter", async ({ page }) => {
+  const endpoint = fixtures.endpoints.ws;
+  await page.setViewportSize({ width: 1_060, height: 300 });
+  await connect(page);
+  const output = page.getByLabel("Terminal output", { exact: true });
+  endpoint.sendText(Array.from({ length: 10 }, (_, index) => `short line ${index + 1}\n`).join(""));
+  await expect(output).toContainText("short line 10");
+  await expect
+    .poll(() => output.evaluate((element) => element.scrollHeight > element.clientHeight))
+    .toBe(true);
+
+  endpoint.sendGmcp("Char.Vitals", {
+    hp: 100,
+    maxhp: 100,
+    avatar_charge_pct: 25,
+  });
+  await expect(page.locator(".terminal-output-shell > .avatar-meter")).toBeVisible();
+  await expect
+    .poll(() =>
+      output.evaluate((element) => element.scrollHeight - element.scrollTop - element.clientHeight),
+    )
+    .toBeLessThanOrEqual(1);
+});
+
 test("Phase 2 terminal input sends once and recalls character history", async ({
   page,
 }, testInfo) => {

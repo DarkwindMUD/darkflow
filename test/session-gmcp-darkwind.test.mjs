@@ -144,6 +144,32 @@ test("Char.Status accepts MUD lifestyle strings without coercion", async (t) => 
   assert.equal(diagnostics.snapshot().suppressedEvents, 0);
 });
 
+test("MUD sentinels normalize before Char.Status and quest validation", async (t) => {
+  const { createSessionGmcpBus, SessionDiagnostics, sessionId } = await loadDarkwindModules(t);
+  const diagnostics = new SessionDiagnostics(sessionId);
+  const bus = createSessionGmcpBus(sessionId, () => true, diagnostics);
+  const errors = t.mock.method(console, "error", () => {});
+  const seen = [];
+
+  bus.on("*", (packageName, data) => seen.push([packageName, data]));
+  bus.dispatch("Char.Status", { name: "Tamjr", title: 0, gender: 0 });
+  bus.dispatch("Darkwind.Quests.List", [
+    { id: "herbs", name: "Gather herbs", status: "Started", readyToTurnIn: 0 },
+  ]);
+  bus.dispatch("Darkwind.Quests.Update", {
+    questId: "herbs",
+    objective: "Herbs",
+    current: 1,
+    required: 2,
+    readyToTurnIn: 1,
+  });
+
+  assert.equal(errors.mock.callCount(), 0);
+  assert.deepEqual(seen[0], ["Char.Status", { name: "Tamjr", title: "", gender: "" }]);
+  assert.equal(seen[1][1][0].readyToTurnIn, false);
+  assert.equal(seen[2][1].readyToTurnIn, true);
+});
+
 test("Step 6 information package validators accept representative server payloads", async (t) => {
   const { lookupGmcpValidator } = await loadDarkwindModules(t);
   const fixtures = {

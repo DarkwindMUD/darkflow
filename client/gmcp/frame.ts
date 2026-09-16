@@ -231,6 +231,28 @@ function normalizeGroup(data: unknown): unknown {
   };
 }
 
+function normalizeCharStatus(data: unknown): unknown {
+  if (!isObject(data)) {
+    return data;
+  }
+  const out = { ...data };
+  for (const key of ["title", "gender"]) {
+    if (out[key] === 0) out[key] = "";
+  }
+  return out;
+}
+
+function normalizeQuest(data: unknown): unknown {
+  if (!isObject(data)) {
+    return data;
+  }
+  const out = { ...data };
+  if (out.readyToTurnIn === 0 || out.readyToTurnIn === 1) {
+    out.readyToTurnIn = out.readyToTurnIn === 1;
+  }
+  return out;
+}
+
 /** Canonicalizes a package name and applies package-specific payload normalization. */
 export function normalizeGmcpFrame(packageName: string, data: unknown): GmcpFrame {
   const canonical = canonicalPackageName(packageName);
@@ -241,6 +263,8 @@ export function normalizeGmcpFrame(packageName: string, data: unknown): GmcpFram
       return { packageName: canonical, data: normalizeSupportsPayload(data) };
     case "Char.Vitals":
       return { packageName: canonical, data: normalizeVitals(data) };
+    case "Char.Status":
+      return { packageName: canonical, data: normalizeCharStatus(data) };
     case "Room.Info":
       return { packageName: canonical, data: normalizeRoomInfo(data) };
     case "Comm.Channel":
@@ -248,6 +272,13 @@ export function normalizeGmcpFrame(packageName: string, data: unknown): GmcpFram
       return { packageName: canonical, data: normalizeChannelMessage(data) };
     case "Group":
       return { packageName: canonical, data: normalizeGroup(data) };
+    case "Darkwind.Quests.List":
+      return {
+        packageName: canonical,
+        data: Array.isArray(data) ? data.map(normalizeQuest) : data,
+      };
+    case "Darkwind.Quests.Update":
+      return { packageName: canonical, data: normalizeQuest(data) };
     default:
       return { packageName: canonical, data };
   }

@@ -29,7 +29,7 @@ the messages Darkflow sends, receives, normalizes, and renders.
 | `Char.Defences 1`   | Buff/debuff snapshots and deltas      | [Char](gmcp-char.md)                 |
 | `Room 1`            | Room metadata and player presence     | [Room](gmcp-room.md)                 |
 | `Comm 1`            | Communication namespace support       | [Comm](gmcp-comm.md)                 |
-| `Comm.Channel 1`    | Channels, messages, and player roster | [Comm](gmcp-comm.md)                 |
+| `Comm.Channel 1` / `Comm.Channel.Text 2` | Channels, messages, and player roster | [Comm](gmcp-comm.md)                 |
 | `Group 1`           | Group roster and member vitals        | [Group and Game](gmcp-group-game.md) |
 | `Game 1`            | Game identity, version, and uptime    | [Group and Game](gmcp-group-game.md) |
 

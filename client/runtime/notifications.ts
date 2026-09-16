@@ -60,6 +60,7 @@ export interface SessionChannelMessage {
   readonly channel: string;
   readonly talker: string;
   readonly text: string;
+  readonly ansi?: string;
 }
 
 export interface SessionChatChannel {
@@ -131,6 +132,7 @@ function normalizeMessage(data: CommChannelMessage): {
   channel: string;
   talker: string;
   text: string;
+  ansi?: string;
 } | null {
   const channelValue = data.channel ?? data.chan;
   const talkerValue = data.talker ?? data.player;
@@ -147,8 +149,9 @@ function normalizeMessage(data: CommChannelMessage): {
         ? talkerValue.trim()
         : null;
   const text = boundedString(data.text ?? data.msg, MAX_TEXT_LENGTH);
+  const ansi = withinStringBound(data.ansi, MAX_TEXT_LENGTH) ? data.ansi : undefined;
   return channel !== null && talker !== null && text
-    ? { channel: channel.toLowerCase(), talker, text }
+    ? { channel: channel.toLowerCase(), talker, text, ...(ansi === undefined ? {} : { ansi }) }
     : null;
 }
 

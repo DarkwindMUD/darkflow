@@ -3,7 +3,7 @@
   import type { SessionChannelMessage } from "../runtime/notifications.ts";
   import type { Session } from "../runtime/session.ts";
   // @ts-expect-error Retained ANSI parser has no TypeScript declaration.
-  import { parseAnsiText } from "../../public/js/ansi.js";
+  import { parseAnsiText, styleToElement } from "../../public/js/ansi.js";
 
   let { panelId, session }: { panelId: string; session?: Session } = $props();
 
@@ -29,6 +29,29 @@
     let hash = 0;
     for (const character of channel) hash = ((hash << 5) - hash + character.charCodeAt(0)) | 0;
     return `hsl(${Math.abs(hash) % 360} 60% 65%)`;
+  }
+
+  function renderChannelLabel(node: HTMLElement, message: SessionChannelMessage) {
+    const render = (next: SessionChannelMessage): void => {
+      const fragment =
+        typeof next.ansi === "string"
+          ? parseAnsiText(next.ansi).find(
+              (item: { text: string; style: { fg?: unknown } }) => item.text && item.style.fg,
+            )
+          : undefined;
+      const child = styleToElement(
+        `[${next.channel}]`,
+        fragment ? { fg: fragment.style.fg } : undefined,
+      );
+      node.replaceChildren();
+      node.style.color =
+        child instanceof HTMLElement && (child.style.color || child.className)
+          ? ""
+          : channelColor(next.channel);
+      if (child) node.appendChild(child);
+    };
+    render(message);
+    return { update: render };
   }
 
   function talkerName(talker: string): string {
@@ -70,7 +93,7 @@
   <div bind:this={log} class="chat-log" role="log" aria-label="Chat messages" aria-live="polite">
     {#each snapshot.channelMessages as message (message.id)}
       <div class="chat-entry">
-        <strong style:color={channelColor(message.channel)}>[{message.channel}]</strong>
+        <strong class="channel-label" use:renderChannelLabel={message}></strong>
         {#if message.talker}<span class="talker"> {talkerName(message.talker)}:</span>{/if}
         <span> {messageText(message)}</span>
       </div>

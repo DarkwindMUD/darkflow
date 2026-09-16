@@ -104,7 +104,7 @@ test("notifications publishes frozen bounded channel and roster snapshots", asyn
   ]);
   bus.dispatch("Comm.Channel.Start", { channel: "gossip" });
   bus.dispatch("Comm.Channel", mention("hello from chat"));
-  bus.dispatch("Comm.Channel.Text", mention("hello from chat"));
+  bus.dispatch("Comm.Channel.Text", mention("hello from chat", { ansi: "\u001b[31mhello from chat" }));
 
   const snapshot = notifications.getSnapshot();
   assert.deepEqual(snapshot.channelNames, ["gossip", "trade"]);
@@ -128,6 +128,30 @@ test("notifications publishes frozen bounded channel and roster snapshots", asyn
   assert.equal(Object.isFrozen(snapshot.roster[0]), true);
   assert.equal(Object.isFrozen(snapshot.roster[0].channels), true);
   assert.equal(secondCalls, 1);
+
+  bus.dispatch("Comm.Channel.Text", mention("styled", { ansi: "\u001b[38;5;208mstyled" }));
+  bus.dispatch("Comm.Channel.Text", mention("plain fallback", { ansi: "x".repeat(4097) }));
+  bus.dispatch("Comm.Channel.Text", mention("malformed fallback", { ansi: 42 }));
+  const styledSnapshot = notifications.getSnapshot();
+  assert.deepEqual(styledSnapshot.channelMessages.at(-3), {
+    id: 2,
+    channel: "gossip",
+    talker: "Alice",
+    text: "styled",
+    ansi: "\u001b[38;5;208mstyled",
+  });
+  assert.deepEqual(styledSnapshot.channelMessages.at(-2), {
+    id: 3,
+    channel: "gossip",
+    talker: "Alice",
+    text: "plain fallback",
+  });
+  assert.deepEqual(styledSnapshot.channelMessages.at(-1), {
+    id: 4,
+    channel: "gossip",
+    talker: "Alice",
+    text: "malformed fallback",
+  });
 
   bus.dispatch("Comm.Channel.Players", [{ name: "NoChannels" }]);
   assert.deepEqual(notifications.getSnapshot().roster, []);

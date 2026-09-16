@@ -315,7 +315,7 @@ test("two SessionGmcpBus instances remain fully isolated", async (t) => {
   assert.equal(diagnosticsB.snapshot().suppressedEvents, 0);
 });
 
-test("handshake support list matches legacy 43-entry list", async (t) => {
+test("handshake support list includes the channel text v2 capability", async (t) => {
   const { CLIENT_SUPPORTS_SET, createSessionGmcpBus, SessionDiagnostics, sessionId } =
     await loadGmcpModules(t);
   const diagnostics = new SessionDiagnostics(sessionId);
@@ -329,8 +329,9 @@ test("handshake support list matches legacy 43-entry list", async (t) => {
     height: 24,
   });
 
-  assert.equal(CLIENT_SUPPORTS_SET.length, 43);
+  assert.equal(CLIENT_SUPPORTS_SET.length, 44);
   assert.equal(CLIENT_SUPPORTS_SET[0], "Char 1");
+  assert.ok(CLIENT_SUPPORTS_SET.includes("Comm.Channel.Text 2"));
   assert.equal(CLIENT_SUPPORTS_SET.at(-1), "Darkwind.Room.Playlist 1");
 
   const supportsLine = spy.calls.find((line) => line.startsWith("Core.Supports.Set "));

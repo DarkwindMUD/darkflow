@@ -1,6 +1,6 @@
 # Comm GMCP Protocol Support
 
-Darkflow advertises `Comm 1` and `Comm.Channel 1`. The package supplies the
+Darkflow advertises `Comm 1`, `Comm.Channel 1`, and `Comm.Channel.Text 2`. The package supplies the
 Chat panel, desktop mention notifications, channel filters, and the player
 roster used by the mention picker.
 
@@ -44,9 +44,18 @@ Darkflow accepts both common field families:
 
 The normalizer fills both aliases (`channel`/`chan`, `talker`/`player`, and
 `text`/`msg`) before dispatch. A non-object payload becomes `{ "text": ... }`.
+For `Comm.Channel.Text 2`, Darkwind may additionally send an optional `ansi`
+string, limited to 4096 characters. Darkflow ignores a missing, malformed, or
+oversized value; otherwise it uses only the first effective foreground for the
+synthetic Chat channel label. It never styles the talker or message body.
+
 The Chat panel keeps the latest 200 distinct messages and suppresses an
-immediately repeated message with the same channel, talker, and text. Channel
-and active-channel labels are passive metadata above the combined log.
+immediately repeated message with the same channel, talker, and text. Plain
+`text` remains the source for mention matching, terminal correlation, and
+deduplication. Version-2 clients receive one `Comm.Channel.Text` event; older
+or ambiguous clients retain the compatible `Comm.Channel` plus
+`Comm.Channel.Text` plain events. Channel and active-channel labels are passive
+metadata above the combined log.
 
 ## Channel And Player Lists
 

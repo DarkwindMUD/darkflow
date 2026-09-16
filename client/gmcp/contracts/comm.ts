@@ -6,6 +6,7 @@ export interface CommChannelMessage {
   player?: string;
   text?: string;
   msg?: string;
+  ansi?: unknown;
   [key: string]: unknown;
 }
 

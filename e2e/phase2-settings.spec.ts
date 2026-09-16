@@ -1213,6 +1213,44 @@ test("Phase 2 Controls persist global shortcuts and retain hidden key-mapping dr
   ).not.toBeChecked();
 });
 
+test("Phase 2 Settings opens when a command button has no description", async ({ page }) => {
+  await page.goto("/phase2/");
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") !== null))
+    .toBe(true);
+  // A command button stored before descriptions were tracked has no
+  // description field; the list row must not read it unguarded, or opening
+  // Settings throws and the dialog never mounts.
+  await page.evaluate(() => {
+    const session = (
+      window as unknown as {
+        __darkflowPhase1Runtime: {
+          session: {
+            configuration: {
+              getSnapshot(): { localDefinitions: { commandButtons: unknown[] } };
+              replaceLocalDefinitions(
+                kind: "commandButtons",
+                definitions: unknown[],
+              ): { success: boolean };
+            };
+          };
+        };
+      }
+    ).__darkflowPhase1Runtime.session;
+    const snapshot = session.configuration.getSnapshot();
+    const result = session.configuration.replaceLocalDefinitions("commandButtons", [
+      ...snapshot.localDefinitions.commandButtons,
+      { id: "cmd-no-desc", enabled: true, label: "Northwest", command: "nw", shortcut: "Numpad7" },
+    ]);
+    if (!result.success) throw new Error("Could not add the command button definition");
+  });
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const dialog = settingsDialog(page);
+  await expect(dialog).toBeVisible();
+  await settingsTab(dialog, "Controls");
+  await expect(dialog.getByText("Northwest", { exact: true })).toBeVisible();
+});
+
 test("Phase 2 appearance controls preview live, revert on Close, and persist on Apply", async ({
   page,
 }) => {

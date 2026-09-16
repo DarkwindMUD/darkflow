@@ -424,7 +424,7 @@
     if ("code" in definition) return definition.label || definition.code;
     if ("patternSource" in definition) return definition.patternSource;
     if ("trigger" in definition) return definition.trigger;
-    if ("pattern" in definition) return definition.description.trim() || definition.pattern;
+    if ("pattern" in definition) return (definition.description ?? "").trim() || definition.pattern;
     return definition.name;
   }
 
@@ -435,13 +435,13 @@
     let tokenTitle = "";
     if (kind === "aliases") {
       const alias = definition as AliasDefinition;
-      title = alias.description.trim() || alias.trigger;
+      title = (alias.description ?? "").trim() || alias.trigger;
       token = `${alias.trigger}${alias.isRegex ? " (regex)" : ""}`;
       tokenTitle = alias.isRegex ? "Pattern (regex)" : "Pattern";
       if (alias.group) meta.push(alias.group);
     } else if (kind === "triggers") {
       const trigger = definition as TriggerDefinition;
-      title = trigger.description.trim() || trigger.pattern;
+      title = (trigger.description ?? "").trim() || trigger.pattern;
       token = `${trigger.pattern}${trigger.isRegex ? " (regex)" : ""}${trigger.gag ? " (gag)" : ""}`;
       tokenTitle = `Pattern${trigger.isRegex ? " (regex)" : ""}${trigger.gag ? " (gag)" : ""}`;
       if (trigger.group) meta.push(trigger.group);
@@ -457,13 +457,20 @@
       meta.push(`${timer.steps.length} step${timer.steps.length === 1 ? "" : "s"}`);
     } else if (kind === "functions") {
       const fn = definition as FunctionDefinition;
-      title = fn.description.trim() || fn.name;
+      title = (fn.description ?? "").trim() || fn.name;
       token = fn.name;
       tokenTitle = "Function name";
       meta.push(fn.group || "Ungrouped", functionScriptSummary(fn));
+    } else if (kind === "commandButtons") {
+      const button = definition as CommandButtonDefinition;
+      title = (button.label ?? "").trim() || button.command;
+      token = button.command;
+      tokenTitle = "Command";
+      const shortcut = button.shortcut ? shortcutLabel(normalizeShortcut(button.shortcut)) : "";
+      meta.push(shortcut || "No shortcut");
     } else {
       const highlight = definition as HighlightDefinition;
-      title = highlight.description.trim() || highlight.patternSource;
+      title = (highlight.description ?? "").trim() || highlight.patternSource;
       token = highlight.patternSource;
       tokenTitle = "Pattern";
       if (highlight.group) meta.push(highlight.group);

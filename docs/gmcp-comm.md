@@ -44,6 +44,11 @@ Darkflow accepts both common field families:
 
 The normalizer fills both aliases (`channel`/`chan`, `talker`/`player`, and
 `text`/`msg`) before dispatch. A non-object payload becomes `{ "text": ... }`.
+When the saved terminal-channel setting is off, sender-view tells and standard
+soul emotes are ordinary transient channel messages with an empty `talker` and
+actor-perspective `text` (for example, `"You tell Bob: Hello."` or `"You
+smile."`). With terminal-channel output on, those sender views remain
+Terminal-only.
 For `Comm.Channel.Text 2`, Darkwind may additionally send an optional `ansi`
 string, limited to 4096 characters. Darkflow ignores a missing, malformed, or
 oversized value; otherwise it uses only the first effective foreground for the

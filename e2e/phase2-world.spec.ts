@@ -181,6 +181,18 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
     talker: "bob",
     text: "Bob: A private message.",
   });
+  const outgoingTell = {
+    channel: "tell",
+    talker: "",
+    text: "You tell Bob: Hello.",
+  };
+  endpoint.sendGmcp("Comm.Channel.Text", outgoingTell);
+  endpoint.sendGmcp("Comm.Channel.Text", outgoingTell);
+  endpoint.sendGmcp("Comm.Channel.Text", {
+    channel: "emote",
+    talker: "",
+    text: "You smile.",
+  });
   endpoint.sendGmcp("Comm.Channel", {
     channel: "events",
     text: "[Events] Lottery: Tickets are now on sale.",
@@ -215,31 +227,39 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
   await expect(chat).toContainText("Gossip");
   await expect(chat).toContainText("2 online");
   await expect(chat).toContainText("[gossip] Alice: Hello there.");
-  await expect(chat.locator(".chat-entry")).toHaveCount(9);
+  await expect(chat.locator(".chat-entry")).toHaveCount(11);
   await expect(chat).toContainText("A private message.");
-  await expect(chat.locator(".chat-entry").nth(2)).toHaveText(
+  await expect(chat).toContainText("[tell] You tell Bob: Hello.");
+  await expect(chat).toContainText("[emote] You smile.");
+  await expect(
+    chat.locator(".chat-entry").filter({ hasText: "You tell Bob: Hello." }).locator(".talker"),
+  ).toHaveCount(0);
+  await expect(
+    chat.locator(".chat-entry").filter({ hasText: "You smile." }).locator(".talker"),
+  ).toHaveCount(0);
+  await expect(chat.locator(".chat-entry").nth(4)).toHaveText(
     "[events] Lottery: Tickets are now on sale.",
   );
-  await expect(chat.locator(".chat-entry").nth(3)).toHaveText(
+  await expect(chat.locator(".chat-entry").nth(5)).toHaveText(
     "[lunar] [LUNAR ANNOUNCE] A new Lunar Mage has arrived.",
   );
   await expect(chat.locator(".chat-entry").nth(0).locator(".channel-label span")).toHaveCSS(
     "color",
     "rgb(205, 0, 0)",
   );
-  await expect(chat.locator(".chat-entry").nth(4).locator(".channel-label span")).toHaveCSS(
+  await expect(chat.locator(".chat-entry").nth(6).locator(".channel-label span")).toHaveCSS(
     "color",
     "rgb(255, 135, 0)",
   );
-  await expect(chat.locator(".chat-entry").nth(5).locator(".channel-label span")).toHaveCSS(
+  await expect(chat.locator(".chat-entry").nth(7).locator(".channel-label span")).toHaveCSS(
     "color",
     "rgb(1, 2, 3)",
   );
-  await expect(chat.locator(".chat-entry").nth(6).locator(".channel-label")).toHaveCSS(
+  await expect(chat.locator(".chat-entry").nth(8).locator(".channel-label")).toHaveCSS(
     "color",
     "rgb(219, 112, 180)",
   );
-  await expect(chat.locator(".chat-entry").nth(7).locator(".channel-label")).toHaveCSS(
+  await expect(chat.locator(".chat-entry").nth(9).locator(".channel-label")).toHaveCSS(
     "color",
     "rgb(219, 112, 180)",
   );
@@ -252,7 +272,7 @@ test("room and chat panels render session-owned GMCP state and clear on disconne
     });
   }
   const chatLog = chat.getByRole("log", { name: "Chat messages" });
-  await expect(chat.locator(".chat-entry")).toHaveCount(49);
+  await expect(chat.locator(".chat-entry")).toHaveCount(51);
   await expect
     .poll(() =>
       chatLog.evaluate((element) => ({

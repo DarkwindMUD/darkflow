@@ -116,6 +116,21 @@ test("Darkwind.Window.Open accepts numeric closable from MUD payloads", async (t
   assert.equal(diagnostics.snapshot().suppressedEvents, 0);
 });
 
+test("Darkwind.Window v2 advertises the controlled paged-text envelope", async (t) => {
+  const { CLIENT_SUPPORTS_SET, lookupGmcpValidator } = await loadDarkwindModules(t);
+  assert.ok(CLIENT_SUPPORTS_SET.includes("Darkwind.Window 2"));
+  const validator = lookupGmcpValidator("Darkwind.Window.Open");
+  assert.ok(validator);
+  assert.equal(
+    validator({
+      id: "more",
+      type: "panel",
+      layout: { type: "paged_text", id: "more", text: "A complete result\n" },
+    }).success,
+    true,
+  );
+});
+
 test("Char.Status accepts MUD lifestyle strings without coercion", async (t) => {
   const { createSessionGmcpBus, SessionDiagnostics, sessionId, lookupGmcpValidator } =
     await loadDarkwindModules(t);

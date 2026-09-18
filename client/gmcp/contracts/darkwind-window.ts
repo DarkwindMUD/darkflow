@@ -6,6 +6,13 @@ export interface DarkwindWindowLayoutNode {
   [key: string]: unknown;
 }
 
+/** Complete, client-controlled paging session (Window v2 only). */
+export interface DarkwindPagedTextNode extends DarkwindWindowLayoutNode {
+  type: "paged_text";
+  id: string;
+  text: string;
+}
+
 /** Darkwind.Window.Open inbound payload (docs/gmcp-darkwind-window.md:31-66). */
 export interface DarkwindWindowOpen {
   id: string;

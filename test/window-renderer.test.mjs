@@ -7,6 +7,11 @@ import {
   usesNpcDialogueMultiColumnChoices,
   usesPlayerRowMultiColumnGrid,
 } from '../public/js/window-renderer.js';
+import { DISPLAY_TYPES } from '../public/js/window-types.js';
+
+test('paged text remains an explicit renderer display type', () => {
+  assert.equal(DISPLAY_TYPES.has('paged_text'), true);
+});
 
 function gridWithPlayerRows(count) {
   return {

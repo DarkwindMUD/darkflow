@@ -288,6 +288,45 @@ test("malformed frames remain advisory but cannot mutate interaction state", asy
   });
 });
 
+test("controlled paged text requires a bounded panel root and replaces its session", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, interactions } = createInteractions(modules, t);
+
+  bus.dispatch("Darkwind.Window.Open", {
+    id: "more",
+    type: "panel",
+    layout: { type: "paged_text", id: "more", text: "First result" },
+  });
+  bus.dispatch("Darkwind.Window.Open", {
+    id: "more",
+    type: "panel",
+    layout: { type: "paged_text", id: "more", text: "Second result" },
+  });
+  assert.equal(interactions.getSnapshot().windows.more.layout.text, "Second result");
+
+  bus.dispatch("Darkwind.Window.Open", {
+    id: "bad-paged",
+    type: "modal",
+    layout: { type: "paged_text", id: "bad-paged", text: "Wrong container" },
+  });
+  bus.dispatch("Darkwind.Window.Open", {
+    id: "also-bad-paged",
+    type: "panel",
+    layout: { type: "paged_text", id: "also-bad-paged", text: 1 },
+  });
+  bus.dispatch("Darkwind.Window.Open", {
+    id: "nested-paged",
+    type: "panel",
+    layout: {
+      type: "vertical",
+      children: [{ type: "paged_text", id: "nested-paged", text: "Wrong root" }],
+    },
+  });
+  assert.equal(interactions.getSnapshot().windows["bad-paged"], undefined);
+  assert.equal(interactions.getSnapshot().windows["also-bad-paged"], undefined);
+  assert.equal(interactions.getSnapshot().windows["nested-paged"], undefined);
+});
+
 test("Street Samurai replacements stay correlated to an open session window", async (t) => {
   const modules = await loadModules(t);
   const first = createInteractions(modules, t);

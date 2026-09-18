@@ -7,7 +7,7 @@ This document specifies the `Darkwind.Window` GMCP package as implemented by the
 Support declaration advertised by the client:
 
 ```json
-["Darkwind.Window 1"]
+["Darkwind.Window 2"]
 ```
 
 | Message | Direction | Purpose |
@@ -87,6 +87,7 @@ The current client supports only these node types.
 - `image`
 - `youtube_embed`
 - `ansi_text`
+- `paged_text` (Window v2; panel windows only)
 - `npc_dialogue`
 - `player_row`
 - `finger_profile`
@@ -132,6 +133,7 @@ lineHeight, textTransform
 | `image` | `src`, `alt`, `loading`, `loadingText` |
 | `youtube_embed` | `src`, `url`, `title` |
 | `ansi_text` | `text` |
+| `paged_text` | required `id` and complete `text`; rendered as a locally paged ANSI-safe reader |
 | `npc_dialogue` | `npc`, `title`, `text`, `choices` |
 | `player_row` | Character summary fields used by login and `who` |
 | `finger_profile` | Structured player profile fields |
@@ -158,6 +160,14 @@ changes and selects the first available option when the previous value is not
 present.
 
 ## Runtime Behavior
+
+### Controlled paged output (Window v2)
+
+A panel with a `paged_text` root is one complete paging session. Its stable
+window id replaces the prior session with that id, starts at the top, and has
+no Window callback or action messages. The client owns native scrolling plus
+Previous Page, Next Page, Top, and Bottom controls; it does not capture
+Terminal input for paging.
 
 ### Closable modal handling
 

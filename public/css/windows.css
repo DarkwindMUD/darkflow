@@ -169,6 +169,72 @@
   overflow-wrap: normal;
 }
 
+.dw-paged-text {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 2px solid transparent;
+  border-radius: 8px;
+  padding: 8px;
+  background:
+    linear-gradient(var(--df-panel), var(--df-panel)) padding-box,
+    linear-gradient(135deg, var(--df-accent), var(--df-accent-blue)) border-box;
+  animation: dw-paged-text-open 900ms ease-out;
+}
+
+@keyframes dw-paged-text-open {
+  from {
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--df-accent) 70%, transparent),
+      0 0 24px color-mix(in srgb, var(--df-accent-blue) 45%, transparent);
+  }
+
+  to { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dw-paged-text { animation: none; }
+}
+
+.dw-paged-text-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding-bottom: 8px;
+  background: var(--df-panel);
+}
+
+.dw-paged-text-button {
+  background: var(--df-btn-secondary);
+  color: var(--df-text);
+  border: 1px solid var(--df-border);
+  border-radius: 4px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+}
+
+.dw-paged-text-button:disabled { opacity: 0.5; }
+
+.dw-paged-text-status {
+  margin-left: auto;
+  color: var(--df-muted);
+  font-size: 12px;
+}
+
+.dw-paged-text-viewport {
+  min-height: 0;
+  overflow: auto;
+  scrollbar-color: var(--df-border) var(--df-bg);
+  scrollbar-width: thin;
+}
+
 /* ── Form fields ────────────────────────────────────────────────── */
 .dw-field {
   display: flex;

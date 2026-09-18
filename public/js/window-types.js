@@ -14,6 +14,7 @@ export const DISPLAY_TYPES = new Set([
   'paragraph',
   'text',
   'ansi_text',
+  'paged_text',
   'divider',
   'progress',
   'image',

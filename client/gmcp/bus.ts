@@ -81,7 +81,7 @@ export const CLIENT_SUPPORTS_SET: readonly string[] = [
   "Darkwind.XPMon 1",
   "Darkwind.Client.Subscriptions 1",
   "Darkwind.Client.NAWS 1",
-  "Darkwind.Window 1",
+  "Darkwind.Window 2",
   "Darkwind.Snoop 1",
   "Darkwind.IDE 2",
   "Darkwind.MapData2 2",

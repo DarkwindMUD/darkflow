@@ -52,7 +52,7 @@ branded Darkflow.
 | `Darkwind.Client.Subscriptions 1` | `Subscriptions`, `RefreshMedia`                                               | Client -> Server | [Client coordination](gmcp-darkwind-client.md)    |
 | `Darkwind.Client.NAWS 1`          | `NAWS`                                                                        | Client -> Server | [Client coordination](gmcp-darkwind-client.md)    |
 | `Darkwind.Session`                | `Recovered`                                                                   | Server -> Client | [Session recovery](gmcp-darkwind-session.md)      |
-| `Darkwind.Window 1`               | `Open`, `Update`, `Close`, `Submit`, `Action`, `Closed`                       | Mixed            | [Windows](gmcp-darkwind-window.md)                |
+| `Darkwind.Window 2`               | `Open`, `Update`, `Close`, `Submit`, `Action`, `Closed`                       | Mixed            | [Windows](gmcp-darkwind-window.md)                |
 | `Darkwind.Snoop 1`                | `Open`, `Append`, `Status`, `Close`, `Command`, `Stop`, `Closed`              | Mixed            | [Snoop](gmcp-darkwind-snoop.md)                   |
 | `Darkwind.IDE 2`                  | Single-frame and chunked open/save messages                                   | Mixed            | [IDE](gmcp-darkwind-ide.md)                       |
 | `Darkwind.MapData2 2`             | `Current`, `Area`, `Update`, `Sync`, `Browse`, `BrowseArea`, `Reset`, `Error` | Mixed            | [MapData2](gmcp-darkwind-mapdata-v2.md)           |

@@ -12,7 +12,7 @@
   // @ts-expect-error The retained dashboard renderer is legacy JavaScript.
   import * as streetSamuraiRenderer from "../../public/js/street-samurai-dashboard.js";
 
-  const { collectFormData, renderLayout, updateElements } = windowRenderer;
+  const { collectFormData, disposeLayout, renderLayout, updateElements } = windowRenderer;
 
   const AUTH_WINDOW_IDS = new Set(["login", "newchar", "charselect"]);
   const SHARED_VIDEO_GEOMETRY_KEY = "darkwind-shared-video-window-geometry";
@@ -98,6 +98,7 @@
       const saved = preserveForm && isAuthWindow(current) ? collectFormData(host) : null;
       current = next;
       if (streetRoot) streetSamuraiRenderer.disposeStreetSamuraiDashboard(streetRoot);
+      disposeLayout(host.firstElementChild);
       host.replaceChildren(
         renderLayout(next.layout, handleButton, {
           windowId: next.id,
@@ -159,6 +160,7 @@
           }
         }
         if (streetRoot) streetSamuraiRenderer.disposeStreetSamuraiDashboard(streetRoot);
+        disposeLayout(host.firstElementChild);
         streetRoot = null;
         host.replaceChildren();
       },
@@ -168,6 +170,7 @@
 
 <section
   class:embedded={directWindowId !== undefined}
+  class:paged={serverWindow?.layout.type === "paged_text"}
   class="server-window-panel"
   data-panel-id={panelId}
   data-workspace-owned={directWindowId === undefined ? "true" : undefined}
@@ -193,5 +196,13 @@
     height: auto;
     overflow: visible;
     padding: 0;
+  }
+
+  .server-window-panel.paged {
+    overflow: hidden;
+  }
+
+  .server-window-panel.paged .server-window-content {
+    height: 100%;
   }
 </style>

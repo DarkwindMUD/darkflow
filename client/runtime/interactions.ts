@@ -65,6 +65,7 @@ import type { Unsubscribe } from "./events";
 import type { ResourceScope } from "./resource-scope";
 
 const MAX_SNOOP_ENTRIES = 1000;
+const MAX_WINDOW_PAYLOAD_BYTES = 32 * 1024;
 const AUTH_RESPONSE_TIMEOUT_MS = 8000;
 const AUTH_WINDOW_IDS = new Set(["login", "newchar", "charselect"]);
 const STREET_WINDOW_FIELDS = [
@@ -144,10 +145,31 @@ function hasYoutubeEmbed(node: unknown): boolean {
   );
 }
 
+function hasPagedText(node: unknown): boolean {
+  if (!node || typeof node !== "object" || Array.isArray(node)) return false;
+  const candidate = node as Record<string, unknown>;
+  return (
+    candidate.type === "paged_text" ||
+    (Array.isArray(candidate.children) && candidate.children.some(hasPagedText))
+  );
+}
+
 function prepareWindowOpen(input: unknown): DarkwindWindowOpen | null {
   const result = validateDarkwindWindowOpen(input);
   if (!result.success) return null;
   const open = result.data;
+  if (hasPagedText(open.layout)) {
+    if (
+      open.type !== "panel" ||
+      open.layout.type !== "paged_text" ||
+      typeof open.layout.id !== "string" ||
+      typeof open.layout.text !== "string" ||
+      new TextEncoder().encode(JSON.stringify(open)).byteLength > MAX_WINDOW_PAYLOAD_BYTES
+    ) {
+      return null;
+    }
+    return structuredClone(open);
+  }
   if (open.layout.type !== "street_samurai_dashboard") return structuredClone(open);
 
   const state = normalizeDarkwindStreetSamurai(open.layout.state);

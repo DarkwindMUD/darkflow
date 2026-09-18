@@ -38,6 +38,64 @@ const loginWindow = {
   },
 };
 
+test("controlled paged output replaces one floating panel without terminal capture", async ({
+  page,
+}) => {
+  const endpoint = await connect(page);
+  const text = Array.from({ length: 160 }, (_, index) => `Line ${index + 1}`).join("\n");
+  endpoint.sendGmcp("Darkwind.Window.Open", {
+    id: "more",
+    type: "panel",
+    title: "Paged Output",
+    closable: 1,
+    dock: "float",
+    defaultFloatW: 640,
+    defaultFloatH: 480,
+    defaultFloatX: 40,
+    defaultFloatY: 40,
+    layout: { type: "paged_text", id: "more", text: `\u001b[32m${text}\u001b[0m` },
+  });
+
+  const panel = page.locator('.server-window-panel[data-panel-id="server-window-more"]');
+  const viewport = panel.locator(".dw-paged-text-viewport");
+  await expect(panel).toContainText("Line 160");
+  await expect(panel.getByRole("status")).toHaveText(/Page 1 of \d+/);
+  await expect(panel.getByRole("button", { name: "Previous Page" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Top" })).toBeDisabled();
+  await expect(panel.getByRole("button", { name: "Next Page" })).toBeEnabled();
+  await page.getByLabel("Command input", { exact: true }).fill("look");
+  await expect(page.getByLabel("Command input", { exact: true })).toHaveValue("look");
+
+  await panel.getByRole("button", { name: "Next Page" }).click();
+  await expect(panel.getByRole("button", { name: "Previous Page" })).toBeEnabled();
+  await panel.getByRole("button", { name: "Bottom" }).click();
+  await expect(panel.getByRole("button", { name: "Next Page" })).toBeDisabled();
+  await expect(panel.getByRole("status")).toHaveText(/Page (\d+) of \1/);
+  await panel.getByRole("button", { name: "Top" }).click();
+  await expect(panel.getByRole("button", { name: "Previous Page" })).toBeDisabled();
+
+  await page.setViewportSize({ width: 760, height: 620 });
+  await expect(panel.getByRole("status")).toHaveText(/Page 1 of \d+/);
+  endpoint.sendGmcp("Darkwind.Window.Open", {
+    id: "more",
+    type: "panel",
+    title: "Paged Output",
+    closable: 1,
+    dock: "float",
+    defaultFloatW: 640,
+    defaultFloatH: 480,
+    defaultFloatX: 40,
+    defaultFloatY: 40,
+    layout: { type: "paged_text", id: "more", text: "Replacement only" },
+  });
+  await expect(panel).toContainText("Replacement only");
+  await expect(panel).not.toContainText("Line 160");
+  await expect.poll(() => viewport.evaluate((element) => element.scrollTop)).toBe(0);
+  expect(
+    await page.evaluate(() => localStorage.getItem("darkflow-session-core-v1") ?? ""),
+  ).not.toContain("server-window-more");
+});
+
 test("generic windows submit login, preserve reconnect input, update, and close", async ({
   page,
 }) => {

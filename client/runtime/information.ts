@@ -168,11 +168,56 @@ export function createSessionInformation(
   };
 
   const withPatron = (vitals: CharVitals, omens: DarkwindDivine | null): CharVitals =>
-    omens ? { ...vitals, divine_patron: omens.patron ?? "" } : vitals;
+    vitals.divine_patron || !omens?.patron ? vitals : { ...vitals, divine_patron: omens.patron };
 
-  listen<CharVitals>("Char.Vitals", validateCharVitals, (vitals) =>
-    update({ vitals: { ...withPatron(vitals, snapshot.omens), receivedAt: Date.now() } }),
-  );
+  // Darkwind cached deltas retain the core quartet; rested appears only in full frames.
+  const isFullVitals = (vitals: CharVitals): boolean =>
+    snapshot.vitals === null || "rested" in vitals;
+
+  listen<CharVitals>("Char.Vitals", validateCharVitals, (incoming) => {
+    const full = isFullVitals(incoming);
+    const hasAvatarUpdate =
+      full ||
+      [
+        "avatar_charge",
+        "avatar_charge_pct",
+        "avatar_active",
+        "avatar_active_remaining",
+        "avatar_active_max",
+      ].some((key) => key in incoming);
+    const vitals = { ...(full ? {} : snapshot.vitals), ...incoming };
+    if (
+      "avatar_active_remaining" in incoming &&
+      !("avatar_active_max" in incoming) &&
+      !Number.isFinite(vitals.avatar_active_max) &&
+      Number(incoming.avatar_active_remaining) > 0
+    ) {
+      vitals.avatar_active_max = Number(incoming.avatar_active_remaining);
+    }
+    if (
+      ("avatar_charge" in incoming || "avatar_charge_pct" in incoming) &&
+      !("avatar_active_remaining" in incoming)
+    ) {
+      delete vitals.avatar_active;
+      delete vitals.avatar_active_remaining;
+      delete vitals.avatar_active_max;
+    }
+    if (
+      "avatar_charge_pct" in incoming &&
+      !("avatar_charge" in incoming) &&
+      Number.isFinite(vitals.avatar_charge_max) &&
+      Number(vitals.avatar_charge_max) > 0
+    ) {
+      vitals.avatar_charge =
+        (Number(vitals.avatar_charge_max) * Number(incoming.avatar_charge_pct)) / 100;
+    }
+    update({
+      vitals: {
+        ...withPatron(vitals, snapshot.omens),
+        receivedAt: hasAvatarUpdate ? Date.now() : snapshot.vitals?.receivedAt,
+      },
+    });
+  });
   listen<CharStatus>("Char.Status", validateCharStatus, (status) =>
     update({ status: { ...snapshot.status, ...status } }),
   );
@@ -245,7 +290,9 @@ export function createSessionInformation(
   listen<DarkwindDivine>("Darkwind.Divine", validateDarkwindDivine, (omens) =>
     update({
       omens,
-      ...(snapshot.vitals ? { vitals: withPatron(snapshot.vitals, omens) } : {}),
+      ...(snapshot.vitals
+        ? { vitals: { ...snapshot.vitals, divine_patron: omens.patron ?? "" } }
+        : {}),
     }),
   );
   listen<DarkwindSky>("Darkwind.Sky", validateDarkwindSky, (sky) =>

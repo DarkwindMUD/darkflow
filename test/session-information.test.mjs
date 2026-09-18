@@ -127,6 +127,84 @@ test("divine patron attaches to vitals regardless of frame order", async (t) => 
   late.bus.dispatch("Char.Vitals", { hp: 1, maxhp: 2 });
   late.bus.dispatch("Darkwind.Divine", { patron: "mitra" });
   assert.equal(late.information.getSnapshot().vitals?.divine_patron, "mitra");
+  late.bus.dispatch("Darkwind.Divine", { patron: "gaea" });
+  assert.equal(late.information.getSnapshot().vitals?.divine_patron, "gaea");
+  late.bus.dispatch("Darkwind.Divine", { patron: "" });
+  assert.equal(late.information.getSnapshot().vitals?.divine_patron, "");
+});
+
+test("vitals reconcile Avatar full snapshots and filtered deltas", async (t) => {
+  const modules = await loadModules(t);
+  const { bus, information } = createInformation(modules);
+  let now = 1_000;
+  t.mock.method(Date, "now", () => now);
+  const cachedVitals = {
+    hp: 100,
+    maxhp: 100,
+    sp: 50,
+    maxsp: 50,
+    nl: 0,
+    level_pct: 0,
+    carry: 0,
+    maxcarry: 100,
+    encumberance: 0,
+    encumberance_pct: 0,
+    encumberance_label: "Unburdened",
+    string: "HP:100/100 SP:50/50",
+  };
+
+  bus.dispatch("Darkwind.Divine", { patron: "mitra" });
+  bus.dispatch("Char.Vitals", {
+    ...cachedVitals,
+    rested: 0,
+    avatar_charge: 25,
+    avatar_charge_max: 100,
+    avatar_charge_rate_pct: 200,
+    divine_patron: "set",
+  });
+  assert.equal(information.getSnapshot().vitals?.divine_patron, "set");
+
+  now = 2_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_charge_pct: 26 });
+  let vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_charge, 26);
+  assert.equal(vitals?.avatar_charge_max, 100);
+  assert.equal(vitals?.avatar_charge_rate_pct, 200);
+  assert.equal(vitals?.receivedAt, 2_000);
+
+  const percentageWithMax = createInformation(modules);
+  percentageWithMax.bus.dispatch("Char.Vitals", {
+    avatar_charge_pct: 30,
+    avatar_charge_max: 200,
+  });
+  assert.equal(percentageWithMax.information.getSnapshot().vitals?.avatar_charge, 60);
+
+  now = 3_000;
+  bus.dispatch("Char.Vitals", {
+    ...cachedVitals,
+    avatar_charge_pct: 0,
+    avatar_active_remaining: 61,
+  });
+  now = 4_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_active_remaining: 60 });
+  vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_active_max, 61);
+  assert.equal(vitals?.receivedAt, 4_000);
+
+  now = 5_000;
+  bus.dispatch("Char.Vitals", cachedVitals);
+  assert.equal(information.getSnapshot().vitals?.receivedAt, 4_000);
+
+  now = 6_000;
+  bus.dispatch("Char.Vitals", { ...cachedVitals, avatar_charge_pct: 10 });
+  vitals = information.getSnapshot().vitals;
+  assert.equal(vitals?.avatar_active_remaining, undefined);
+  assert.equal(vitals?.avatar_active_max, undefined);
+  assert.equal(vitals?.avatar_charge, 10);
+
+  bus.dispatch("Char.Vitals", { ...cachedVitals, rested: 0 });
+  assert.equal(information.getSnapshot().vitals?.avatar_charge, undefined);
+  assert.equal(Object.isFrozen(information.getSnapshot().vitals), true);
 });
 
 test("information reduces inventory, progress, and requested cyberware details", async (t) => {

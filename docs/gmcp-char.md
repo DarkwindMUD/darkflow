@@ -39,20 +39,22 @@ Char.Defences 1
 
 ## Char.Vitals
 
-The minimum full snapshot is:
+The full Darkwind snapshot includes:
 
 ```json
 {
   "hp": 420,
   "maxhp": 500,
   "sp": 180,
-  "maxsp": 220
+  "maxsp": 220,
+  "rested": 0
 }
 ```
 
-Darkflow treats a payload containing `hp`, `maxhp`, and a complete SP pair as a
-full snapshot. Smaller payloads are merged into the previous snapshot. The
-following fields have visible behavior:
+Darkwind cached deltas retain the core HP/SP fields, so after the initial
+snapshot Darkflow treats the full-only `rested` field as the full-snapshot
+marker. Payloads without it merge into the previous snapshot. The following
+fields have visible behavior:
 
 | Field | Notes |
 | --- | --- |

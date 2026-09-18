@@ -384,44 +384,54 @@ function renderGuildVitalItems(bodyEl, items) {
   });
 }
 
-// Phase 2 mounts the legacy terminal meter from the session's live vitals.
-export function avatarChargeMeter(vitals, now = Date.now()) {
-  if (!vitals) return '';
+// Phase 2 renders this deterministic state with stable Svelte elements.
+export function avatarMeterState(vitals, now = Date.now()) {
+  if (!vitals) return null;
   const charge = Number(vitals.avatar_charge);
   const max = Number(vitals.avatar_charge_max);
   const reportedPct = Number(vitals.avatar_charge_pct);
   const elapsedMs = Math.max(0, now - (Number(vitals.receivedAt) || now));
-  const activeAtSync = Number(vitals.avatar_active_remaining ?? vitals.avatar_active);
+  const activeAtSync = Math.max(0, Number(vitals.avatar_active_remaining ?? vitals.avatar_active) || 0);
   const active = Math.max(0, Math.ceil(activeAtSync - elapsedMs / 1000));
   const activeMax = Math.max(1, Number(vitals.avatar_active_max) || activeAtSync);
   const patron = String(vitals.divine_patron || '').toLowerCase();
-  const patronClass = ['mitra', 'gaea', 'set'].includes(patron) ? ' patron-' + patron : '';
+  const patronClass = ['mitra', 'gaea', 'set'].includes(patron) ? 'patron-' + patron : '';
   if (active > 0) {
     const minutes = Math.floor(active / 60);
     const seconds = active % 60;
     const pct = Math.max(0, Math.min(100, (active / activeMax) * 100));
-    return '<div class="avatar-meter visible active' + patronClass + '" role="status" aria-live="polite">' +
-      '<div class="avatar-meter-fill" style="width:' + pct + '%"></div>' +
-      '<div class="avatar-meter-label">Wrathful Avatar ACTIVE ' + minutes + ':' + String(seconds).padStart(2, '0') + '</div></div>';
+    return {
+      mode: 'active',
+      label: 'Wrathful Avatar ACTIVE ' + minutes + ':' + String(seconds).padStart(2, '0'),
+      fillPct: pct,
+      patronClass,
+      full: false,
+      ariaValueMax: null,
+      ariaValueNow: null,
+    };
   }
   const hasRawCharge = Number.isFinite(charge) && max > 0;
   if (hasRawCharge || Number.isFinite(reportedPct)) {
     const ratePct = Number(vitals.avatar_charge_rate_pct);
     const gained = hasRawCharge
-      ? (elapsedMs / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100)
+      ? (Math.max(0, elapsedMs - activeAtSync * 1000) / 2000) * ((Number.isFinite(ratePct) ? ratePct : 100) / 100)
       : 0;
     const predictedCharge = hasRawCharge
       ? Math.max(0, Math.min(max, charge + gained))
       : Math.max(0, Math.min(100, reportedPct));
     const pct = hasRawCharge ? (predictedCharge / max) * 100 : predictedCharge;
     const displayPct = Math.floor(pct);
-    const fullClass = displayPct >= 100 ? ' full' : '';
-    return '<div class="avatar-meter visible' + fullClass + patronClass + '" role="progressbar" aria-label="Wrathful Avatar charge"' +
-      ' aria-live="polite" aria-valuemin="0" aria-valuemax="' + (hasRawCharge ? max : 100) + '" aria-valuenow="' + Math.floor(predictedCharge) + '">' +
-      '<div class="avatar-meter-fill" style="width:' + pct + '%"></div>' +
-      '<div class="avatar-meter-label">Wrathful Avatar ' + displayPct + '%</div></div>';
+    return {
+      mode: 'charge',
+      label: 'Wrathful Avatar ' + displayPct + '%',
+      fillPct: pct,
+      patronClass,
+      full: displayPct >= 100,
+      ariaValueMax: hasRawCharge ? max : 100,
+      ariaValueNow: Math.floor(predictedCharge),
+    };
   }
-  return '';
+  return null;
 }
 
 function isCompletedQuest(quest) {

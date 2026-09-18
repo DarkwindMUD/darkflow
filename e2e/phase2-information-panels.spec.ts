@@ -113,10 +113,24 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   await ensurePanelOpen(page, "Avatar", "avatar");
   const endpoint = fixtures.endpoints.ws;
   const meter = page.locator(".terminal-output-shell > .avatar-meter");
-
-  endpoint.sendGmcp("Char.Vitals", {
+  const cachedVitals = {
     hp: 100,
     maxhp: 100,
+    sp: 50,
+    maxsp: 50,
+    nl: 0,
+    level_pct: 0,
+    carry: 0,
+    maxcarry: 100,
+    encumberance: 0,
+    encumberance_pct: 0,
+    encumberance_label: "Unburdened",
+    string: "HP:100/100 SP:50/50",
+  };
+
+  endpoint.sendGmcp("Char.Vitals", {
+    ...cachedVitals,
+    rested: 0,
     avatar_charge: 25,
     avatar_charge_max: 100,
     avatar_charge_rate_pct: 200,
@@ -138,23 +152,21 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   ).toBeLessThanOrEqual(1);
   await expect(meter).toHaveClass(/patron-mitra/);
   await expect(meter).toContainText("Wrathful Avatar 25%");
+  const meterNode = await meter.evaluateHandle((element) => element);
   await expect
     .poll(async () => Number((await meter.getAttribute("aria-valuenow")) ?? 0))
     .toBeGreaterThan(25);
 
   endpoint.sendGmcp("Char.Vitals", {
-    hp: 90,
-    maxhp: 100,
-    sp: 50,
-    maxsp: 60,
+    ...cachedVitals,
     avatar_charge_pct: 26,
   });
   await expect(meter).toContainText("Wrathful Avatar 26%");
   await expect(meter).toHaveAttribute("aria-valuenow", "26");
 
   endpoint.sendGmcp("Char.Vitals", {
-    hp: 100,
-    maxhp: 100,
+    ...cachedVitals,
+    rested: 0,
     avatar_charge: 100,
     avatar_charge_max: 100,
     divine_patron: "set",
@@ -163,21 +175,34 @@ test("Terminal avatar meter preserves legacy placement and behavior", async ({ p
   await expect(meter).toHaveClass(/patron-set/);
   await expect(meter).toContainText("Wrathful Avatar 100%");
 
+  endpoint.sendGmcp("Darkwind.Divine", { patron: "gaea" });
+  await expect(meter).toHaveClass(/patron-gaea/);
   endpoint.sendGmcp("Char.Vitals", {
-    hp: 100,
-    maxhp: 100,
-    avatar_charge: 0,
-    avatar_charge_max: 100,
+    ...cachedVitals,
+    avatar_charge_pct: 0,
     avatar_active_remaining: 61,
-    avatar_active_max: 120,
-    divine_patron: "gaea",
   });
   await expect(meter).toHaveClass(/active/);
   await expect(meter).toHaveClass(/patron-gaea/);
   await expect(meter).toContainText("Wrathful Avatar ACTIVE 1:01");
+  endpoint.sendGmcp("Char.Vitals", { ...cachedVitals, avatar_active_remaining: 60 });
+  await expect(meter).toContainText("Wrathful Avatar ACTIVE 1:00");
+  expect(
+    await meter.locator(".avatar-meter-fill").evaluate((fill) => parseFloat(fill.style.width)),
+  ).toBeLessThan(100);
+  endpoint.sendGmcp("Char.Vitals", cachedVitals);
+  await expect(meter).toContainText("Wrathful Avatar ACTIVE 1:00");
+  expect(await meter.evaluate((element, original) => element === original, meterNode)).toBe(true);
   await expect
     .poll(async () => (await meter.textContent()) ?? "")
     .toMatch(/Wrathful Avatar ACTIVE (1:00|0:59)/);
+
+  endpoint.sendGmcp("Char.Vitals", { ...cachedVitals, avatar_charge_pct: 10 });
+  await expect(meter).not.toHaveClass(/active/);
+  await expect(meter).toContainText("Wrathful Avatar 10%");
+  endpoint.sendGmcp("Char.Vitals", { ...cachedVitals, rested: 0 });
+  await expect(meter).toHaveCount(0);
+  await meterNode.dispose();
 });
 
 test("wire data survives malformed frames and resets across reconnect and disposal", async ({

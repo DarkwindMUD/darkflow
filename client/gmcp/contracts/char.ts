@@ -17,13 +17,21 @@ export interface CharVitals {
   mmove?: number;
   maxmove?: number;
   level_pct?: number;
+  rested?: number;
   carry?: number;
   maxcarry?: number;
   encumberance_label?: string;
   opponent?: CharEnemy;
   string?: string;
   avatar_charge?: number;
+  avatar_charge_max?: number;
+  avatar_charge_display?: string;
+  avatar_charge_pct?: number;
+  avatar_charge_rate?: string;
+  avatar_charge_rate_pct?: number;
   avatar_active?: number;
+  avatar_active_remaining?: number;
+  avatar_active_max?: number;
   divine_patron?: string;
   [key: string]: unknown;
 }

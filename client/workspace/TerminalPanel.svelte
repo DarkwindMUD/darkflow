@@ -8,8 +8,8 @@
   import { OUTPUT_SCROLLBACK_PRESETS } from "../../public/js/constants.js";
   // @ts-expect-error The reusable imperative terminal core is legacy JavaScript.
   import { createTerminalOutputCore } from "../../public/js/terminal-output-core.mjs";
-  // @ts-expect-error The shared meter renderer is legacy-compatible JavaScript.
-  import { avatarChargeMeter } from "../../public/js/core-information-panel-renderers.mjs";
+  // @ts-expect-error The shared meter calculation is legacy-compatible JavaScript.
+  import { avatarMeterState } from "../../public/js/core-information-panel-renderers.mjs";
   import {
     createTerminalIsland,
     registerTerminalIsland,
@@ -39,7 +39,15 @@
   let batchDialog = $state<HTMLDialogElement>();
   let batchInput = $state<HTMLTextAreaElement>();
   let batchForm = $state<HTMLFormElement>();
-  let avatarMeterHtml = $state("");
+  let avatarMeter = $state<{
+    mode: "active" | "charge";
+    label: string;
+    fillPct: number;
+    patronClass: string;
+    full: boolean;
+    ariaValueMax: number | null;
+    ariaValueNow: number | null;
+  } | null>(null);
   let island: TerminalIsland | undefined;
 
   function focusCommandInput(event: MouseEvent): void {
@@ -156,7 +164,7 @@
     };
     window.addEventListener("darkflow:client-settings-changed", refreshTerminalSettings);
     const renderAvatarMeter = () => {
-      avatarMeterHtml = avatarChargeMeter(session.information.getSnapshot().vitals);
+      avatarMeter = avatarMeterState(session.information.getSnapshot().vitals);
     };
     const unsubscribeAvatarMeter = session.information.subscribe(renderAvatarMeter);
     const avatarMeterTicker = window.setInterval(renderAvatarMeter, 1000);
@@ -230,9 +238,25 @@
         aria-label="Terminal output"
         tabindex="-1"
       ></div>
-      <!-- The shared renderer only interpolates numeric and allow-listed values. -->
-      <!-- eslint-disable-next-line svelte/no-at-html-tags -->
-      {@html avatarMeterHtml}
+      {#if avatarMeter}
+        <div
+          class:active={avatarMeter.mode === "active"}
+          class:full={avatarMeter.full}
+          class:patron-mitra={avatarMeter.patronClass === "patron-mitra"}
+          class:patron-gaea={avatarMeter.patronClass === "patron-gaea"}
+          class:patron-set={avatarMeter.patronClass === "patron-set"}
+          class="avatar-meter visible"
+          role={avatarMeter.mode === "active" ? "status" : "progressbar"}
+          aria-label={avatarMeter.mode === "charge" ? "Wrathful Avatar charge" : undefined}
+          aria-live="polite"
+          aria-valuemin={avatarMeter.mode === "charge" ? 0 : undefined}
+          aria-valuemax={avatarMeter.ariaValueMax ?? undefined}
+          aria-valuenow={avatarMeter.ariaValueNow ?? undefined}
+        >
+          <div class="avatar-meter-fill" style:width={`${avatarMeter.fillPct}%`}></div>
+          <div class="avatar-meter-label">{avatarMeter.label}</div>
+        </div>
+      {/if}
       <div class="terminal-input-bar">
         <input
           bind:this={commandInput}

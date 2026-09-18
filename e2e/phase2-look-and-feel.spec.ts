@@ -109,8 +109,21 @@ for (const viewport of DESKTOP_VIEWPORTS) {
       },
       { title: "Progress", items: ["Achievements", "Quests", "XP monitor"] },
       { title: "Social", items: ["Chat", "Group"] },
-      { title: "System", items: ["Connection health"] },
-      { title: "World", items: ["Jukebox", "Map", "Omens", "Room", "Room Image", "Sky"] },
+      { title: "System", items: ["Connection health", "IDE"] },
+      {
+        title: "World",
+        items: [
+          "Area Map",
+          "Enemy",
+          "Fishing",
+          "Jukebox",
+          "Map",
+          "Omens",
+          "Room",
+          "Room Image",
+          "Sky",
+        ],
+      },
     ]);
     if (viewport.name === "wide-1440x900" && testInfo.project.name === "chromium") {
       await expect(panelMenu).toHaveScreenshot("phase2-panels-menu.png", {

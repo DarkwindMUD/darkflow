@@ -81,6 +81,20 @@ test("desktop panel selector toggles from its label and trigger", async ({ page 
 
   await trigger.click();
   await expect(menu).toBeVisible();
+  expect(await menu.evaluate((element) => element.scrollHeight <= element.clientHeight)).toBe(true);
+  for (const [title, id] of [
+    ["Area Map", "areaMap"],
+    ["Enemy", "enemy"],
+    ["Fishing", "fishing"],
+    ["IDE", "ide"],
+  ]) {
+    const checkbox = page.getByRole("checkbox", { name: title, exact: true });
+    await expect(checkbox).toBeVisible();
+    await checkbox.check();
+    await expect(panelDragHandle(page, id)).toBeVisible();
+    await checkbox.uncheck();
+    await expect(panelDragHandle(page, id)).toHaveCount(0);
+  }
   await avatar.locator("..").getByText("Avatar", { exact: true }).click();
   await expect(avatar).not.toBeChecked();
   await expect(panelDragHandle(page, "avatar")).toHaveCount(0);
@@ -1083,6 +1097,9 @@ test("Phase 2 mobile presents one panel and restores the desktop rails", async (
   // Selecting a panel from the sheet presents it; the terminal island survives.
   await trigger.click();
   await expect(sheet.getByRole("button", { name: "Close panels" })).toBeFocused();
+  for (const title of ["Area Map", "Enemy", "Fishing", "IDE"]) {
+    await expect(sheet.getByRole("button", { name: `Open ${title}`, exact: true })).toBeVisible();
+  }
   await sheet.getByRole("button", { name: "Open Avatar", exact: true }).click();
   await expect(sheet).toBeHidden();
   await expect(panelDragHandle(page, "avatar")).toBeVisible();

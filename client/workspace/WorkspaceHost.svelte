@@ -150,6 +150,18 @@
     title: "Enemy",
     state: {},
   };
+  const idePanel: WorkspacePanelSpec = {
+    id: "ide",
+    kind: "ide",
+    title: "IDE",
+    state: {},
+  };
+  const fishingPanel: WorkspacePanelSpec = {
+    id: "fishing",
+    kind: "fishing",
+    title: "Fishing",
+    state: {},
+  };
   const chatPanel: WorkspacePanelSpec = {
     id: "chat",
     kind: "chat",
@@ -166,7 +178,7 @@
   type PanelMenuGroupName = "Character" | "Progress" | "Social" | "System" | "World";
   type PanelMenuItem = {
     group: PanelMenuGroupName;
-    kind: "information" | "world" | "chat" | "gmcp-debug";
+    kind: "information" | "world" | "chat" | "gmcp-debug" | "transient";
     panel: WorkspacePanelSpec;
   };
   const informationPanelGroups: Record<InformationPanelId, PanelMenuGroupName> = {
@@ -188,6 +200,12 @@
     worth: "Character",
     xpmon: "Progress",
   };
+  const transientPanelMenuItems: readonly PanelMenuItem[] = [
+    { group: "World", kind: "transient", panel: areaMap },
+    { group: "World", kind: "transient", panel: combatPanel },
+    { group: "World", kind: "transient", panel: fishingPanel },
+    { group: "System", kind: "transient", panel: idePanel },
+  ];
   const panelMenuItems = $derived<readonly PanelMenuItem[]>([
     ...informationPanels.map((panel): PanelMenuItem => ({
       group: informationPanelGroups[panel.id],
@@ -195,6 +213,7 @@
       panel,
     })),
     ...worldPanels.map((panel): PanelMenuItem => ({ group: "World", kind: "world", panel })),
+    ...transientPanelMenuItems,
     { group: "Social", kind: "chat", panel: chatPanel },
     ...(debugGmcp
       ? [{ group: "System" as const, kind: "gmcp-debug" as const, panel: gmcpDebugPanel }]
@@ -441,6 +460,7 @@
   let combatPanelOpen = $state(false);
   let chatPanelOpen = $state(false);
   let gmcpDebugOpen = $state(false);
+  let openTransientPanelIds = $state<string[]>([]);
   let launcherOpen = $state(false);
   let mobilePresentation = $state(false);
   let panelSettingsTarget = $state<PanelSettingsTarget>();
@@ -512,6 +532,9 @@
       ownerOf(panel.id)?.hasPanel(panel.id),
     );
     openWorldPanelIds = visibleWorldPanels.map((panel) => panel.id);
+    openTransientPanelIds = transientPanelMenuItems
+      .filter(({ panel }) => workspace?.hasPanel(panel.id))
+      .map(({ panel }) => panel.id);
     session.world.setVisiblePanels(visibleWorldPanels.map((panel) => panel.id));
     chatPanelOpen = workspace?.hasPanel(chatPanel.id) ?? false;
   }
@@ -598,6 +621,64 @@
     gmcpDebugOpen = workspace.hasPanel(gmcpDebugPanel.id);
   }
 
+  function transientPanelOpen(panel: WorkspacePanelSpec): boolean {
+    return openTransientPanelIds.includes(panel.id);
+  }
+
+  async function toggleTransientPanel(panel: WorkspacePanelSpec, activate = true): Promise<void> {
+    if (!workspace) return;
+    if (workspace.hasPanel(panel.id)) {
+      await workspace.requestClosePanel(panel.id);
+    } else {
+      let next = panel;
+      if (panel.id === combatPanel.id) {
+        const width = Math.min(580, host.clientWidth || innerWidth);
+        const height = Math.min(465, host.clientHeight || innerHeight);
+        next = {
+          ...panel,
+          placement:
+            innerWidth <= 700
+              ? { kind: "grid", direction: "right", referencePanelId: terminal.id }
+              : {
+                  kind: "floating",
+                  bounds: {
+                    left: Math.max(0, Math.round(((host.clientWidth || innerWidth) - width) / 2)),
+                    top: Math.max(0, Math.round(((host.clientHeight || innerHeight) - height) / 2)),
+                    width,
+                    height,
+                  },
+                },
+        };
+      } else if (panel.id === idePanel.id) {
+        const document = session.ide.getSnapshot().document;
+        next = {
+          ...panel,
+          title: document?.title || document?.path || panel.title,
+          placement: {
+            kind: "floating",
+            bounds: {
+              left: Math.max(20, (innerWidth - Math.min(900, innerWidth - 40)) / 2),
+              top: Math.max(12, (innerHeight - Math.min(620, innerHeight - 80)) / 2),
+              width: Math.min(900, innerWidth - 40),
+              height: Math.min(620, innerHeight - 80),
+            },
+          },
+        };
+      } else if (panel.id === fishingPanel.id) {
+        next = {
+          ...panel,
+          placement: {
+            kind: "floating",
+            bounds: { left: 40, top: 40, width: 420, height: 500 },
+          },
+        };
+      }
+      workspace.addOrUpdatePanel(next);
+      if (activate) workspace.activatePanel(panel.id);
+    }
+    syncVisiblePanels();
+  }
+
   $effect(() => {
     const enabled = debugGmcp;
     if (!workspace || enabled === workspace.hasPanel(gmcpDebugPanel.id)) return;
@@ -608,6 +689,7 @@
     if (item.kind === "information") return informationPanelOpen(item.panel);
     if (item.kind === "world") return worldPanelOpen(item.panel);
     if (item.kind === "gmcp-debug") return gmcpDebugOpen;
+    if (item.kind === "transient") return transientPanelOpen(item.panel);
     return chatPanelOpen;
   }
 
@@ -615,6 +697,7 @@
     if (item.kind === "information") void toggleInformationPanel(item.panel, false);
     else if (item.kind === "world") void toggleWorldPanel(item.panel, false);
     else if (item.kind === "gmcp-debug") void toggleGmcpDebugPanel(false);
+    else if (item.kind === "transient") void toggleTransientPanel(item.panel, false);
     else void toggleChatPanel(false);
   }
 
@@ -1234,11 +1317,8 @@
     let seenIdeOpenVersion = 0;
     const hasTransientPanels = () =>
       serverPanelIds.size > 0 ||
-      fishingPanelOpen ||
-      areaMapPanelOpen ||
-      idePanelOpen ||
-      combatPanelOpen ||
-      gmcpDebugOpen;
+      transientPanelMenuItems.some(({ panel }) => currentWorkspace.hasPanel(panel.id)) ||
+      currentWorkspace.hasPanel(gmcpDebugPanel.id);
     const flush = () => {
       if (timer !== undefined) {
         window.clearTimeout(timer);
@@ -1361,10 +1441,7 @@
         const exists = currentWorkspace.hasPanel("fishing");
         fishingPanelOpen = true;
         currentWorkspace.addOrUpdatePanel({
-          id: "fishing",
-          kind: "fishing",
-          title: "Fishing",
-          state: {},
+          ...fishingPanel,
           ...(!exists
             ? {
                 placement: {
@@ -1422,10 +1499,8 @@
         const exists = currentWorkspace.hasPanel("ide");
         idePanelOpen = true;
         currentWorkspace.addOrUpdatePanel({
-          id: "ide",
-          kind: "ide",
+          ...idePanel,
           title: next.document.title || next.document.path || "IDE",
-          state: {},
           ...(!exists
             ? {
                 placement: {
@@ -1851,6 +1926,17 @@
           {worldPanelOpen(panel) ? `Close ${panel.title}` : `Open ${panel.title}`}
         </button>
       {/each}
+      {#each transientPanelMenuItems as item (item.panel.id)}
+        <button
+          type="button"
+          aria-pressed={transientPanelOpen(item.panel)}
+          onclick={() => selectPanel(() => void toggleTransientPanel(item.panel))}
+        >
+          {transientPanelOpen(item.panel)
+            ? `Close ${item.panel.title}`
+            : `Open ${item.panel.title}`}
+        </button>
+      {/each}
       {#if debugGmcp}
         <button
           type="button"
@@ -1866,17 +1952,6 @@
       >
         {chatPanelOpen ? "Close Chat" : "Open Chat"}
       </button>
-      {#if combatPanelOpen}
-        <button
-          type="button"
-          onclick={() => selectPanel(() => workspace?.activatePanel(combatPanel.id))}>Enemy</button
-        >
-        <button
-          type="button"
-          onclick={() => selectPanel(() => void workspace?.requestClosePanel(combatPanel.id))}
-          >Close Enemy</button
-        >
-      {/if}
     </div>
   </div>
 </div>
@@ -1931,7 +2006,7 @@
     gap: 0.125rem;
     align-items: stretch;
     width: max-content;
-    max-height: min(60vh, 30rem);
+    max-height: calc(100dvh - 3rem);
     padding: 0.375rem;
     overflow-y: auto;
     border: 1px solid var(--border-color, #30363d);

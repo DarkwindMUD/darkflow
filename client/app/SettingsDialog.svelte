@@ -83,7 +83,12 @@
   let configuration = $state<CharacterConfigurationSnapshot>(
     untrack(() => session.configuration.getSnapshot()),
   );
+  let keyMappingEditor = $state<DefinitionEditor>();
   let aliasEditor = $state<DefinitionEditor>();
+  let triggerEditor = $state<DefinitionEditor>();
+  let timerEditor = $state<DefinitionEditor>();
+  let functionEditor = $state<DefinitionEditor>();
+  let highlightEditor = $state<DefinitionEditor>();
   let status = $state("");
   let invalidStoredSettings = $state(false);
   let selectedTab = $state<TabId>("connection");
@@ -395,7 +400,7 @@
   });
 
   function save(close = true): void {
-    if (!validateVariables()) return;
+    if (!saveDefinitionDrafts() || !validateVariables()) return;
     const themeResult = session.configuration.setThemeKey(theme);
     if (!themeResult.success) {
       status = themeResult.message;
@@ -561,7 +566,7 @@
     requestClose("discard");
   }
   function requestClose(intent: "discard" | "apply"): void {
-    if (intent === "apply" && !validateVariables()) return;
+    if (intent === "apply" && (!saveDefinitionDrafts() || !validateVariables())) return;
     closeIntent = intent;
     closeReturnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -751,6 +756,21 @@
   function openAlias(id: string): void {
     selectTab("aliases");
     queueMicrotask(() => aliasEditor?.editById(id));
+  }
+  function saveDefinitionDrafts(): boolean {
+    for (const [tab, editor] of [
+      ["controls", keyMappingEditor],
+      ["aliases", aliasEditor],
+      ["triggers", triggerEditor],
+      ["timers", timerEditor],
+      ["functions", functionEditor],
+      ["highlights", highlightEditor],
+    ] as const) {
+      if (!editor?.hasPendingChanges()) continue;
+      selectTab(tab);
+      if (!editor.savePending()) return false;
+    }
+    return true;
   }
   function duplicateVariableName(): string | null {
     const names: string[] = [];
@@ -1161,7 +1181,11 @@
             help="Bind keys like ArrowUp or 1 to send commands immediately without pressing Enter."
           />
           <div hidden={!settings.keyMapperEnabled}>
-            {#if open}<DefinitionEditor {session} kind="keyMappings" />{/if}
+            {#if open}<DefinitionEditor
+                bind:this={keyMappingEditor}
+                {session}
+                kind="keyMappings"
+              />{/if}
           </div>
           <SettingsCheckbox
             bind:checked={settings.tabObservabilityEnabled}
@@ -1329,7 +1353,7 @@
           hidden={panelHidden("triggers")}
         >
           <h3>Triggers</h3>
-          {#if open}<DefinitionEditor {session} kind="triggers" />{/if}
+          {#if open}<DefinitionEditor bind:this={triggerEditor} {session} kind="triggers" />{/if}
         </div>
         <div
           class="settings-panel"
@@ -1339,7 +1363,7 @@
           hidden={panelHidden("timers")}
         >
           <h3>Timers</h3>
-          {#if open}<DefinitionEditor {session} kind="timers" />{/if}
+          {#if open}<DefinitionEditor bind:this={timerEditor} {session} kind="timers" />{/if}
         </div>
         <div
           class="settings-panel"
@@ -1349,7 +1373,7 @@
           hidden={panelHidden("functions")}
         >
           <h3>Functions</h3>
-          {#if open}<DefinitionEditor {session} kind="functions" />{/if}
+          {#if open}<DefinitionEditor bind:this={functionEditor} {session} kind="functions" />{/if}
         </div>
         <div
           class="settings-panel"
@@ -1359,7 +1383,11 @@
           hidden={panelHidden("highlights")}
         >
           <h3>Highlights</h3>
-          {#if open}<DefinitionEditor {session} kind="highlights" />{/if}
+          {#if open}<DefinitionEditor
+              bind:this={highlightEditor}
+              {session}
+              kind="highlights"
+            />{/if}
         </div>
         <div
           class="settings-panel"

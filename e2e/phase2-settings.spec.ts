@@ -1349,6 +1349,48 @@ test("Phase 2 Settings Apply stays open and Save & Close closes", async ({ page 
   await expect(dialog).not.toBeVisible();
 });
 
+test("Phase 2 Settings saves pending trigger edits through its footer actions", async ({
+  page,
+}) => {
+  await installAutomationDefinitions(page);
+  const dialog = settingsDialog(page);
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+  await triggers.getByRole("button", { name: "Edit Danger" }).click();
+  const editor = triggers.getByRole("region", { name: "Edit triggers" });
+
+  await editor.getByLabel("Gag line").uncheck();
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await expect(dialog).toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { triggers: Array<{ id: string; gag: boolean }> };
+        };
+        return character.localDefinitions.triggers.find(({ id }) => id === "trigger-local")?.gag;
+      }),
+    )
+    .toBe(false);
+
+  await editor.getByLabel("Gag line").check();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await skipChangedSettingsBackup(dialog);
+  await expect(dialog).not.toBeVisible();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+        const character = Object.values(graph.characterProfiles)[0] as {
+          localDefinitions: { triggers: Array<{ id: string; gag: boolean }> };
+        };
+        return character.localDefinitions.triggers.find(({ id }) => id === "trigger-local")?.gag;
+      }),
+    )
+    .toBe(true);
+});
+
 test("Phase 2 appearance persists trusted backgrounds and rejects invalid theme imports without writes", async ({
   page,
 }, testInfo) => {

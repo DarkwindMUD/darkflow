@@ -669,20 +669,20 @@
     });
   }
 
-  function save(): void {
-    if (!draft || !source) return;
+  function save(): boolean {
+    if (!draft || !source) return true;
     const invalid = editor?.querySelector<HTMLInputElement | HTMLTextAreaElement>(":invalid");
     if (invalid) {
       invalid.reportValidity();
-      return;
+      return false;
     }
     if (kind === "functions" && functionWarnings.length) {
       status = "Correct function warnings before saving.";
-      return;
+      return false;
     }
     if (kind === "highlights" && highlightWarnings.length) {
       status = "Correct highlight warnings before saving.";
-      return;
+      return false;
     }
 
     const definition = toDefinition(draft);
@@ -697,7 +697,7 @@
         kind === "triggers"
           ? "Trigger Name must be unique in this owner."
           : `${title} must have unique identities.`;
-      return;
+      return false;
     }
 
     const index = definitions.findIndex((item) => item.id === definition.id);
@@ -707,12 +707,21 @@
     if (!result.success) {
       status = result.message;
       if ("code" in result && result.code === "stale-revision") stale = true;
-      return;
+      return false;
     }
     status = `${title} saved.`;
     original = JSON.stringify(definition);
     if (kind === "keyMappings") cancel();
     else selectDefinition(definition.id);
+    return true;
+  }
+
+  export function hasPendingChanges(): boolean {
+    return dirty;
+  }
+
+  export function savePending(): boolean {
+    return !dirty || save();
   }
 
   function requestRemove(definition: Definition, metadata: ConfigSourceMetadata): void {

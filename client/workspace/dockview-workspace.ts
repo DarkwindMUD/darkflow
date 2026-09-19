@@ -917,7 +917,7 @@ export function createWorkspace(
   };
 
   const reapplySerializedFloatingBounds = (layout: ReturnType<typeof api.toJSON>): void => {
-    requestAnimationFrame(() => {
+    const applyBounds = () => {
       if (disposed) return;
       for (const floating of layout.floatingGroups ?? []) {
         const groupId = floating.data?.id ?? firstSerializedGroupId(floating.grid?.root);
@@ -925,25 +925,34 @@ export function createWorkspace(
         const frame = group?.element.closest<HTMLElement>(".dv-resize-container");
         if (!frame) continue;
         const position = floating.position;
-        frame.style.width = `${position.width}px`;
-        frame.style.height = `${position.height}px`;
+        const container = frame.offsetParent as HTMLElement | null;
+        const containerWidth = container?.clientWidth || host.clientWidth || window.innerWidth;
+        const containerHeight = container?.clientHeight || host.clientHeight || window.innerHeight;
+        // This deferred reapply runs after layoutHost(), so it must not restore unchecked bounds.
+        const maxWidth = containerWidth - (frame.offsetWidth - frame.clientWidth);
+        const maxHeight = containerHeight - (frame.offsetHeight - frame.clientHeight);
+        const width = Math.max(Math.min(160, maxWidth), Math.min(position.width, maxWidth));
+        const height = Math.max(Math.min(80, maxHeight), Math.min(position.height, maxHeight));
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
         if ("left" in position) {
-          frame.style.left = `${position.left}px`;
+          frame.style.left = `${Math.max(0, Math.min(position.left, maxWidth - width))}px`;
           frame.style.right = "auto";
         } else {
-          frame.style.right = `${position.right}px`;
+          frame.style.right = `${Math.max(0, Math.min(position.right, maxWidth - width))}px`;
           frame.style.left = "auto";
         }
         if ("top" in position) {
-          frame.style.top = `${position.top}px`;
+          frame.style.top = `${Math.max(0, Math.min(position.top, maxHeight - height))}px`;
           frame.style.bottom = "auto";
         } else {
-          frame.style.bottom = `${position.bottom}px`;
+          frame.style.bottom = `${Math.max(0, Math.min(position.bottom, maxHeight - height))}px`;
           frame.style.top = "auto";
         }
       }
       annotateFloatingTitlebars();
-    });
+    };
+    requestAnimationFrame(() => requestAnimationFrame(applyBounds));
   };
 
   const applyPlacement = (panel: DockviewPanelLike, placement: PanelPlacement): void => {

@@ -209,6 +209,49 @@ test("restoring a workspace removes tabless floating groups without losing real 
   await expect(page.locator(".dv-resize-container")).toHaveCount(0);
 });
 
+test("clamps restored floating bounds inside the workspace", async ({ page }) => {
+  const floating = lifecyclePanel("offscreen-floating", "reachable", {
+    kind: "floating",
+    bounds: { left: 40, top: 40, width: 320, height: 240 },
+  });
+  await page.evaluate((panel) => window.__darkflowWorkspace.upsert(panel), floating);
+  const snapshot = await page.evaluate(() => window.__darkflowWorkspace.save());
+  const layout = snapshot.layout as SerializedDockview;
+  layout.floatingGroups![0]!.position = {
+    left: 50_000,
+    top: 50_000,
+    width: 50_000,
+    height: 50_000,
+  };
+
+  expect(
+    await page.evaluate(({ saved, spec }) => window.__darkflowWorkspace.restore(saved, [spec]), {
+      saved: snapshot,
+      spec: floating,
+    }),
+  ).toBe(true);
+  await page.evaluate(
+    () => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))),
+  );
+
+  const bounds = await page.evaluate(() => {
+    const host = document.querySelector<HTMLElement>('[data-testid="workspace-host"]')!;
+    const container = host.querySelector<HTMLElement>(".dv-floating-overlay-host")!;
+    const frame = document.querySelector<HTMLElement>(".dv-resize-container")!;
+    const containerRect = container.getBoundingClientRect();
+    const frameRect = frame.getBoundingClientRect();
+    return {
+      bottom: frameRect.bottom - containerRect.bottom,
+      left: frameRect.left - containerRect.left,
+      right: frameRect.right - containerRect.right,
+      scrollLeft: host.scrollLeft,
+      scrollTop: host.scrollTop,
+      top: frameRect.top - containerRect.top,
+    };
+  });
+  expect(bounds).toEqual({ bottom: 0, left: 0, right: 0, scrollLeft: 0, scrollTop: 0, top: 0 });
+});
+
 test("floating groups attract by position without linking their movement", async ({ page }) => {
   const target = lifecyclePanel("snap-target", "target", {
     kind: "floating",

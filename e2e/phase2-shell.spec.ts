@@ -456,7 +456,7 @@ test("an already-connected session can mount another shell without a reactive lo
   });
 
   await expect(page.getByTestId("phase2-shell")).toHaveCount(2);
-  await page.evaluate(() => new Promise(requestAnimationFrame));
+  await page.waitForTimeout(350);
   expect(pageErrors).toEqual([]);
 });
 

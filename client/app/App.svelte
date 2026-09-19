@@ -232,12 +232,14 @@
   $effect(() => {
     session.setConnectionEndpoint(endpoint);
     const unsubscribe = session.subscribeConnection((next) => {
-      if (next.state === "connected" && untrack(() => snapshot.state) !== "connected") {
-        saveLastLoginHost(localStorage, next.endpoint.host);
-      }
-      snapshot = next;
-      if (next.state !== "connected") lastVisibilitySent = null;
-      else sendVisibilityCommand();
+      untrack(() => {
+        if (next.state === "connected" && snapshot.state !== "connected") {
+          saveLastLoginHost(localStorage, next.endpoint.host);
+        }
+        snapshot = next;
+        if (next.state !== "connected") lastVisibilitySent = null;
+        else sendVisibilityCommand();
+      });
     });
     if (shell.shouldAutoConnect) session.connect();
     return unsubscribe;

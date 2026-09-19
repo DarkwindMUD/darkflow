@@ -4,7 +4,7 @@
   import PanelLeftOpen from "@lucide/svelte/icons/panel-left-open";
   import PanelRightClose from "@lucide/svelte/icons/panel-right-close";
   import PanelRightOpen from "@lucide/svelte/icons/panel-right-open";
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { SvelteSet } from "svelte/reactivity";
   import {
     loadClientSettings,
@@ -523,19 +523,47 @@
     }
   }
 
+  function samePanelIds(current: readonly string[], next: readonly string[]): boolean {
+    return current.length === next.length && current.every((id, index) => id === next[index]);
+  }
+
   function syncVisiblePanels(): void {
     if (activeTransfers?.size) return;
     const visible = informationPanels.filter((panel) => ownerOf(panel.id)?.hasPanel(panel.id));
-    openInformationPanelIds = visible.map((panel) => panel.id);
-    session.information.setVisiblePanels(visible.map((panel) => panel.id));
+    const informationIds = visible.map((panel) => panel.id);
+    if (
+      !samePanelIds(
+        untrack(() => openInformationPanelIds),
+        informationIds,
+      )
+    ) {
+      openInformationPanelIds = informationIds;
+      session.information.setVisiblePanels(informationIds);
+    }
     const visibleWorldPanels = [...worldPanels, areaMap].filter((panel) =>
       ownerOf(panel.id)?.hasPanel(panel.id),
     );
-    openWorldPanelIds = visibleWorldPanels.map((panel) => panel.id);
-    openTransientPanelIds = transientPanelMenuItems
+    const worldIds = visibleWorldPanels.map((panel) => panel.id);
+    if (
+      !samePanelIds(
+        untrack(() => openWorldPanelIds),
+        worldIds,
+      )
+    ) {
+      openWorldPanelIds = worldIds;
+      session.world.setVisiblePanels(worldIds);
+    }
+    const transientIds = transientPanelMenuItems
       .filter(({ panel }) => workspace?.hasPanel(panel.id))
       .map(({ panel }) => panel.id);
-    session.world.setVisiblePanels(visibleWorldPanels.map((panel) => panel.id));
+    if (
+      !samePanelIds(
+        untrack(() => openTransientPanelIds),
+        transientIds,
+      )
+    ) {
+      openTransientPanelIds = transientIds;
+    }
     chatPanelOpen = workspace?.hasPanel(chatPanel.id) ?? false;
   }
 

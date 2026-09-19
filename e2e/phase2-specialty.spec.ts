@@ -212,6 +212,39 @@ async function disposeSession(page: Page): Promise<void> {
   });
 }
 
+test("combat victory leaves the interface clickable", async ({ page }) => {
+  const endpoint = await connect(page);
+  await page.waitForTimeout(100);
+  const subscriptionStart = endpoint.gmcpMessages.length;
+  endpoint.sendGmcp("Char.Enemy", {
+    enemy_name: "an ash drake",
+    enemy_curhp: 40,
+    enemy_maxhp: 50,
+  });
+  endpoint.sendGmcp("Darkwind.Combat.State", combatState());
+  await expect(page.getByRole("region", { name: "Visual combat" })).toBeVisible();
+  endpoint.sendGmcp("Darkwind.Combat.Event", {
+    epoch: "combat-a",
+    encounter_id: "encounter-a",
+    ...combatEvent(2),
+  });
+  endpoint.sendGmcp(
+    "Darkwind.Combat.State",
+    combatState({ active: 0, outcome: "victory", seq: 3, summary: "Victory." }),
+  );
+  endpoint.sendGmcp("Char.Enemy", { enemy_name: "NOTHING", enemy_curhp: 0, enemy_maxhp: 100 });
+  await expect(page.getByRole("region", { name: "Visual combat" })).toHaveCount(0);
+
+  expect(
+    framesSince(endpoint, subscriptionStart, "Darkwind.Client.Subscriptions").filter((frame) =>
+      frame.includes('"reason":"visibility-sync"'),
+    ),
+  ).toEqual([]);
+
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "Settings", exact: true })).toBeVisible();
+});
+
 test("Combat and Tutorial preserve fallback, exact directions, focus, and readiness", async ({
   page,
 }) => {
@@ -437,6 +470,10 @@ test("Combat and Tutorial preserve fallback, exact directions, focus, and readin
   );
   await expect(combat).toHaveCount(0);
   await expect(output).toContainText("Acer strikes an ash drake for 12 damage.");
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
+  const settings = page.getByRole("dialog", { name: "Settings", exact: true });
+  await expect(settings).toBeVisible();
+  await settings.getByRole("button", { name: "Close", exact: true }).click();
 
   const tutorialStart = endpoint.gmcpMessages.length;
   endpoint.sendGmcp("Darkwind.Tutorial.State", tutorialState(4));

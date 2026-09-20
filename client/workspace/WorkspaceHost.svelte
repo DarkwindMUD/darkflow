@@ -1876,9 +1876,6 @@
         </div>
       {/if}
     </div>
-    {#if combatPanelOpen}
-      <button type="button" onclick={() => workspace?.activatePanel(combatPanel.id)}>Enemy</button>
-    {/if}
   </div>
   <p bind:this={workspaceStatusEl} class="workspace-status" data-testid="workspace-status">
     {status}

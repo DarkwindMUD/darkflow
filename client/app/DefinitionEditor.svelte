@@ -1336,12 +1336,13 @@
                 <span class="row-copy"
                   ><strong title={row.title}>{row.title}</strong><small>{row.meta}</small></span
                 >
-                {#if kind !== "triggers"}<code title={row.tokenTitle}>{row.token}</code>{/if}
+                {#if kind !== "triggers" && row.token !== row.title}<code title={row.tokenTitle}
+                    >{row.token}</code
+                  >{/if}
               </button>
               {#if selectedEntry?.definition.id === row.id}
                 <div class="row-actions">
                   {#if row.editable}
-                    <span>Editing this {noun}</span>
                     <button
                       class="toolbar-icon-btn"
                       type="button"
@@ -1841,7 +1842,7 @@
 
   .actions {
     justify-content: flex-end;
-    padding-top: 0.25rem;
+    padding-top: 0.5rem;
     border-top: 1px solid color-mix(in srgb, var(--df-border, #30363d) 70%, transparent);
   }
 
@@ -2005,12 +2006,12 @@
     display: inline-flex;
     min-height: 1.6rem;
     padding: 0.05rem 0.6rem;
-    border: 1px solid color-mix(in srgb, var(--df-accent, #42d6c9) 45%, transparent);
+    border: 1px solid var(--df-border, #30363d);
     border-radius: 999px;
     background: transparent;
-    color: var(--df-text, #c9d1d9);
+    color: var(--df-muted, #8b949e);
     font: inherit;
-    font-size: 12px;
+    font-size: 11.5px;
     line-height: 1;
     align-items: center;
     justify-content: center;
@@ -2023,9 +2024,9 @@
 
   .group-filters .group-chip.selected,
   .group-filters .all-groups[aria-pressed="true"] {
-    border-color: var(--df-accent, #42d6c9);
-    background: color-mix(in srgb, var(--df-accent, #42d6c9) 22%, transparent);
-    color: var(--df-text-strong, #f0f6fc);
+    border-color: color-mix(in srgb, var(--df-accent, #42d6c9) 55%, transparent);
+    background: color-mix(in srgb, var(--df-accent, #42d6c9) 12%, transparent);
+    color: var(--df-text, #c9d1d9);
   }
 
   .group-filters .group-chip input {
@@ -2068,7 +2069,7 @@
   .automation-layout {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.75rem;
+    gap: 1rem;
     min-height: 320px;
   }
 
@@ -2087,30 +2088,29 @@
     min-height: 0;
     overflow-y: auto;
     flex-direction: column;
-    gap: 0.375rem;
+    gap: 2px;
     padding-right: 0.25rem;
   }
 
   .list-row {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
-    gap: 0.375rem;
+    gap: 0.25rem;
     align-items: center;
-    border: 1px solid var(--df-border, #30363d);
+    border: 1px solid transparent;
     border-radius: var(--sd-radius, 6px);
-    background: var(--df-panel, #161b22);
     transition:
       border-color 120ms ease,
       background-color 120ms ease;
   }
 
   .list-row:hover {
-    border-color: var(--df-border-muted, #484f58);
+    background: color-mix(in srgb, var(--df-elevated, #21262d) 60%, transparent);
   }
 
   .list-row.active {
-    border-color: var(--df-accent, #42d6c9);
-    background: color-mix(in srgb, var(--df-accent, #42d6c9) 12%, var(--df-panel, #161b22));
+    border-color: color-mix(in srgb, var(--df-accent, #42d6c9) 40%, transparent);
+    background: color-mix(in srgb, var(--df-accent, #42d6c9) 10%, transparent);
   }
 
   .list-select {
@@ -2161,18 +2161,17 @@
     flex: 0 0 auto;
     max-width: 45%;
     margin-left: auto;
-    padding: 0.2rem 0.45rem;
-    border-radius: 0.25rem;
-    background: var(--df-elevated, var(--df-panel));
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
     color: var(--df-muted, var(--df-text, inherit));
     font-family: var(--df-font-mono, monospace);
-    font-size: 12px;
+    font-size: 11.5px;
     overflow-wrap: anywhere;
     white-space: normal;
   }
 
   .list-row.enabled .list-select code {
-    background: color-mix(in srgb, var(--df-accent) 12%, transparent);
+    background: color-mix(in srgb, var(--df-accent) 10%, transparent);
     color: var(--df-accent);
   }
 
@@ -2228,10 +2227,10 @@
     display: flex;
     grid-column: 1 / -1;
     flex-wrap: wrap;
-    gap: 0.4rem;
+    gap: 0.25rem;
     align-items: center;
-    padding: 0.4rem 0.5rem;
-    border-top: 1px solid var(--df-border-muted, var(--df-border));
+    justify-content: flex-end;
+    padding: 0.2rem 0.4rem 0.35rem;
   }
 
   .row-actions button {
@@ -2244,25 +2243,22 @@
     font-size: 0.75rem;
   }
 
-  .row-actions > span + button {
-    margin-left: auto;
+  .row-actions > span {
+    margin-right: auto;
   }
 
   .automation-detail {
     flex: 1 1 300px;
     min-width: 0;
     min-height: 0;
-    overflow-y: auto;
   }
 
   .editor {
     display: grid;
-    gap: 0.85rem;
+    gap: 0.75rem;
     min-width: 0;
-    padding: 0.85rem;
-    border: 1px solid var(--df-border, #30363d);
-    border-radius: 8px;
-    background: color-mix(in srgb, var(--df-panel, #161b22) 55%, var(--df-bg, #0d1117));
+    padding: 0 0 0 1rem;
+    border-left: 1px solid var(--df-border, #30363d);
   }
 
   .detail-placeholder {
@@ -2376,6 +2372,12 @@
     .automation-list-pane {
       flex-basis: auto;
       max-height: 40vh;
+    }
+
+    .editor {
+      padding: 0.75rem 0 0;
+      border-left: 0;
+      border-top: 1px solid var(--df-border, #30363d);
     }
 
     .group-chips {

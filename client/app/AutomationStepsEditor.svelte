@@ -382,13 +382,16 @@
   {/each}
   <div class="add-step">
     <label class="add-step-type"
-      >Add step type <select bind:value={addType}
+      ><span class="sr-only">Add step type</span><select bind:value={addType}
         >{#each stepTypes as option (option.value)}<option value={option.value}
             >{option.label}</option
           >{/each}</select
       ></label
     >
-    <button class="dw-button" type="button" onclick={() => (steps = [...steps, blankStep(addType)])}
+    <button
+      class="dw-button dw-button-ghost"
+      type="button"
+      onclick={() => (steps = [...steps, blankStep(addType)])}
       ><Plus size={14} aria-hidden="true" />Add automation step</button
     >
   </div>
@@ -463,7 +466,11 @@
   }
 
   .compact-step {
-    padding: 0.6rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .compact-step-payload > label > textarea {
+    min-height: var(--sd-control-h, 2.75rem);
   }
 
   .compact-step-header {
@@ -516,10 +523,6 @@
     min-width: 0;
   }
 
-  .compact-step-payload > label > textarea {
-    min-height: 3.5rem;
-  }
-
   .compact-step-payload > button {
     flex: 0 1 auto;
   }
@@ -528,18 +531,23 @@
     padding: 0.75rem;
     border: 1px solid var(--df-border, #30363d);
     border-radius: var(--sd-radius, 6px);
-    background: var(--df-panel, #161b22);
+    background: color-mix(in srgb, var(--df-panel, #161b22) 60%, transparent);
+  }
+
+  section + section {
+    margin-top: -0.25rem;
   }
 
   .add-step {
     display: flex;
     flex-wrap: wrap;
     gap: 0.5rem;
-    align-items: end;
+    align-items: center;
   }
 
   .add-step-type {
-    flex: 1 1 12rem;
+    flex: 0 1 14rem;
+    min-width: 0;
   }
 
   .syntax-help summary {

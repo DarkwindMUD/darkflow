@@ -883,20 +883,24 @@
         </div>
         <div class="tablist" role="tablist" aria-orientation={mobile ? "horizontal" : "vertical"}>
           {#each groups as group (group)}
-            <h3>{group}</h3>
-            {#each tabs.filter((tab) => tab.group === group) as tab (tab.id)}
-              <button
-                id={`settings-tab-${tab.id}`}
-                type="button"
-                role="tab"
-                class:dimmed={search.trim() !== "" && !matches(tab.id)}
-                aria-controls={`settings-panel-${tab.id}`}
-                aria-selected={!search.trim() && selectedTab === tab.id}
-                tabindex={!search.trim() && selectedTab === tab.id ? 0 : -1}
-                onclick={() => selectTab(tab.id)}
-                onkeydown={(event) => tabKeydown(event, tab.id)}>{tab.label}</button
-              >
-            {/each}
+            <div class="tab-group">
+              <h3>{group}</h3>
+              <div class="tab-group-items">
+                {#each tabs.filter((tab) => tab.group === group) as tab (tab.id)}
+                  <button
+                    id={`settings-tab-${tab.id}`}
+                    type="button"
+                    role="tab"
+                    class:dimmed={search.trim() !== "" && !matches(tab.id)}
+                    aria-controls={`settings-panel-${tab.id}`}
+                    aria-selected={!search.trim() && selectedTab === tab.id}
+                    tabindex={!search.trim() && selectedTab === tab.id ? 0 : -1}
+                    onclick={() => selectTab(tab.id)}
+                    onkeydown={(event) => tabKeydown(event, tab.id)}>{tab.label}</button
+                  >
+                {/each}
+              </div>
+            </div>
           {/each}
         </div>
       </nav>
@@ -2227,23 +2231,33 @@
   }
   .tablist {
     display: grid;
-    gap: 1px;
+    gap: 0.5rem;
+  }
+  .tab-group {
+    display: grid;
+    gap: 0.2rem;
   }
   .tablist h3 {
-    margin: 0.65rem 0 0.25rem 0.5rem;
-    color: var(--df-muted, #8b949e);
-    font-size: 10.5px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
+    margin: 0;
+    padding: 0 0 0.25rem 0.25rem;
+    border-bottom: 1px solid var(--sd-border-soft);
+    color: var(--df-text-strong, #f0f6fc);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
     text-transform: uppercase;
   }
-  .tablist h3:first-child {
-    margin-top: 0.1rem;
+  .tab-group-items {
+    display: grid;
+    gap: 1px;
+    margin-left: 0.4rem;
+    padding-left: 0.35rem;
+    border-left: 1px solid var(--sd-border-soft);
   }
   .tablist button {
     position: relative;
-    min-height: 1.9rem;
-    padding: 0.3rem 0.6rem;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.6rem;
     border: 0;
     border-radius: var(--sd-radius);
     background: transparent;
@@ -2709,6 +2723,10 @@
     }
     .tablist::-webkit-scrollbar {
       display: none;
+    }
+    .tab-group,
+    .tab-group-items {
+      display: contents;
     }
     .tablist h3 {
       display: none;

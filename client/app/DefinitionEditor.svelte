@@ -1,7 +1,10 @@
 <script lang="ts">
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
   import Copy from "@lucide/svelte/icons/copy";
+  import Plus from "@lucide/svelte/icons/plus";
+  import Search from "@lucide/svelte/icons/search";
   import Trash from "@lucide/svelte/icons/trash";
   import { untrack } from "svelte";
   import { identityKeyForDefinition } from "../configuration/identity.ts";
@@ -1133,6 +1136,18 @@
     return "Disabled highlight rules stay saved but never recolor output.";
   }
 
+  function editorKeydown(event: KeyboardEvent): void {
+    // Enter in a single-line field saves this definition instead of submitting the
+    // surrounding Settings form, which would close the whole dialog.
+    if (event.key !== "Enter" || event.isComposing) return;
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) return;
+    if (["checkbox", "radio", "range", "file"].includes(target.type)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    save();
+  }
+
   function togglePreview(): void {
     previewCollapsed = !previewCollapsed;
     const current = (() => {
@@ -1161,11 +1176,11 @@
 </script>
 
 <fieldset class:automation-editor={kind !== "keyMappings"}>
-  <legend>{title}</legend>
+  <legend class="sr-only">{title}</legend>
   {#if kind === "keyMappings"}
     <p class="helper-text">
       Press a key in the Key field to capture it. Top-row numbers and numpad numbers are treated as
-      different keys.
+      different keys. Changes to existing mappings save as you type.
     </p>
     <div class="mapping-list">
       {#each entries as entry (entry.definition.id)}
@@ -1200,11 +1215,14 @@
               })}
           />
           <button
+            class="dw-button dw-button-ghost"
             type="button"
             disabled={entry.source.kind === "builtin"}
             onclick={() => requestRemove(mapping, entry.source)}>Remove</button
           >
         </div>
+      {:else}
+        {#if !draft}<p class="empty-hint">No key mappings yet.</p>{/if}
       {/each}
       {#if draft}
         <div class="mapping-row new-mapping">
@@ -1230,21 +1248,29 @@
             type="checkbox"
             bind:checked={draft.enabled}
           />
-          <button type="button" onclick={cancel}>Remove</button>
+          <button class="dw-button dw-button-ghost" type="button" onclick={cancel}>Remove</button>
         </div>
       {/if}
     </div>
     <div class="inline-actions">
-      <button type="button" disabled={Boolean(draft)} onclick={add}>Add mapping</button>
+      <button class="dw-button" type="button" disabled={Boolean(draft)} onclick={add}
+        ><Plus size={14} aria-hidden="true" />Add mapping</button
+      >
     </div>
   {:else}
     <div class="automation-toolbar">
-      <input
-        aria-label={`Search ${title}`}
-        bind:value={search}
-        placeholder={`Search ${title.toLowerCase()}`}
-      />
-      <button type="button" onclick={add}>New {noun}</button>
+      <div class="search-field">
+        <span class="search-icon" aria-hidden="true"><Search size={14} /></span>
+        <input
+          aria-label={`Search ${title}`}
+          type="search"
+          bind:value={search}
+          placeholder={`Search ${title.toLowerCase()}`}
+        />
+      </div>
+      <button class="dw-button" type="button" onclick={add}
+        ><Plus size={14} aria-hidden="true" />New {noun}</button
+      >
     </div>
     {#if (kind === "aliases" || kind === "triggers" || kind === "timers" || kind === "functions" || kind === "highlights") && groups.length}
       <div
@@ -1354,7 +1380,7 @@
               {/if}
             </div>
           {:else}
-            <p>
+            <p class="empty-hint">
               {entries.length
                 ? `No ${title.toLowerCase()} match.`
                 : `No ${title.toLowerCase()} configured.`}
@@ -1364,7 +1390,13 @@
       </div>
       <div class="automation-detail">
         {#if draft}
-          <section bind:this={editor} class="editor" aria-label={`Edit ${title.toLowerCase()}`}>
+          <!-- svelte-ignore a11y_no_noninteractive_element_interactions -->
+          <section
+            bind:this={editor}
+            class="editor"
+            aria-label={`Edit ${title.toLowerCase()}`}
+            onkeydown={editorKeydown}
+          >
             <SettingsCheckbox bind:checked={draft.enabled} label="Enabled" help={enabledHelp()} />
             {#if kind === "highlights"}
               <label
@@ -1439,8 +1471,12 @@
                 </ul>
               {/if}
               <section class="alias-preview">
-                <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
-                  >Test output</button
+                <button
+                  class="preview-toggle"
+                  type="button"
+                  aria-expanded={!previewCollapsed}
+                  onclick={togglePreview}
+                  ><ChevronDown size={14} aria-hidden="true" />Test output</button
                 >
                 {#if !previewCollapsed}
                   <label
@@ -1476,8 +1512,9 @@
                   {#each functionWarnings as warning (warning)}<li>{warning}</li>{/each}
                 </ul>
               {/if}
-              <details>
-                <summary>Function script syntax</summary>
+              <details class="syntax-help">
+                <summary><ChevronDown size={14} aria-hidden="true" />Function script syntax</summary
+                >
                 <p>
                   Functions receive arguments from the caller as %1-%9 and %0. Scripts support
                   if/elseif/else/while/end, break, continue, send, show, wait &lt;seconds&gt;, set
@@ -1485,8 +1522,12 @@
                 </p>
               </details>
               <section class="alias-preview">
-                <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
-                  >Function preview</button
+                <button
+                  class="preview-toggle"
+                  type="button"
+                  aria-expanded={!previewCollapsed}
+                  onclick={togglePreview}
+                  ><ChevronDown size={14} aria-hidden="true" />Function preview</button
                 >
                 {#if !previewCollapsed}
                   <label
@@ -1572,20 +1613,32 @@
               {#if kind === "timers"}
                 <div class="timer-controls">
                   {#if timerControlsAvailable()}
-                    <button type="button" onclick={() => controlTimer("start")}>Start</button>
-                    <button type="button" onclick={() => controlTimer("stop")}>Stop</button>
-                    <button type="button" onclick={() => controlTimer("reset")}>Reset</button>
-                    <button type="button" onclick={() => controlTimer("run")}>Run now</button>
+                    <button class="dw-button" type="button" onclick={() => controlTimer("start")}
+                      >Start</button
+                    >
+                    <button class="dw-button" type="button" onclick={() => controlTimer("stop")}
+                      >Stop</button
+                    >
+                    <button class="dw-button" type="button" onclick={() => controlTimer("reset")}
+                      >Reset</button
+                    >
+                    <button class="dw-button" type="button" onclick={() => controlTimer("run")}
+                      >Run now</button
+                    >
                   {:else}
-                    <p>Save this timer before using controls.</p>
+                    <p class="helper-text">Save this timer before using controls.</p>
                   {/if}
-                  <p aria-live="polite">{timerResult}</p>
+                  <p class="helper-text" aria-live="polite">{timerResult}</p>
                 </div>
               {/if}
               {#if kind === "aliases" || kind === "triggers" || kind === "timers"}
                 <section class="alias-preview">
-                  <button type="button" aria-expanded={!previewCollapsed} onclick={togglePreview}
-                    >{kind === "timers"
+                  <button
+                    class="preview-toggle"
+                    type="button"
+                    aria-expanded={!previewCollapsed}
+                    onclick={togglePreview}
+                    ><ChevronDown size={14} aria-hidden="true" />{kind === "timers"
                       ? "Timer preview"
                       : `Test ${kind === "aliases" ? "input" : "output"}`}</button
                   >
@@ -1630,15 +1683,27 @@
             {/if}
             {#if stale}
               <p class="error">This shared definition changed while you were editing it.</p>
-              <button type="button" onclick={reload}>Reload shared definition</button>
+              <button class="dw-button" type="button" onclick={reload}
+                >Reload shared definition</button
+              >
             {/if}
             <div class="actions">
-              <button type="button" onclick={cancel}>Cancel edit</button>
-              <button type="button" onclick={save}>Save {title.toLowerCase()}</button>
+              <button class="dw-button dw-button-ghost" type="button" onclick={cancel}
+                >Cancel edit</button
+              >
+              <button class="dw-button dw-button-primary" type="button" onclick={save}
+                >Save {title.toLowerCase()}</button
+              >
             </div>
           </section>
         {:else}
-          <p>Select {noun === "alias" ? "an" : "a"} {noun} to edit, or create a new one.</p>
+          <div class="detail-placeholder">
+            <p>
+              {entries.length
+                ? `Select ${noun === "alias" ? "an" : "a"} ${noun} to edit, or create a new one.`
+                : `No ${title.toLowerCase()} yet. Use New ${noun} to create your first one.`}
+            </p>
+          </div>
         {/if}
       </div>
     </div>
@@ -1657,15 +1722,18 @@
         <h3>Delete {labelFor(pendingDelete.definition)}?</h3>
         <p>This change is not permanent until you apply Settings.</p>
         <div class="actions">
-          <button bind:this={deleteCancel} type="button" onclick={() => (pendingDelete = null)}
-            >Keep it</button
+          <button
+            bind:this={deleteCancel}
+            class="dw-button"
+            type="button"
+            onclick={() => (pendingDelete = null)}>Keep it</button
           >
-          <button type="button" onclick={remove}>Delete</button>
+          <button class="dw-button dw-button-danger" type="button" onclick={remove}>Delete</button>
         </div>
       </section>
     </dialog>
   {/if}
-  <p class:error={stale} aria-live="polite">{status}</p>
+  <p class="editor-status" class:error={stale} aria-live="polite">{status}</p>
 </fieldset>
 
 <style>
@@ -1673,11 +1741,43 @@
     display: grid;
     gap: 0.75rem;
     min-width: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    padding: 0;
+    margin-bottom: 0.15rem;
+    color: var(--df-text-strong, #f0f6fc);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 
   .helper-text,
   p {
     margin: 0;
+  }
+
+  .helper-text,
+  .empty-hint {
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    line-height: 1.4;
   }
 
   .mapping-list {
@@ -1692,15 +1792,35 @@
     align-items: center;
   }
 
+  .mapping-row input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    margin: 0 0.25rem;
+  }
+
   .key-input {
     display: flex;
     width: 100%;
     min-width: 0;
+    min-height: var(--sd-control-h, 2.75rem);
     align-items: center;
     justify-content: center;
     gap: 0.35rem;
+    padding: 0 0.6rem;
+    border: 1px dashed var(--df-border-muted, #484f58);
+    border-radius: var(--sd-radius, 6px);
+    background: var(--df-bg, #0d1117);
+    color: var(--df-text, #c9d1d9);
+    font: inherit;
+    font-family: var(--df-font-mono, monospace);
+    font-size: 12.5px;
     text-align: center;
     cursor: pointer;
+  }
+
+  .key-input:focus-visible {
+    border-style: solid;
+    border-color: var(--df-accent, #42d6c9);
   }
 
   .key-input small {
@@ -1719,21 +1839,108 @@
     align-items: center;
   }
 
-  .warnings,
-  .alias-preview {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    align-items: center;
+  .actions {
+    justify-content: flex-end;
+    padding-top: 0.25rem;
+    border-top: 1px solid color-mix(in srgb, var(--df-border, #30363d) 70%, transparent);
+  }
+
+  .timer-controls {
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: var(--sd-radius, 6px);
+    background: var(--df-bg, #0d1117);
+  }
+
+  .timer-controls p:last-child:empty {
+    display: none;
   }
 
   .warnings {
-    display: block;
-    color: var(--df-warning, #d29922);
+    display: grid;
+    gap: 0.25rem;
+    margin: 0;
+    padding: 0.55rem 0.75rem 0.55rem 1.75rem;
+    border: 1px solid color-mix(in srgb, var(--df-warn, #d29922) 40%, transparent);
+    border-radius: var(--sd-radius, 6px);
+    background: color-mix(in srgb, var(--df-warn, #d29922) 9%, transparent);
+    color: var(--df-warn, #d29922);
+    font-size: 12.5px;
   }
 
   .alias-preview {
     display: grid;
+    gap: 0.6rem;
+  }
+
+  .preview-toggle {
+    display: inline-flex;
+    width: fit-content;
+    min-height: 1.75rem;
+    padding: 0.2rem 0.4rem 0.2rem 0.25rem;
+    gap: 0.35rem;
+    align-items: center;
+    border: 0;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--df-text, #c9d1d9);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .preview-toggle:hover {
+    background: rgb(255 255 255 / 6%);
+  }
+
+  .preview-toggle :global(svg) {
+    color: var(--df-muted, #8b949e);
+    transition: transform 150ms ease;
+  }
+
+  .preview-toggle[aria-expanded="false"] :global(svg) {
+    transform: rotate(-90deg);
+  }
+
+  .alias-preview p {
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    overflow-wrap: anywhere;
+  }
+
+  .syntax-help summary {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    width: fit-content;
+    border-radius: 4px;
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .syntax-help summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .syntax-help summary :global(svg) {
+    transition: transform 150ms ease;
+  }
+
+  .syntax-help:not([open]) summary :global(svg) {
+    transform: rotate(-90deg);
+  }
+
+  .syntax-help p {
+    margin-top: 0.4rem;
+    padding: 0.5rem 0.65rem;
+    border-left: 2px solid var(--df-border, #30363d);
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    line-height: 1.5;
   }
 
   .color-input-row {
@@ -1747,23 +1954,26 @@
   }
 
   .color-swatch {
-    width: 2.75rem;
-    min-width: 2.75rem;
-    min-height: 2.75rem;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.25rem;
+    width: var(--sd-control-h, 2.75rem);
+    min-width: var(--sd-control-h, 2.75rem);
+    min-height: var(--sd-control-h, 2.75rem);
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: var(--sd-radius, 6px);
   }
 
   .invalid-color {
-    border-color: var(--df-err, #ff6b6b);
+    border-color: var(--df-err, #ff6b6b) !important;
   }
 
   .highlight-preview-output {
     display: block;
-    min-height: 2.75rem;
+    min-height: var(--sd-control-h, 2.75rem);
     padding: 0.5rem;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.25rem;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: var(--sd-radius, 6px);
+    background: #000;
+    font-family: var(--df-font-mono, monospace);
+    font-size: 12.5px;
     white-space: pre-wrap;
   }
 
@@ -1787,29 +1997,35 @@
   .group-chips {
     flex: 1;
     flex-wrap: wrap;
-    gap: 0.25rem;
+    gap: 0.3rem;
   }
 
   .group-filters .group-chip {
     position: relative;
     display: inline-flex;
-    min-height: 1.5rem;
-    padding: 0.05rem 0.5rem;
-    border: 1px solid var(--df-btn-bg, #238636);
+    min-height: 1.6rem;
+    padding: 0.05rem 0.6rem;
+    border: 1px solid color-mix(in srgb, var(--df-accent, #42d6c9) 45%, transparent);
     border-radius: 999px;
     background: transparent;
-    font-size: 0.75rem;
+    color: var(--df-text, #c9d1d9);
+    font: inherit;
+    font-size: 12px;
     line-height: 1;
     align-items: center;
     justify-content: center;
     cursor: pointer;
     user-select: none;
+    transition:
+      background-color 120ms ease,
+      color 120ms ease;
   }
 
   .group-filters .group-chip.selected,
   .group-filters .all-groups[aria-pressed="true"] {
-    background: var(--df-btn-bg, #238636);
-    color: var(--df-btn-fg, white);
+    border-color: var(--df-accent, #42d6c9);
+    background: color-mix(in srgb, var(--df-accent, #42d6c9) 22%, transparent);
+    color: var(--df-text-strong, #f0f6fc);
   }
 
   .group-filters .group-chip input {
@@ -1824,12 +2040,29 @@
   }
 
   .group-filters label.group-chip:has(input:focus-visible) {
-    outline: 2px solid var(--df-btn-bg, #238636);
+    outline: 2px solid var(--df-accent-blue, #58a6ff);
     outline-offset: 2px;
   }
 
-  .automation-toolbar input {
-    flex: 1;
+  .automation-toolbar .search-field {
+    position: relative;
+    display: flex;
+    flex: 1 1 12rem;
+    min-width: 0;
+    align-items: center;
+  }
+
+  .automation-toolbar .search-icon {
+    position: absolute;
+    left: 0.6rem;
+    display: flex;
+    color: var(--df-muted, #8b949e);
+    pointer-events: none;
+  }
+
+  .automation-toolbar .search-field :global(input) {
+    width: 100%;
+    padding-left: 1.9rem;
   }
 
   .automation-layout {
@@ -1863,24 +2096,34 @@
     grid-template-columns: auto minmax(0, 1fr);
     gap: 0.375rem;
     align-items: center;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.35rem;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: var(--sd-radius, 6px);
     background: var(--df-panel, #161b22);
+    transition:
+      border-color 120ms ease,
+      background-color 120ms ease;
+  }
+
+  .list-row:hover {
+    border-color: var(--df-border-muted, #484f58);
   }
 
   .list-row.active {
-    border-color: var(--df-accent, #58a6ff);
-    background: color-mix(in srgb, var(--df-accent) 12%, var(--df-panel));
+    border-color: var(--df-accent, #42d6c9);
+    background: color-mix(in srgb, var(--df-accent, #42d6c9) 12%, var(--df-panel, #161b22));
   }
 
   .list-select {
     display: flex;
     min-width: 0;
+    min-height: var(--sd-control-h, 2.75rem);
     padding: 0.5rem;
     border: 0;
     background: transparent;
     color: inherit;
+    font: inherit;
     text-align: left;
+    cursor: pointer;
   }
 
   .list-select strong,
@@ -1901,6 +2144,10 @@
     color: var(--df-muted, var(--df-text, inherit));
   }
 
+  .row-copy strong {
+    font-weight: 500;
+  }
+
   .list-row.enabled .row-copy strong {
     color: var(--df-text-strong, var(--df-text, inherit));
   }
@@ -1919,6 +2166,7 @@
     background: var(--df-elevated, var(--df-panel));
     color: var(--df-muted, var(--df-text, inherit));
     font-family: var(--df-font-mono, monospace);
+    font-size: 12px;
     overflow-wrap: anywhere;
     white-space: normal;
   }
@@ -1935,10 +2183,13 @@
     min-width: 2.25rem;
     min-height: 1.25rem;
     margin-left: 0.5rem;
-    border: 1px solid var(--df-border-muted, var(--border-color, currentColor));
+    border: 1px solid var(--df-border-muted, var(--df-border, currentColor));
     border-radius: 999px;
     background: var(--df-elevated, var(--df-panel));
     cursor: pointer;
+    transition:
+      background-color 120ms ease,
+      border-color 120ms ease;
   }
 
   .enabled-switch::before {
@@ -1969,7 +2220,7 @@
   }
 
   .enabled-switch:focus-visible {
-    outline: 2px solid var(--df-accent, currentColor);
+    outline: 2px solid var(--df-accent-blue, currentColor);
     outline-offset: 2px;
   }
 
@@ -1977,10 +2228,15 @@
     display: flex;
     grid-column: 1 / -1;
     flex-wrap: wrap;
-    gap: 0.5rem;
+    gap: 0.4rem;
     align-items: center;
-    padding: 0.5rem;
-    border-top: 1px solid var(--df-border-muted, var(--border-color));
+    padding: 0.4rem 0.5rem;
+    border-top: 1px solid var(--df-border-muted, var(--df-border));
+  }
+
+  .row-actions button {
+    min-height: 28px;
+    font-size: 12px;
   }
 
   .row-actions > span {
@@ -1992,16 +2248,6 @@
     margin-left: auto;
   }
 
-  .row-actions .toolbar-icon-btn {
-    min-height: 28px;
-  }
-
-  .row-actions .danger,
-  .row-actions .danger:hover {
-    border-color: color-mix(in srgb, var(--df-err) 45%, transparent);
-    color: var(--df-err);
-  }
-
   .automation-detail {
     flex: 1 1 300px;
     min-width: 0;
@@ -2011,11 +2257,35 @@
 
   .editor {
     display: grid;
-    gap: 0.75rem;
+    gap: 0.85rem;
     min-width: 0;
-    padding: 0.75rem;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.35rem;
+    padding: 0.85rem;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--df-panel, #161b22) 55%, var(--df-bg, #0d1117));
+  }
+
+  .detail-placeholder {
+    display: grid;
+    height: 100%;
+    min-height: 8rem;
+    place-items: center;
+    padding: 1rem;
+    border: 1px dashed var(--df-border, #30363d);
+    border-radius: 8px;
+    color: var(--df-muted, #8b949e);
+    font-size: 13px;
+    text-align: center;
+  }
+
+  .editor-status {
+    min-height: 1.2em;
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+  }
+
+  .editor-status:empty {
+    display: none;
   }
 
   .definition-modal {
@@ -2032,28 +2302,40 @@
   }
 
   .delete-confirmation {
-    box-sizing: border-box;
-    width: min(34rem, calc(100vw - 2rem));
-    max-height: calc(100dvh - 2rem);
-    overflow: auto;
-    background: var(--df-panel, #161b22);
-  }
-
-  .delete-confirmation {
     display: grid;
+    box-sizing: border-box;
+    width: min(28rem, calc(100vw - 2rem));
+    max-height: calc(100dvh - 2rem);
     gap: 0.75rem;
-    padding: 1rem;
-    border: 1px solid var(--border-color, #30363d);
-    border-radius: 0.35rem;
+    padding: 1.1rem 1.2rem;
+    overflow: auto;
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: 10px;
+    background: var(--df-panel, #161b22);
+    box-shadow: 0 16px 48px rgb(0 0 0 / 50%);
   }
 
   .delete-confirmation h3 {
     margin: 0;
+    font-size: 1rem;
+    overflow-wrap: anywhere;
+  }
+
+  .delete-confirmation p {
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+  }
+
+  .delete-confirmation .actions {
+    padding-top: 0;
+    border-top: 0;
   }
 
   label {
     display: grid;
-    gap: 0.25rem;
+    gap: 0.3rem;
+    font-size: 13px;
+    font-weight: 500;
   }
 
   label:has(input[type="checkbox"]) {
@@ -2065,7 +2347,6 @@
   textarea,
   button {
     box-sizing: border-box;
-    min-height: 2.75rem;
     min-width: 0;
   }
 
@@ -2089,16 +2370,25 @@
 
     .automation-layout {
       flex-direction: column;
+      min-height: 0;
     }
 
     .automation-list-pane {
       flex-basis: auto;
-      min-height: 220px;
+      max-height: 40vh;
     }
 
     .group-chips {
       flex-wrap: nowrap;
       overflow-x: auto;
+    }
+
+    .actions {
+      justify-content: stretch;
+    }
+
+    .actions .dw-button {
+      flex: 1 1 auto;
     }
   }
 </style>

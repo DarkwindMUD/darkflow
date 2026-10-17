@@ -1973,7 +1973,7 @@ test("Phase 2 settings reset the workspace after confirmation", async ({ page },
   await resetLayout.click();
 
   await expect(page.getByTestId("workspace-status")).toHaveText("Workspace reset");
-  await expect(dialog.locator('form > p[role="status"]')).toHaveText("Layout reset.");
+  await expect(dialog.locator("p.footer-status")).toHaveText("Layout reset.");
   await expect(page.locator('.information-panel[data-panel-id="avatar"]')).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Collapse Status", exact: true })).toBeVisible();
   expect(

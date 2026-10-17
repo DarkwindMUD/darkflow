@@ -112,7 +112,7 @@ test("Phase 2 Terminal settings restore legacy help and game screen reader sync"
   const disconnectedSync = syncCard.getByRole("button", { name: "Sync now", exact: true });
   await expect(disconnectedSync).toBeDisabled();
   await disconnectedSync.dispatchEvent("click");
-  await expect(dialog.locator('form > p[role="status"]')).toHaveText(
+  await expect(dialog.locator("p.footer-status")).toHaveText(
     "Connect before syncing the game screen reader setting.",
   );
 
@@ -134,9 +134,7 @@ test("Phase 2 Terminal settings restore legacy help and game screen reader sync"
   await expect
     .poll(() => endpoint.commands.filter((command) => command === "set screenreader on").length)
     .toBe(commandCount + 1);
-  await expect(dialog.locator('form > p[role="status"]')).toHaveText(
-    "Game screen reader setting synced.",
-  );
+  await expect(dialog.locator("p.footer-status")).toHaveText("Game screen reader setting synced.");
   await expect(page.getByLabel("Terminal output", { exact: true })).toContainText(
     "Sent to game: set screenreader on",
   );

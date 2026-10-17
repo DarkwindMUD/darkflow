@@ -1,6 +1,8 @@
 <script lang="ts">
   import ArrowDown from "@lucide/svelte/icons/arrow-down";
   import ArrowUp from "@lucide/svelte/icons/arrow-up";
+  import ChevronDown from "@lucide/svelte/icons/chevron-down";
+  import Plus from "@lucide/svelte/icons/plus";
   import Trash from "@lucide/svelte/icons/trash";
   import type { AutomationStep } from "../model/configuration.ts";
 
@@ -328,6 +330,7 @@
             /></label
           >
           {#if triggerMode}<button
+              class="dw-button"
               type="button"
               onclick={() => testSound(step.category, step.sound, step.volume)}>Test Sound</button
             >{/if}
@@ -377,17 +380,20 @@
       {/if}
     </section>
   {/each}
-  <label
-    >Add step type <select bind:value={addType}
-      >{#each stepTypes as option (option.value)}<option value={option.value}>{option.label}</option
-        >{/each}</select
-    ></label
-  >
-  <button type="button" onclick={() => (steps = [...steps, blankStep(addType)])}
-    >Add automation step</button
-  >
-  <details>
-    <summary>Template syntax</summary>
+  <div class="add-step">
+    <label class="add-step-type"
+      >Add step type <select bind:value={addType}
+        >{#each stepTypes as option (option.value)}<option value={option.value}
+            >{option.label}</option
+          >{/each}</select
+      ></label
+    >
+    <button class="dw-button" type="button" onclick={() => (steps = [...steps, blankStep(addType)])}
+      ><Plus size={14} aria-hidden="true" />Add automation step</button
+    >
+  </div>
+  <details class="syntax-help">
+    <summary><ChevronDown size={14} aria-hidden="true" />Template syntax</summary>
     {#if triggerMode}
       <p>
         Simple patterns support * or %1-%9 as captures. Regex triggers use JavaScript regular
@@ -425,20 +431,31 @@
     min-width: 0;
   }
 
+  fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  legend {
+    padding: 0;
+    margin-bottom: 0.15rem;
+    color: var(--df-text-strong, #f0f6fc);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  label {
+    font-size: 13px;
+    font-weight: 500;
+  }
+
   .step-actions {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.5rem;
-  }
-
-  .step-actions .toolbar-icon-btn {
-    min-height: 28px;
-  }
-
-  .step-actions .danger,
-  .step-actions .danger:hover {
-    border-color: color-mix(in srgb, var(--df-err) 45%, transparent);
-    color: var(--df-err);
+    gap: 0.35rem;
   }
 
   .step-payload {
@@ -446,7 +463,7 @@
   }
 
   .compact-step {
-    padding: 0.5rem;
+    padding: 0.6rem;
   }
 
   .compact-step-header {
@@ -457,10 +474,22 @@
     min-width: 0;
   }
 
+  .compact-step-header label {
+    flex: 1 1 10rem;
+    min-width: 0;
+  }
+
   .step-index {
-    min-width: 1rem;
-    color: var(--muted-color, #8b949e);
-    text-align: right;
+    display: grid;
+    width: 1.5rem;
+    height: 1.5rem;
+    place-items: center;
+    border-radius: 999px;
+    background: var(--df-elevated, #21262d);
+    color: var(--df-muted, #8b949e);
+    font-size: 11.5px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
   }
 
   .compact-step-header .step-actions {
@@ -487,13 +516,64 @@
     min-width: 0;
   }
 
+  .compact-step-payload > label > textarea {
+    min-height: 3.5rem;
+  }
+
   .compact-step-payload > button {
     flex: 0 1 auto;
   }
 
   section {
     padding: 0.75rem;
-    border: 1px solid var(--border-color, #30363d);
+    border: 1px solid var(--df-border, #30363d);
+    border-radius: var(--sd-radius, 6px);
+    background: var(--df-panel, #161b22);
+  }
+
+  .add-step {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: end;
+  }
+
+  .add-step-type {
+    flex: 1 1 12rem;
+  }
+
+  .syntax-help summary {
+    display: flex;
+    gap: 0.35rem;
+    align-items: center;
+    width: fit-content;
+    border-radius: 4px;
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+  }
+
+  .syntax-help summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .syntax-help summary :global(svg) {
+    transition: transform 150ms ease;
+  }
+
+  .syntax-help:not([open]) summary :global(svg) {
+    transform: rotate(-90deg);
+  }
+
+  .syntax-help p {
+    margin: 0.4rem 0 0;
+    padding: 0.5rem 0.65rem;
+    border-left: 2px solid var(--df-border, #30363d);
+    color: var(--df-muted, #8b949e);
+    font-size: 12.5px;
+    line-height: 1.5;
   }
 
   input,
@@ -501,7 +581,6 @@
   textarea,
   button {
     box-sizing: border-box;
-    min-height: 2.75rem;
     min-width: 0;
   }
 </style>

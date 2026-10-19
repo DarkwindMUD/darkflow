@@ -521,7 +521,7 @@
     if (index === -1) definitions.push(definition);
     else definitions[index] = definition;
     const result = write(definitions, editSource);
-    status = result.success ? `${title} saved.` : result.message;
+    status = result.success ? "" : result.message;
   }
 
   function selectDefinition(id: string): void {
@@ -712,7 +712,7 @@
       if ("code" in result && result.code === "stale-revision") stale = true;
       return false;
     }
-    status = `${title} saved.`;
+    status = "";
     original = JSON.stringify(definition);
     if (kind === "keyMappings") cancel();
     else selectDefinition(definition.id);
@@ -1177,10 +1177,12 @@
 
 <fieldset class:automation-editor={kind !== "keyMappings"}>
   <legend class="sr-only">{title}</legend>
+  <p class="helper-text">Changes are kept when you click Apply or Save &amp; Close.</p>
+  <p class="editor-status" class:error={stale} aria-live="polite">{status}</p>
   {#if kind === "keyMappings"}
     <p class="helper-text">
       Press a key in the Key field to capture it. Top-row numbers and numpad numbers are treated as
-      different keys. Changes to existing mappings save as you type.
+      different keys. Changes to existing mappings update the Settings draft as you type.
     </p>
     <div class="mapping-list">
       {#each entries as entry (entry.definition.id)}
@@ -1734,7 +1736,6 @@
       </section>
     </dialog>
   {/if}
-  <p class="editor-status" class:error={stale} aria-live="polite">{status}</p>
 </fieldset>
 
 <style>

@@ -102,9 +102,10 @@
 
   #status-latency {
     box-sizing: border-box;
-    flex: 0 0 64px;
-    width: 64px;
+    flex: 0 0 auto;
+    min-width: 64px;
     min-height: 0;
+    white-space: nowrap;
     background: transparent;
     font: inherit;
   }

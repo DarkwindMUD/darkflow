@@ -100,6 +100,6 @@ this client:
 - Legacy JavaScript, including `server.js`, `lib/`, `desktop/`, and `public/`,
   is outside the formatter boundary. Preserve each legacy file's existing
   style; do not mass-format it.
-- Use the exact toolchain in `.nvmrc`: Node 22.15.0 with npm 10.9.2. Run
+- Use the exact toolchain in `.nvmrc`: Node 22.23.4 with npm 10.9.9. Run
   `nvm use && npm ci`; `engine-strict=true` rejects dependency changes made
   with another version.

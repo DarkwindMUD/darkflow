@@ -1,0 +1,16 @@
+# Pin the runtime image: Nixpacks' Node provider selects only a major version.
+providers = []
+buildImage = "node:22.23.4-bookworm-slim"
+
+[variables]
+NODE_ENV = "production"
+
+[phases.install]
+cmds = ["npm ci --include=dev"]
+
+[phases.build]
+dependsOn = ["install"]
+cmds = ["npm run build", "npm prune --omit=dev"]
+
+[start]
+cmd = "node server.js"

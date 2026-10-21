@@ -136,12 +136,12 @@ Browser clients detect updates via `/api/version`, which reads `dist/client/vers
 
 ## Quick Start
 
-Requires [Node.js](https://nodejs.org/) 22.23.4 with npm 10.9.9.
+Requires [Node.js](https://nodejs.org/) 24.22.1 with npm 11.19.1.
 
 ```bash
 git clone https://github.com/jasona/darkflow.git
 cd darkflow
-nvm use          # Node 22.23.4 — required by package.json engines
+nvm use          # Node 24.22.1 — required by package.json engines
 npm ci
 npm run dev      # development server with Vite-transformed root at /
 ```

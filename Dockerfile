@@ -1,4 +1,4 @@
-FROM node:22.23.4-alpine AS builder
+FROM node:24.22.1-alpine AS builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ COPY test/typia-sentinel.mjs ./test/typia-sentinel.mjs
 COPY tsconfig.json tsconfig.node.json vite.config.ts ./
 RUN npm run build
 
-FROM node:22.23.4-alpine AS runtime
+FROM node:24.22.1-alpine AS runtime
 
 WORKDIR /app
 

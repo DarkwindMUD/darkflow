@@ -8,6 +8,10 @@
     "email": "jason.alexander@gmail.com"
   },
   "desktopName": "Darkwind",
+  "engines": {
+    "node": "22.23.4",
+    "npm": "10.9.9"
+  },
   "homepage": "https://play.darkwind.ai",
   "repository": {
     "type": "git",

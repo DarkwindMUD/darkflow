@@ -129,8 +129,20 @@
   let channelTerminalSuppression = $state(untrack(() => session.getChannelTerminalSuppression()));
   let savedChannelTerminalSuppression = untrack(() => session.getChannelTerminalSuppression());
   const GMCP_PAGE_SIZE = 200;
+  const definitionEditors = $derived([
+    keyMappingEditor,
+    aliasEditor,
+    triggerEditor,
+    timerEditor,
+    functionEditor,
+    highlightEditor,
+  ]);
   /** True while the draft differs from what was last loaded or saved; drives the header badge. */
-  const unsaved = $derived(baseline !== "" && baseline !== settingsFingerprint());
+  const unsaved = $derived(
+    baseline !== "" &&
+      (baseline !== settingsFingerprint() ||
+        definitionEditors.some((editor) => editor?.hasRuntimeChanges())),
+  );
   const aliasUsage = $derived.by(() =>
     aliasManager.collectAliasUsageDetails({
       aliases: configuration.effectiveConfiguration.aliases.map(({ definition }) => definition),
@@ -443,6 +455,7 @@
     for (const variable of variables) runtime.setVariable(variable.name.trim(), variable.value);
     window.dispatchEvent(new Event("darkflow:client-settings-changed"));
     status = "Settings saved.";
+    for (const editor of definitionEditors) editor?.commitRuntimeChanges();
     configuration = session.configuration.getSnapshot();
     baseline = settingsFingerprint();
     if (close) {
@@ -575,6 +588,7 @@
         return false;
       }
     }
+    for (const editor of definitionEditors) editor?.discardRuntimeChanges();
     originalConfiguration = null;
     return true;
   }
@@ -586,7 +600,7 @@
     closeIntent = intent;
     closeReturnFocus =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (settings.settingsBackupPromptEnabled && baseline !== settingsFingerprint()) {
+    if (settings.settingsBackupPromptEnabled && unsaved) {
       closePrompt = true;
       queueMicrotask(() => backupButton?.focus());
       return;

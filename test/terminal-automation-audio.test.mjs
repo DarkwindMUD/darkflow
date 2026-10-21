@@ -8,6 +8,7 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 const originalDocument = globalThis.document;
 const originalLocalStorage = globalThis.localStorage;
 let createTerminalAutomation;
+let createAutomationRuntimeState;
 let server;
 
 test.before(async () => {
@@ -33,6 +34,7 @@ test.before(async () => {
   const ssr = server.environments.ssr;
   assert.ok(isRunnableDevEnvironment(ssr));
   ({ createTerminalAutomation } = await ssr.runner.import("/terminal/automation.ts"));
+  ({ createAutomationRuntimeState } = await ssr.runner.import("/runtime/automation-runtime.ts"));
 });
 
 test.after(async () => {
@@ -72,6 +74,7 @@ function createHarness({
   const messages = [];
   const timerCallbacks = new Map();
   const runtime = {
+    ...createAutomationRuntimeState({}),
     getAutomationVariables: () => ({}),
     setVariable() {},
     scheduleWait,
@@ -88,6 +91,7 @@ function createHarness({
       }
     },
   };
+  let configurationListener;
   const session = {
     characterProfileId: snapshot.characterProfileId,
     audio: {
@@ -103,6 +107,7 @@ function createHarness({
         return true;
       },
       subscribeConfiguration(listener) {
+        configurationListener = listener;
         listener(snapshot);
         return () => {};
       },
@@ -119,8 +124,60 @@ function createHarness({
     played,
     sent,
     timerCallbacks,
+    runtime,
+    updateConfiguration(next) {
+      Object.assign(snapshot, next);
+      configurationListener(snapshot);
+    },
   };
 }
+
+test("alias switches publish session-local state and survive unrelated configuration updates", () => {
+  const definitions = {
+    aliases: [{
+      id: "switch",
+      enabled: true,
+      trigger: "switch",
+      isRegex: false,
+      steps: [{ type: "set_trigger_enabled", mode: "toggle", targetId: "loot", target: "loot" }],
+    }],
+    triggers: [{
+      id: "loot",
+      enabled: true,
+      pattern: "loot",
+      isRegex: false,
+      gag: false,
+      steps: [{ type: "send_command", template: "get all" }],
+    }],
+  };
+  const first = createHarness(definitions);
+  const second = createHarness(definitions);
+  const updates = [];
+  const unsubscribe = first.runtime.subscribeEnabledOverrides((next) => updates.push(next));
+  first.automation.sendCommand("switch");
+  assert.deepEqual(updates.at(-1), { "triggers:loot": false });
+  assert.ok(Object.isFrozen(updates.at(-1)));
+  assert.deepEqual(second.runtime.getEnabledOverrides(), {});
+  first.automation.processLine("loot", [{ text: "loot", style: {} }]);
+  assert.deepEqual(first.sent, []);
+  second.automation.processLine("loot", [{ text: "loot", style: {} }]);
+  assert.deepEqual(second.sent, ["get all"]);
+
+  first.updateConfiguration({ highlights: [] });
+  assert.deepEqual(first.runtime.getEnabledOverrides(), { "triggers:loot": false });
+  first.automation.sendCommand("switch");
+  assert.deepEqual(updates.at(-1), { "triggers:loot": true });
+  first.automation.processLine("loot", [{ text: "loot", style: {} }]);
+  assert.deepEqual(first.sent, ["get all"]);
+  first.updateConfiguration({ triggers: [] });
+  assert.deepEqual(first.runtime.getEnabledOverrides(), {});
+  const count = updates.length;
+  unsubscribe();
+  first.runtime.setEnabledOverride("aliases", "switch", false);
+  assert.equal(updates.length, count);
+  first.automation.dispose();
+  second.automation.dispose();
+});
 
 test("legacy symbolic key mappings remain compatible", () => {
   const harness = createHarness({

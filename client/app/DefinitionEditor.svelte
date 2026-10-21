@@ -95,6 +95,8 @@
   let snapshot = $state<CharacterConfigurationSnapshot>(
     untrack(() => session.configuration.getSnapshot()),
   );
+  let enabledOverrides = $state(untrack(() => session.terminal.automation.getEnabledOverrides()));
+  let originalOverrides = $state<Record<string, boolean>>({});
   let draft = $state<Draft | null>(null);
   let source = $state<EditSource | null>(null);
   let stale = $state(false);
@@ -153,7 +155,12 @@
               ? "function"
               : "highlight",
   );
-  const entries = $derived(snapshot.effectiveConfiguration[kind]);
+  const entries = $derived(
+    snapshot.effectiveConfiguration[kind].map((entry) => ({
+      ...entry,
+      definition: effectiveDefinition(entry.definition, kind),
+    })),
+  );
   const groups = $derived.by(() => {
     const seen: Array<{ key: string; label: string; count: number }> = [];
     if (
@@ -238,6 +245,13 @@
         if (revision !== source.revision) stale = true;
       }
       snapshot = next;
+      untrack(syncDraftEnabled);
+    }),
+  );
+  $effect(() =>
+    session.terminal.automation.subscribeEnabledOverrides((next) => {
+      enabledOverrides = next;
+      untrack(syncDraftEnabled);
     }),
   );
   $effect(() => {
@@ -294,6 +308,54 @@
           ? [{ type: "send_command", template: "" }]
           : [],
     };
+  }
+
+  function effectiveDefinition<T extends Definition>(definition: T, definitionKind: ConfigKind): T {
+    return {
+      ...definition,
+      enabled: enabledOverrides[`${definitionKind}:${definition.id}`] ?? definition.enabled,
+    };
+  }
+
+  function syncDraftEnabled(): void {
+    if (!draft || !original) return;
+    const entry = snapshot.effectiveConfiguration[kind].find(
+      ({ definition }) => definition.id === draft?.id,
+    );
+    if (!entry) return;
+    const baseline = JSON.parse(original) as Definition;
+    const enabled = effectiveDefinition(entry.definition, kind).enabled;
+    // Refresh the live switch without replacing other edits, or an Enabled
+    // checkbox that the user has explicitly changed in the current draft.
+    if (draft.enabled === baseline.enabled) draft.enabled = enabled;
+    original = JSON.stringify({ ...baseline, enabled });
+  }
+
+  function acceptEnabledEdit(id: string, previousOverride: boolean | undefined): void {
+    if (previousOverride !== undefined && originalOverrides[id] === undefined) {
+      originalOverrides[id] = previousOverride;
+    }
+    session.terminal.automation.setEnabledOverride(kind, id, undefined);
+  }
+
+  export function hasRuntimeChanges(): boolean {
+    return Object.entries(originalOverrides).some(
+      ([id, enabled]) => enabledOverrides[`${kind}:${id}`] !== enabled,
+    );
+  }
+
+  export function commitRuntimeChanges(): void {
+    originalOverrides = {};
+  }
+
+  export function discardRuntimeChanges(): void {
+    for (const [id, enabled] of Object.entries(originalOverrides)) {
+      // A later alias action takes precedence over rolling back a Settings edit.
+      if (enabledOverrides[`${kind}:${id}`] === undefined) {
+        session.terminal.automation.setEnabledOverride(kind, id, enabled);
+      }
+    }
+    originalOverrides = {};
   }
 
   function draftFor(definition: Definition): Draft {
@@ -520,7 +582,9 @@
     const index = definitions.findIndex((item) => item.id === definition.id);
     if (index === -1) definitions.push(definition);
     else definitions[index] = definition;
+    const previousOverride = enabledOverrides[`${kind}:${definition.id}`];
     const result = write(definitions, editSource);
+    if (result.success) acceptEnabledEdit(definition.id, previousOverride);
     status = result.success ? "" : result.message;
   }
 
@@ -610,7 +674,7 @@
   }
 
   function edit(definition: Definition, metadata: ConfigSourceMetadata): void {
-    draft = draftFor(definition);
+    draft = draftFor(effectiveDefinition(definition, kind));
     source =
       metadata.kind === "shared-set"
         ? {
@@ -706,12 +770,14 @@
     const index = definitions.findIndex((item) => item.id === definition.id);
     if (index === -1) definitions.push(definition);
     else definitions[index] = definition;
+    const previousOverride = enabledOverrides[`${kind}:${definition.id}`];
     const result = write(definitions, source);
     if (!result.success) {
       status = result.message;
       if ("code" in result && result.code === "stale-revision") stale = true;
       return false;
     }
+    acceptEnabledEdit(definition.id, previousOverride);
     status = "";
     original = JSON.stringify(definition);
     if (kind === "keyMappings") cancel();
@@ -751,10 +817,12 @@
     pendingDelete = null;
     const editSource = sourceFor(metadata);
     if (!editSource) return;
+    const previousOverride = enabledOverrides[`${kind}:${definition.id}`];
     const result = write(
       targetDefinitions(editSource).filter((item) => item.id !== definition.id),
       editSource,
     );
+    if (result.success) acceptEnabledEdit(definition.id, previousOverride);
     status = result.success ? `${title} entry deleted.` : result.message;
     if (result.success && draft?.id === definition.id) {
       cancel();
@@ -803,17 +871,17 @@
     const aliases = snapshot.effectiveConfiguration.aliases.map(({ definition }) =>
       kind === "aliases" && definition.id === value.id
         ? toDefinition(value)
-        : structuredClone(definition),
+        : structuredClone(effectiveDefinition(definition, "aliases")),
     );
     const triggers = snapshot.effectiveConfiguration.triggers.map(({ definition }) =>
       kind === "triggers" && definition.id === value.id
         ? toDefinition(value)
-        : structuredClone(definition),
+        : structuredClone(effectiveDefinition(definition, "triggers")),
     );
     const functions = snapshot.effectiveConfiguration.functions.map(({ definition }) =>
       kind === "functions" && definition.id === value.id
         ? toDefinition(value)
-        : structuredClone(definition),
+        : structuredClone(effectiveDefinition(definition, "functions")),
     );
     const catalogs = {
       aliases:
@@ -829,7 +897,7 @@
             ? [...triggers, toDefinition(value)]
             : triggers,
       timers: snapshot.effectiveConfiguration.timers.map(({ definition }) =>
-        structuredClone(definition),
+        structuredClone(effectiveDefinition(definition, "timers")),
       ),
       functions:
         kind === "functions" && functions.some((definition) => definition.id === value.id)

@@ -1,4 +1,7 @@
 import type { ResourceScope } from "./resource-scope";
+import type { ConfigKind } from "../model/configuration";
+
+export type EnabledOverrides = Readonly<Record<string, boolean>>;
 
 const GMCP_VARIABLE_PREFIX = "gmcp";
 
@@ -17,6 +20,10 @@ export interface TimerRuntimeState {
 
 /** Session-owned automation execution state: variables, GMCP variables, and timers. */
 export interface AutomationRuntimeState {
+  getEnabledOverrides(): EnabledOverrides;
+  subscribeEnabledOverrides(listener: (overrides: EnabledOverrides) => void): () => void;
+  setEnabledOverride(kind: ConfigKind, id: string, enabled: boolean | undefined): void;
+  reconcileEnabledOverrides(definitionKeys: ReadonlySet<string>): void;
   getVariable(name: string): string | undefined;
   setVariable(name: string, value: string): boolean;
   removeVariable(name: string): void;
@@ -112,6 +119,12 @@ export function createAutomationRuntimeState(
   const userVariables = new Map(Object.entries(initialVariables));
   const gmcpVariables = new Map<string, string>();
   const timerRegistry = new Map<string, TimerRegistryEntry>();
+  let enabledOverrides: EnabledOverrides = Object.freeze({});
+  const enabledListeners = new Set<(overrides: EnabledOverrides) => void>();
+  const publishEnabledOverrides = (next: Record<string, boolean>): void => {
+    enabledOverrides = Object.freeze(next);
+    for (const listener of enabledListeners) listener(enabledOverrides);
+  };
 
   const persistUserVariables = (): boolean =>
     persistVariables?.(Object.fromEntries(userVariables.entries())) !== false;
@@ -142,6 +155,29 @@ export function createAutomationRuntimeState(
   };
 
   return {
+    getEnabledOverrides: () => enabledOverrides,
+
+    subscribeEnabledOverrides(listener) {
+      enabledListeners.add(listener);
+      listener(enabledOverrides);
+      return () => enabledListeners.delete(listener);
+    },
+
+    setEnabledOverride(kind, id, enabled) {
+      const key = `${kind}:${id}`;
+      if (enabledOverrides[key] === enabled) return;
+      const next = { ...enabledOverrides };
+      if (enabled === undefined) delete next[key];
+      else next[key] = enabled;
+      publishEnabledOverrides(next);
+    },
+
+    reconcileEnabledOverrides(definitionKeys) {
+      const entries = Object.entries(enabledOverrides);
+      const retained = entries.filter(([key]) => definitionKeys.has(key));
+      if (retained.length !== entries.length) publishEnabledOverrides(Object.fromEntries(retained));
+    },
+
     getVariable(name: string): string | undefined {
       return userVariables.get(name);
     },
@@ -258,6 +294,8 @@ export function createAutomationRuntimeState(
     },
 
     dispose(): void {
+      enabledListeners.clear();
+      enabledOverrides = Object.freeze({});
       userVariables.clear();
       gmcpVariables.clear();
       timerRegistry.clear();

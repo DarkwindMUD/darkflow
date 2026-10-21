@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { TransportFixtureOwner } from "./fixtures/transport-fixtures";
+import type { Session } from "../client/runtime/session";
 
 let fixtures: TransportFixtureOwner;
 
@@ -2461,6 +2462,136 @@ test("Phase 2 edits automation definitions and updates live consumers", async ({
   const reloadedAliases = await settingsGroup(settingsDialog(page), "Aliases", "Aliases");
   await reloadedAliases.getByRole("button", { name: "Edit quick" }).click();
   await expect(reloadedAliases.getByLabel("Template")).toHaveValue("inventory");
+});
+
+test("Phase 2 Settings reflects live automation switches and preserves Save and Cancel", async ({
+  page,
+}) => {
+  await installAutomationDefinitions(page);
+  await page.evaluate(() => {
+    const key = "darkflow-session-core-v1";
+    const graph = JSON.parse(localStorage.getItem(key)!);
+    const character = Object.values(graph.characterProfiles)[0] as {
+      localDefinitions: { aliases: unknown[] };
+      configSetRefs: { triggers: string[] };
+    };
+    const shared = graph.configurationSets[character.configSetRefs.triggers[0]!];
+    shared.definitions[0].enabled = false;
+    shared.definitions[0].pattern = "danger";
+    for (const [trigger, mode, sharedMode] of [
+      ["teston", "disable", "enable"],
+      ["testoff", "enable", "disable"],
+    ]) {
+      character.localDefinitions.aliases.push({
+        id: trigger,
+        trigger,
+        enabled: true,
+        description: trigger,
+        group: "",
+        isRegex: false,
+        ignoreCase: false,
+        steps: [
+          { type: "set_trigger_enabled", mode, target: "Danger", targetId: "trigger-local" },
+          {
+            type: "set_trigger_enabled",
+            mode: sharedMode,
+            target: "Shared trigger",
+            targetId: "trigger-shared",
+          },
+          { type: "set_alias_enabled", mode, target: "quick", targetId: "alias-local" },
+          { type: "set_timer_enabled", mode, target: "pulse", targetId: "timer-local" },
+        ],
+      });
+    }
+    localStorage.setItem(key, JSON.stringify(graph));
+    localStorage.setItem(
+      "darkwind-client-settings",
+      JSON.stringify({ settingsBackupPromptEnabled: false }),
+    );
+  });
+  await connect(page);
+  const execute = (command: string) =>
+    page.evaluate(
+      (command) =>
+        (
+          window as unknown as { __darkflowPhase1Runtime: { session: Session } }
+        ).__darkflowPhase1Runtime.session.terminal.executeCommand(command),
+      command,
+    );
+  const storedDefinitions = () =>
+    page.evaluate(() => {
+      const graph = JSON.parse(localStorage.getItem("darkflow-session-core-v1")!);
+      return {
+        local: (Object.values(graph.characterProfiles)[0] as { localDefinitions: unknown })
+          .localDefinitions,
+        shared: graph.configurationSets,
+      };
+    });
+  const originalDefinitions = await storedDefinitions();
+  const input = page.getByLabel("Command input", { exact: true });
+  await input.fill("teston");
+  await input.press("Enter");
+  const start = fixtures.endpoints.ws.commands.length;
+  fixtures.endpoints.ws.sendText("danger\n");
+  await expect
+    .poll(() => fixtures.endpoints.ws.commands.slice(start))
+    .toContain("shared-trigger-before");
+  expect(fixtures.endpoints.ws.commands.slice(start)).not.toContain("flee");
+
+  const settings = page.getByRole("button", { name: "Settings", exact: true });
+  const dialog = settingsDialog(page);
+  await settings.click();
+  const triggers = await settingsGroup(dialog, "Triggers", "Triggers");
+  const normal = triggers.getByRole("switch", { name: "Enable Danger", exact: true });
+  const shared = triggers.getByRole("switch", { name: "Enable Shared trigger", exact: true });
+  await expect(normal).not.toBeChecked();
+  await expect(shared).toBeChecked();
+  await triggers.getByRole("button", { name: "Edit Danger", exact: true }).click();
+  const editor = triggers.getByRole("region", { name: "Edit triggers" });
+  await expect(editor.getByLabel("Enabled", { exact: true })).not.toBeChecked();
+  await editor.getByLabel("Name (required)").fill("Unfinished name");
+  expect(await execute("testoff")).toBe(true);
+  await expect(normal).toBeChecked();
+  await expect(shared).not.toBeChecked();
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(editor.getByLabel("Name (required)")).toHaveValue("Unfinished name");
+  await editor.getByRole("button", { name: "Cancel edit" }).click();
+  expect(await execute("teston")).toBe(true);
+  await expect(normal).not.toBeChecked();
+  await expect(dialog.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
+  await settingsTab(dialog, "Aliases");
+  await expect(dialog.getByRole("switch", { name: "Enable quick", exact: true })).not.toBeChecked();
+  await settingsTab(dialog, "Timers");
+  await expect(dialog.getByRole("switch", { name: "Enable pulse", exact: true })).not.toBeChecked();
+
+  await settingsTab(dialog, "Appearance");
+  await dialog.getByLabel("Side panel opacity").fill("65");
+  await dialog.getByRole("button", { name: "Apply", exact: true }).click();
+  await settingsTab(dialog, "Triggers");
+  await expect(normal).not.toBeChecked();
+  await expect(shared).toBeChecked();
+  expect(await storedDefinitions()).toEqual(originalDefinitions);
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await settings.click();
+  await expect(normal).not.toBeChecked();
+  await triggers.getByRole("button", { name: "Edit Danger", exact: true }).click();
+  await expect(editor.getByLabel("Enabled", { exact: true })).not.toBeChecked();
+
+  // Enabling a runtime-disabled trigger whose saved default is already enabled
+  // must still be an unsaved Settings change, and Close must undo it.
+  await normal.check();
+  await expect(editor.getByLabel("Enabled", { exact: true })).toBeChecked();
+  await expect(dialog.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: "Close", exact: true }).click();
+  await settings.click();
+  await expect(normal).not.toBeChecked();
+  await expect(shared).toBeChecked();
+  await normal.check();
+  await dialog.getByRole("button", { name: "Save & Close", exact: true }).click();
+  await settings.click();
+  await expect(normal).toBeChecked();
+  await expect(shared).toBeChecked();
+  await expect(dialog.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("Phase 2 saves duplicate-pattern triggers and targets each stable id", async ({ page }) => {

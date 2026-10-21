@@ -48,7 +48,6 @@ export function createTerminalAutomation({
 } {
   const scopeKey = session.characterProfileId;
   const runtime = session.terminal.automation;
-  const enabledOverrides = new Map<string, boolean>();
   const timerSignatures = new Map<string, string>();
   let snapshot = session.getEffectiveConfiguration();
   let disposed = false;
@@ -56,7 +55,7 @@ export function createTerminalAutomation({
   const definitions = (kind: DefinitionKind) =>
     snapshot[kind].map(({ definition }) => ({
       ...definition,
-      enabled: enabledOverrides.get(`${kind}:${definition.id}`) ?? definition.enabled,
+      enabled: runtime.getEnabledOverrides()[`${kind}:${definition.id}`] ?? definition.enabled,
     }));
   const findById = (kind: DefinitionKind, id: string) =>
     definitions(kind).find((definition) => definition.id === String(id || "")) ?? null;
@@ -82,7 +81,7 @@ export function createTerminalAutomation({
     enabled: boolean,
   ) => {
     if (!definition) return { target: null, enabled: null };
-    enabledOverrides.set(`${kind}:${definition.id}`, enabled);
+    runtime.setEnabledOverride(kind, definition.id, enabled);
     if (kind === "timers" && !enabled) runtime.clearTimer(definition.id);
     return { target: { ...definition, enabled }, enabled };
   };
@@ -237,9 +236,18 @@ export function createTerminalAutomation({
   };
   const unsubscribeConfiguration = session.terminal.subscribeConfiguration((next) => {
     snapshot = next;
-    enabledOverrides.clear();
+    // Runtime switches belong to this session, even when unrelated settings or
+    // shared definitions are published. Only removed definitions lose overrides.
+    runtime.reconcileEnabledOverrides(
+      new Set(
+        Object.entries(next).flatMap(([kind, entries]) =>
+          Array.isArray(entries) ? entries.map(({ definition }) => `${kind}:${definition.id}`) : [],
+        ),
+      ),
+    );
     reconcileTimers();
   });
+  const unsubscribeEnabledOverrides = runtime.subscribeEnabledOverrides(reconcileTimers);
   const sendCommand = (text: string): boolean => {
     const result = executeAliasLine(text, { ...context(), isRoot: true });
     return Boolean(result.sent || result.localOnly || result.handled);
@@ -280,8 +288,9 @@ export function createTerminalAutomation({
       if (disposed) return;
       disposed = true;
       unsubscribeConfiguration();
+      unsubscribeEnabledOverrides();
       for (const { definition } of snapshot.timers) runtime.clearTimer(definition.id);
-      enabledOverrides.clear();
+      runtime.reconcileEnabledOverrides(new Set());
       timerSignatures.clear();
     },
   };
